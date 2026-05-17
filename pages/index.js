@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
+import { pick } from '../lib/i18n';
 
 export default function Home() {
   const [profile, setProfile] = useState(null);
@@ -90,12 +91,15 @@ export default function Home() {
   }
 
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
+  const name = pick(profile.name, lang);
+  const tagline = pick(profile.tagline, lang);
+  const bio = pick(profile.bio, lang);
 
   return (
     <>
       <Head>
-        <title>{profile.name} | {profile.tagline}</title>
-        <meta name="description" content={profile.bio || profile.tagline} />
+        <title>{name}{tagline ? ` | ${tagline}` : ''}</title>
+        <meta name="description" content={bio || tagline} />
       </Head>
 
       <main dir={dir} className="main">
@@ -104,12 +108,12 @@ export default function Home() {
           <div className="profile-block">
             {profile.profile_image && (
               <div className="profile-image">
-                <img src={profile.profile_image} alt={profile.name} />
+                <img src={profile.profile_image} alt={name} />
               </div>
             )}
             <div className="profile-text">
-              <h1>{profile.name}</h1>
-              <p>{profile.tagline}</p>
+              <h1>{name}</h1>
+              <p>{tagline}</p>
             </div>
           </div>
 
@@ -122,9 +126,9 @@ export default function Home() {
         </header>
 
         {/* Bio */}
-        {profile.bio && (
+        {bio && (
           <section className="bio">
-            <p>{profile.bio}</p>
+            <p>{bio}</p>
           </section>
         )}
 
@@ -153,7 +157,7 @@ export default function Home() {
         </section>
 
         <footer className="footer">
-          <p>© {profile.name} {new Date().getFullYear()}</p>
+          <p>© {name} {new Date().getFullYear()}</p>
         </footer>
 
         <style jsx>{`
@@ -278,17 +282,20 @@ export default function Home() {
 }
 
 function ProjectCard({ project, expanded, onToggle, t, lang }) {
+  const title = pick(project.title, lang);
+  const description = pick(project.description, lang);
+  const fullDescription = pick(project.full_description, lang);
   return (
     <article className={`project-card ${expanded ? 'expanded' : ''}`}>
       <button className="project-trigger" onClick={onToggle}>
         {project.cover_image && (
           <div className="project-cover">
-            <img src={project.cover_image} alt={project.title} loading="lazy" />
+            <img src={project.cover_image} alt={title} loading="lazy" />
           </div>
         )}
         <div className="project-meta">
-          <h3>{project.title}</h3>
-          {project.description && <p>{project.description}</p>}
+          <h3>{title}</h3>
+          {description && <p>{description}</p>}
           <span className="expand-cue">
             {expanded ? '−' : '+'}
           </span>
@@ -297,8 +304,8 @@ function ProjectCard({ project, expanded, onToggle, t, lang }) {
 
       {expanded && (
         <div className="project-details">
-          {project.full_description && (
-            <p className="full-description">{project.full_description}</p>
+          {fullDescription && (
+            <p className="full-description">{fullDescription}</p>
           )}
 
           {project.images && project.images.length > 0 && (
