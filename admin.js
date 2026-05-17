@@ -3,11 +3,28 @@ import Head from 'next/head';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
 
+function readLang() {
+  if (typeof window === 'undefined') return 'ar';
+  return localStorage.getItem('lang') || 'ar';
+}
+
+function applyLang(lang) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('lang', lang);
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+}
+
 export default function Admin() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [lang, setLangState] = useState('ar');
 
   useEffect(() => {
+    const initial = readLang();
+    setLangState(initial);
+    applyLang(initial);
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
@@ -20,6 +37,12 @@ export default function Admin() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  function toggleLang() {
+    const next = lang === 'ar' ? 'en' : 'ar';
+    setLangState(next);
+    applyLang(next);
+  }
+
   if (loading) {
     return <div style={{ padding: 40, color: 'var(--text-secondary)' }}>Loading...</div>;
   }
@@ -27,13 +50,16 @@ export default function Admin() {
   return (
     <>
       <Head><title>Admin Dashboard</title></Head>
-      {session ? <Dashboard session={session} /> : <SignIn />}
+      {session
+        ? <Dashboard session={session} lang={lang} toggleLang={toggleLang} />
+        : <SignIn lang={lang} toggleLang={toggleLang} />}
     </>
   );
 }
 
-function SignIn() {
-  const [email, setEmail] = useState('');
+function SignIn({ lang, toggleLang }) {
+  const t = getTranslator(lang);
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -42,38 +68,58 @@ function SignIn() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
+
+    const trimmed = username.trim().toLowerCase();
+    const { data: email, error: rpcError } = await supabase
+      .rpc('get_email_for_username', { p_username: trimmed });
+
+    if (rpcError || !email) {
+      setError(t('invalid_credentials'));
+      setLoading(false);
+      return;
+    }
+
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    if (authError) setError(t('invalid_credentials'));
     setLoading(false);
   }
 
   return (
     <div className="signin-wrap">
       <form className="signin-card" onSubmit={handleSubmit}>
-        <h1>Admin Sign In</h1>
-        <p className="signin-hint">Sign in with your Supabase admin credentials</p>
+        <div className="signin-top">
+          <h1>{t('sign_in_heading')}</h1>
+          <button type="button" onClick={toggleLang} className="lang-btn">
+            {lang === 'ar' ? 'EN' : 'ع'}
+          </button>
+        </div>
+        <p className="signin-hint">{t('sign_in_hint')}</p>
 
-        <label>Email</label>
+        <label>{t('username')}</label>
         <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
           required
           autoFocus
+          autoComplete="username"
+          spellCheck="false"
+          autoCapitalize="off"
         />
 
-        <label>Password</label>
+        <label>{t('password')}</label>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
+          autoComplete="current-password"
         />
 
         {error && <div className="error">{error}</div>}
 
         <button type="submit" disabled={loading}>
-          {loading ? 'Signing in...' : 'Sign In'}
+          {loading ? t('signing_in') : t('sign_in')}
         </button>
       </form>
 
@@ -93,7 +139,17 @@ function SignIn() {
           border-radius: var(--radius-lg);
           padding: var(--space-6);
         }
-        h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+        .signin-top {
+          display: flex; justify-content: space-between; align-items: center;
+          margin-bottom: 4px;
+        }
+        h1 { font-size: 22px; font-weight: 700; }
+        .lang-btn {
+          padding: 4px 10px; background: var(--bg-elevated);
+          border: 1px solid var(--border); border-radius: var(--radius-sm);
+          font-size: 11px; color: var(--text-secondary);
+        }
+        .lang-btn:hover { color: var(--text-primary); }
         .signin-hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-5); }
         label {
           display: block; font-size: 12px; font-weight: 500;
@@ -125,9 +181,8 @@ function SignIn() {
   );
 }
 
-function Dashboard({ session }) {
+function Dashboard({ session, lang, toggleLang }) {
   const [activeTab, setActiveTab] = useState('profile');
-  const [lang, setLang] = useState('en');
   const t = getTranslator(lang);
 
   async function signOut() {
@@ -139,7 +194,7 @@ function Dashboard({ session }) {
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-title">⚙️ Dashboard</div>
-          <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="lang-btn">
+          <button onClick={toggleLang} className="lang-btn">
             {lang === 'ar' ? 'EN' : 'ع'}
           </button>
         </div>
