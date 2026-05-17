@@ -2,12 +2,30 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
+import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
+
+function readLang() {
+  if (typeof window === 'undefined') return 'ar';
+  return localStorage.getItem('lang') || 'ar';
+}
+
+function applyLang(lang) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('lang', lang);
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+}
 
 export default function Admin() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [lang, setLangState] = useState('ar');
 
   useEffect(() => {
+    const initial = readLang();
+    setLangState(initial);
+    applyLang(initial);
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
@@ -20,6 +38,12 @@ export default function Admin() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  function toggleLang() {
+    const next = lang === 'ar' ? 'en' : 'ar';
+    setLangState(next);
+    applyLang(next);
+  }
+
   if (loading) {
     return <div style={{ padding: 40, color: 'var(--text-secondary)' }}>Loading...</div>;
   }
@@ -27,13 +51,16 @@ export default function Admin() {
   return (
     <>
       <Head><title>Admin Dashboard</title></Head>
-      {session ? <Dashboard session={session} /> : <SignIn />}
+      {session
+        ? <Dashboard session={session} lang={lang} toggleLang={toggleLang} />
+        : <SignIn lang={lang} toggleLang={toggleLang} />}
     </>
   );
 }
 
-function SignIn() {
-  const [email, setEmail] = useState('');
+function SignIn({ lang, toggleLang }) {
+  const t = getTranslator(lang);
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -42,38 +69,58 @@ function SignIn() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
+
+    const trimmed = username.trim().toLowerCase();
+    const { data: email, error: rpcError } = await supabase
+      .rpc('get_email_for_username', { p_username: trimmed });
+
+    if (rpcError || !email) {
+      setError(t('invalid_credentials'));
+      setLoading(false);
+      return;
+    }
+
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    if (authError) setError(t('invalid_credentials'));
     setLoading(false);
   }
 
   return (
     <div className="signin-wrap">
       <form className="signin-card" onSubmit={handleSubmit}>
-        <h1>Admin Sign In</h1>
-        <p className="signin-hint">Sign in with your Supabase admin credentials</p>
+        <div className="signin-top">
+          <h1>{t('sign_in_heading')}</h1>
+          <button type="button" onClick={toggleLang} className="lang-btn">
+            {lang === 'ar' ? 'EN' : 'ع'}
+          </button>
+        </div>
+        <p className="signin-hint">{t('sign_in_hint')}</p>
 
-        <label>Email</label>
+        <label>{t('username')}</label>
         <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
           required
           autoFocus
+          autoComplete="username"
+          spellCheck="false"
+          autoCapitalize="off"
         />
 
-        <label>Password</label>
+        <label>{t('password')}</label>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
+          autoComplete="current-password"
         />
 
         {error && <div className="error">{error}</div>}
 
         <button type="submit" disabled={loading}>
-          {loading ? 'Signing in...' : 'Sign In'}
+          {loading ? t('signing_in') : t('sign_in')}
         </button>
       </form>
 
@@ -93,7 +140,17 @@ function SignIn() {
           border-radius: var(--radius-lg);
           padding: var(--space-6);
         }
-        h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+        .signin-top {
+          display: flex; justify-content: space-between; align-items: center;
+          margin-bottom: 4px;
+        }
+        h1 { font-size: 22px; font-weight: 700; }
+        .lang-btn {
+          padding: 4px 10px; background: var(--bg-elevated);
+          border: 1px solid var(--border); border-radius: var(--radius-sm);
+          font-size: 11px; color: var(--text-secondary);
+        }
+        .lang-btn:hover { color: var(--text-primary); }
         .signin-hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-5); }
         label {
           display: block; font-size: 12px; font-weight: 500;
@@ -125,9 +182,8 @@ function SignIn() {
   );
 }
 
-function Dashboard({ session }) {
+function Dashboard({ session, lang, toggleLang }) {
   const [activeTab, setActiveTab] = useState('profile');
-  const [lang, setLang] = useState('en');
   const t = getTranslator(lang);
 
   async function signOut() {
@@ -139,7 +195,7 @@ function Dashboard({ session }) {
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-title">⚙️ Dashboard</div>
-          <button onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} className="lang-btn">
+          <button onClick={toggleLang} className="lang-btn">
             {lang === 'ar' ? 'EN' : 'ع'}
           </button>
         </div>
@@ -299,16 +355,25 @@ function ProfileEditor({ t }) {
     <div className="editor">
       <h1>{t('nav_profile')}</h1>
 
-      <Field label={t('name')}>
-        <input value={profile.name || ''} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+      <Field label={`${t('name')} · EN`}>
+        <input value={pick(profile.name, 'en')} onChange={(e) => setProfile({ ...profile, name: setLangValue(profile.name, 'en', e.target.value) })} />
+      </Field>
+      <Field label={`${t('name')} · AR`}>
+        <input dir="rtl" value={pick(profile.name, 'ar')} onChange={(e) => setProfile({ ...profile, name: setLangValue(profile.name, 'ar', e.target.value) })} />
       </Field>
 
-      <Field label={t('tagline')}>
-        <input value={profile.tagline || ''} onChange={(e) => setProfile({ ...profile, tagline: e.target.value })} />
+      <Field label={`${t('tagline')} · EN`}>
+        <input value={pick(profile.tagline, 'en')} onChange={(e) => setProfile({ ...profile, tagline: setLangValue(profile.tagline, 'en', e.target.value) })} />
+      </Field>
+      <Field label={`${t('tagline')} · AR`}>
+        <input dir="rtl" value={pick(profile.tagline, 'ar')} onChange={(e) => setProfile({ ...profile, tagline: setLangValue(profile.tagline, 'ar', e.target.value) })} />
       </Field>
 
-      <Field label={t('bio')}>
-        <textarea rows={4} value={profile.bio || ''} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} />
+      <Field label={`${t('bio')} · EN`}>
+        <textarea rows={4} value={pick(profile.bio, 'en')} onChange={(e) => setProfile({ ...profile, bio: setLangValue(profile.bio, 'en', e.target.value) })} />
+      </Field>
+      <Field label={`${t('bio')} · AR`}>
+        <textarea dir="rtl" rows={4} value={pick(profile.bio, 'ar')} onChange={(e) => setProfile({ ...profile, bio: setLangValue(profile.bio, 'ar', e.target.value) })} />
       </Field>
 
       <Field label={t('profile_image')}>
@@ -349,7 +414,7 @@ function ProjectsEditor({ t }) {
     const nextOrder = projects.length;
     const { data, error } = await supabase
       .from('projects')
-      .insert({ title: 'New Project', display_order: nextOrder, images: [] })
+      .insert({ title: { en: 'New Project', ar: '' }, display_order: nextOrder, images: [] })
       .select()
       .single();
     if (data) { setProjects([...projects, data]); setEditing(data); }
@@ -384,16 +449,20 @@ function ProjectsEditor({ t }) {
         <p className="empty">{t('no_projects')}</p>
       ) : (
         <div className="project-list">
-          {projects.map((p) => (
-            <button key={p.id} className="project-row" onClick={() => setEditing(p)}>
-              {p.cover_image && <img src={p.cover_image} alt="" />}
-              <div className="project-row-meta">
-                <div className="project-row-title">{p.title}</div>
-                {p.description && <div className="project-row-desc">{p.description}</div>}
-              </div>
-              <span className="chevron">›</span>
-            </button>
-          ))}
+          {projects.map((p) => {
+            const title = pick(p.title, 'en') || pick(p.title, 'ar');
+            const desc = pick(p.description, 'en') || pick(p.description, 'ar');
+            return (
+              <button key={p.id} className="project-row" onClick={() => setEditing(p)}>
+                {p.cover_image && <img src={p.cover_image} alt="" />}
+                <div className="project-row-meta">
+                  <div className="project-row-title">{title}</div>
+                  {desc && <div className="project-row-desc">{desc}</div>}
+                </div>
+                <span className="chevron">›</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -474,22 +543,33 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t }) {
     setData({ ...data, images: data.images.filter((_, i) => i !== idx) });
   }
 
+  const displayTitle = pick(data.title, 'en') || pick(data.title, 'ar') || 'Project';
+
   return (
     <div className="editor">
       <button onClick={onBack} className="back-btn">← {t('back')}</button>
 
-      <h1>{data.title || 'Project'}</h1>
+      <h1>{displayTitle}</h1>
 
-      <Field label={t('project_title')}>
-        <input value={data.title || ''} onChange={(e) => setData({ ...data, title: e.target.value })} />
+      <Field label={`${t('project_title')} · EN`}>
+        <input value={pick(data.title, 'en')} onChange={(e) => setData({ ...data, title: setLangValue(data.title, 'en', e.target.value) })} />
+      </Field>
+      <Field label={`${t('project_title')} · AR`}>
+        <input dir="rtl" value={pick(data.title, 'ar')} onChange={(e) => setData({ ...data, title: setLangValue(data.title, 'ar', e.target.value) })} />
       </Field>
 
-      <Field label={t('project_description')}>
-        <input value={data.description || ''} onChange={(e) => setData({ ...data, description: e.target.value })} placeholder="Short summary" />
+      <Field label={`${t('project_description')} · EN`}>
+        <input value={pick(data.description, 'en')} onChange={(e) => setData({ ...data, description: setLangValue(data.description, 'en', e.target.value) })} placeholder="Short summary" />
+      </Field>
+      <Field label={`${t('project_description')} · AR`}>
+        <input dir="rtl" value={pick(data.description, 'ar')} onChange={(e) => setData({ ...data, description: setLangValue(data.description, 'ar', e.target.value) })} placeholder="ملخص قصير" />
       </Field>
 
-      <Field label="Full Description">
-        <textarea rows={5} value={data.full_description || ''} onChange={(e) => setData({ ...data, full_description: e.target.value })} />
+      <Field label="Full Description · EN">
+        <textarea rows={5} value={pick(data.full_description, 'en')} onChange={(e) => setData({ ...data, full_description: setLangValue(data.full_description, 'en', e.target.value) })} />
+      </Field>
+      <Field label="Full Description · AR">
+        <textarea dir="rtl" rows={5} value={pick(data.full_description, 'ar')} onChange={(e) => setData({ ...data, full_description: setLangValue(data.full_description, 'ar', e.target.value) })} />
       </Field>
 
       <Field label={t('cover_image')}>
