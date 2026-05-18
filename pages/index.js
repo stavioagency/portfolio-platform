@@ -150,11 +150,17 @@ export default function Home() {
 
   const name = pick(profile.name, lang);
   const tagline = pick(profile.tagline, lang);
-  const banners = profile.banners || [];
-  const stats = profile.stats || [];
-  const ctas = profile.cta_buttons || [];
+  const bio = pick(profile.bio, lang);
+  const banners = (profile.banners || []).filter(b => b.type !== 'image' || b.image_url); // skip empty image banners
+  const stats = (profile.stats || []).filter(s => pick(s.value, lang) || pick(s.value, 'en') || pick(s.label, lang) || pick(s.label, 'en')); // skip fully-empty stats
+  const ctas = (profile.cta_buttons || []).filter(b => b.action === 'open_projects' || b.href); // skip CTAs with no destination
   const links = profile.custom_links || [];
-  const langSwitcherOn = profile.sections?.lang_switcher !== false; // default on
+  const customFields = profile.custom_fields || [];
+  const sections = profile.sections || {};
+  const showBio = sections.bio !== false && bio;
+  const showCustomFields = sections.custom_fields !== false && customFields.length > 0;
+  const langSwitcherOn = sections.lang_switcher !== false; // default on
+  const avatarSrc = profile.brand_logo || profile.profile_image || null;
 
   // Top social icons (first 3 from custom_links that have an icon)
   const socialIcons = links
@@ -225,8 +231,8 @@ export default function Home() {
             </div>
 
             <div className="brand-logo">
-              {profile.brand_logo
-                ? <img src={profile.brand_logo} alt={name} />
+              {avatarSrc
+                ? <img src={avatarSrc} alt={name} />
                 : <span>{initial}</span>}
             </div>
           </div>
@@ -236,6 +242,30 @@ export default function Home() {
             <h1>{name}</h1>
             {tagline && <p>{tagline}</p>}
           </div>
+
+          {/* BIO */}
+          {showBio && (
+            <div className="bio-block">
+              <p>{bio}</p>
+            </div>
+          )}
+
+          {/* CUSTOM FIELDS */}
+          {showCustomFields && (
+            <div className="cf-grid">
+              {customFields.map(f => {
+                const fl = pick(f.label, lang) || pick(f.label, 'en');
+                const fv = pick(f.value, lang) || pick(f.value, 'en');
+                if (!fl && !fv) return null;
+                return (
+                  <div key={f.id} className="cf-row">
+                    {fl && <span className="cf-label">{fl}</span>}
+                    {fv && <span className="cf-value">{fv}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* BANNER SLIDER */}
           {banners.length > 0 && (
@@ -389,6 +419,13 @@ export default function Home() {
           flex-shrink: 0;
         }
         .brand-logo img { width: 100%; height: 100%; object-fit: cover; }
+
+        .bio-block { padding: 12px 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; margin-bottom: 14px; }
+        .bio-block p { font-size: 13px; line-height: 1.6; color: rgba(255,255,255,0.75); text-align: start; }
+        .cf-grid { display: flex; flex-direction: column; gap: 1px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden; margin-bottom: 14px; }
+        .cf-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(20,20,28,0.6); font-size: 12px; }
+        .cf-label { color: rgba(255,255,255,0.5); }
+        .cf-value { color: rgba(255,255,255,0.92); font-weight: 500; text-align: end; }
 
         .name-block { text-align: end; margin-bottom: 20px; padding: 0 6px; }
         .name-block h1 {
