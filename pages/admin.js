@@ -3,6 +3,19 @@ import Head from 'next/head';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
+import { BRAND_ICONS, BRAND_KEYS } from '../lib/brand-icons';
+
+function newId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+const BANNER_BGS = {
+  purple: { name: 'Purple',  gradient: 'linear-gradient(135deg, #7a72d6, #9FA7FF)' },
+  blue:   { name: 'Blue',    gradient: 'linear-gradient(135deg, #3b82f6, #06b6d4)' },
+  sunset: { name: 'Sunset',  gradient: 'linear-gradient(135deg, #ec4899, #f97316)' },
+  forest: { name: 'Forest',  gradient: 'linear-gradient(135deg, #10b981, #3b82f6)' },
+  dark:   { name: 'Dark',    gradient: 'linear-gradient(135deg, #1f2937, #374151)' },
+};
 
 function readLang() {
   if (typeof window === 'undefined') return 'ar';
@@ -202,12 +215,17 @@ function Dashboard({ session, lang, toggleLang }) {
 
         <nav className="nav">
           <NavItem icon="👤" label={t('nav_profile')} active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} />
+          <NavItem icon="🪪" label={t('nav_card')} active={activeTab === 'card'} onClick={() => setActiveTab('card')} />
           <NavItem icon="📁" label={t('nav_projects')} active={activeTab === 'projects'} onClick={() => setActiveTab('projects')} />
           <NavItem icon="🔗" label={t('nav_links')} active={activeTab === 'links'} onClick={() => setActiveTab('links')} />
           <NavItem icon="🎨" label={t('nav_appearance')} active={activeTab === 'appearance'} onClick={() => setActiveTab('appearance')} />
         </nav>
 
         <div className="sidebar-footer">
+          <a href="/" target="_blank" rel="noopener noreferrer" className="view-site-btn">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            {t('view_live_site')}
+          </a>
           <div className="user-email">{session.user.email}</div>
           <button onClick={signOut} className="signout-btn">{t('sign_out')}</button>
         </div>
@@ -215,6 +233,7 @@ function Dashboard({ session, lang, toggleLang }) {
 
       <main className="content">
         {activeTab === 'profile' && <ProfileEditor t={t} />}
+        {activeTab === 'card' && <CardEditor t={t} lang={lang} />}
         {activeTab === 'projects' && <ProjectsEditor t={t} />}
         {activeTab === 'links' && <LinksEditor t={t} />}
         {activeTab === 'appearance' && <AppearanceEditor t={t} />}
@@ -260,6 +279,18 @@ function Dashboard({ session, lang, toggleLang }) {
           padding: var(--space-3);
           border-top: 1px solid var(--border);
         }
+        .view-site-btn {
+          display: flex; align-items: center; justify-content: center; gap: 6px;
+          padding: 8px 12px; margin-bottom: 10px;
+          background: linear-gradient(180deg, rgba(159,167,255,0.12), rgba(159,167,255,0.04));
+          border: 1px solid rgba(159,167,255,0.25);
+          border-radius: var(--radius-md);
+          color: var(--text-primary);
+          font-size: 12px; font-weight: 500;
+          text-decoration: none;
+          transition: var(--transition);
+        }
+        .view-site-btn:hover { background: rgba(159,167,255,0.18); }
         .user-email {
           font-size: 11px;
           color: var(--text-muted);
@@ -700,6 +731,399 @@ function AppearanceEditor({ t }) {
 
       <EditorStyles />
     </div>
+  );
+}
+
+// ============ CARD EDITOR ============
+
+function CardEditor({ t, lang }) {
+  const [profile, setProfile] = useState({ banners: [], stats: [], cta_buttons: [], brand_logo: '' });
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState('');
+
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    const { data } = await supabase
+      .from('profile')
+      .select('banners, stats, cta_buttons, brand_logo')
+      .eq('id', 1)
+      .maybeSingle();
+    if (data) {
+      setProfile({
+        banners: data.banners || [],
+        stats: data.stats || [],
+        cta_buttons: data.cta_buttons || [],
+        brand_logo: data.brand_logo || '',
+      });
+    }
+  }
+
+  async function save() {
+    setSaving(true);
+    const { error } = await supabase.from('profile').upsert({ id: 1, ...profile });
+    setSaving(false);
+    if (!error) {
+      setSavedMsg(t('saved'));
+      setTimeout(() => setSavedMsg(''), 2000);
+    } else {
+      alert(error.message);
+    }
+  }
+
+  async function uploadAsset(prefix, file) {
+    const path = `${prefix}-${Date.now()}.${file.name.split('.').pop()}`;
+    const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
+    if (error) { alert(error.message); return null; }
+    const { data } = supabase.storage.from('media').getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  async function uploadBrandLogo(file) {
+    const url = await uploadAsset('brand-logo', file);
+    if (url) setProfile({ ...profile, brand_logo: url });
+  }
+
+  // --- Banners ---
+  function addBanner() {
+    if ((profile.banners?.length || 0) >= 5) return;
+    setProfile({
+      ...profile,
+      banners: [...(profile.banners || []), {
+        id: newId(), type: 'text', text: emptyBilingual(), subtitle: emptyBilingual(), bg: 'purple', image_url: '',
+      }]
+    });
+  }
+  function updateBanner(id, updates) {
+    setProfile({ ...profile, banners: profile.banners.map(b => b.id === id ? { ...b, ...updates } : b) });
+  }
+  function removeBanner(id) {
+    if (!confirm('Remove this banner?')) return;
+    setProfile({ ...profile, banners: profile.banners.filter(b => b.id !== id) });
+  }
+  function moveBanner(id, dir) {
+    const arr = [...profile.banners];
+    const i = arr.findIndex(b => b.id === id);
+    const j = i + dir;
+    if (j < 0 || j >= arr.length) return;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    setProfile({ ...profile, banners: arr });
+  }
+  async function uploadBannerImage(bannerId, file) {
+    const url = await uploadAsset(`banner-${bannerId}`, file);
+    if (url) updateBanner(bannerId, { image_url: url });
+  }
+
+  // --- Stats ---
+  function addStat() {
+    if ((profile.stats?.length || 0) >= 3) return;
+    setProfile({
+      ...profile,
+      stats: [...(profile.stats || []), {
+        id: newId(), label: emptyBilingual(), value: emptyBilingual(),
+      }]
+    });
+  }
+  function updateStat(id, updates) {
+    setProfile({ ...profile, stats: profile.stats.map(s => s.id === id ? { ...s, ...updates } : s) });
+  }
+  function removeStat(id) {
+    setProfile({ ...profile, stats: profile.stats.filter(s => s.id !== id) });
+  }
+  function moveStat(id, dir) {
+    const arr = [...profile.stats];
+    const i = arr.findIndex(s => s.id === id);
+    const j = i + dir;
+    if (j < 0 || j >= arr.length) return;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    setProfile({ ...profile, stats: arr });
+  }
+
+  // --- CTA Buttons ---
+  function addButton() {
+    setProfile({
+      ...profile,
+      cta_buttons: [...(profile.cta_buttons || []), {
+        id: newId(), icon: 'whatsapp', label: emptyBilingual(), action: 'link', href: '',
+      }]
+    });
+  }
+  function updateButton(id, updates) {
+    setProfile({ ...profile, cta_buttons: profile.cta_buttons.map(b => b.id === id ? { ...b, ...updates } : b) });
+  }
+  function removeButton(id) {
+    setProfile({ ...profile, cta_buttons: profile.cta_buttons.filter(b => b.id !== id) });
+  }
+  function moveButton(id, dir) {
+    const arr = [...profile.cta_buttons];
+    const i = arr.findIndex(b => b.id === id);
+    const j = i + dir;
+    if (j < 0 || j >= arr.length) return;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    setProfile({ ...profile, cta_buttons: arr });
+  }
+
+  return (
+    <div className="editor">
+      <h1>{t('card_title')}</h1>
+      <p className="hint">{t('card_sub')}</p>
+
+      <h2>{t('brand_logo')}</h2>
+      <p className="hint">{t('brand_logo_hint')}</p>
+      <ImageUpload
+        value={profile.brand_logo}
+        onUpload={uploadBrandLogo}
+        onClear={() => setProfile({ ...profile, brand_logo: '' })}
+      />
+
+      <h2>{t('banners_title')} <span className="meta">· {t('banners_sub')} · {(profile.banners?.length || 0)}/5</span></h2>
+      {profile.banners?.map((banner, i) => (
+        <BannerRow
+          key={banner.id} banner={banner}
+          onChange={(u) => updateBanner(banner.id, u)}
+          onRemove={() => removeBanner(banner.id)}
+          onUp={() => moveBanner(banner.id, -1)}
+          onDown={() => moveBanner(banner.id, 1)}
+          canUp={i > 0} canDown={i < profile.banners.length - 1}
+          uploadImage={(f) => uploadBannerImage(banner.id, f)}
+          t={t} lang={lang}
+        />
+      ))}
+      {(profile.banners?.length || 0) < 5 && (
+        <button className="btn-add" onClick={addBanner}>+ {t('banner_add')}</button>
+      )}
+
+      <h2>{t('stats_title')} <span className="meta">· {t('stats_sub')} · {(profile.stats?.length || 0)}/3</span></h2>
+      {profile.stats?.map((stat, i) => (
+        <StatRow
+          key={stat.id} stat={stat}
+          onChange={(u) => updateStat(stat.id, u)}
+          onRemove={() => removeStat(stat.id)}
+          onUp={() => moveStat(stat.id, -1)}
+          onDown={() => moveStat(stat.id, 1)}
+          canUp={i > 0} canDown={i < profile.stats.length - 1}
+          t={t}
+        />
+      ))}
+      {(profile.stats?.length || 0) < 3 && (
+        <button className="btn-add" onClick={addStat}>+ {t('stat_add')}</button>
+      )}
+
+      <h2>{t('buttons_title')} <span className="meta">· {t('buttons_sub')}</span></h2>
+      {profile.cta_buttons?.map((btn, i) => (
+        <ButtonRow
+          key={btn.id} btn={btn}
+          onChange={(u) => updateButton(btn.id, u)}
+          onRemove={() => removeButton(btn.id)}
+          onUp={() => moveButton(btn.id, -1)}
+          onDown={() => moveButton(btn.id, 1)}
+          canUp={i > 0} canDown={i < profile.cta_buttons.length - 1}
+          t={t}
+        />
+      ))}
+      <button className="btn-add" onClick={addButton}>+ {t('button_add')}</button>
+
+      <div className="actions">
+        <button className="primary" onClick={save} disabled={saving}>{saving ? '...' : t('save')}</button>
+        {savedMsg && <span className="saved-indicator">{savedMsg} ✓</span>}
+      </div>
+
+      <EditorStyles />
+      <CardEditorStyles />
+    </div>
+  );
+}
+
+function BannerRow({ banner, onChange, onRemove, onUp, onDown, canUp, canDown, uploadImage, t, lang }) {
+  const previewText = pick(banner.text, lang) || pick(banner.text, 'en') || pick(banner.text, 'ar');
+  const previewSub = pick(banner.subtitle, lang) || pick(banner.subtitle, 'en') || pick(banner.subtitle, 'ar');
+
+  return (
+    <div className="card-row">
+      <div className="row-head">
+        <div className="row-tabs">
+          <button type="button" className={banner.type === 'text' ? 'active' : ''} onClick={() => onChange({ type: 'text' })}>{t('banner_type_text')}</button>
+          <button type="button" className={banner.type === 'image' ? 'active' : ''} onClick={() => onChange({ type: 'image' })}>{t('banner_type_image')}</button>
+        </div>
+        <div className="row-actions">
+          <button type="button" className="x-small" disabled={!canUp} onClick={onUp}>↑</button>
+          <button type="button" className="x-small" disabled={!canDown} onClick={onDown}>↓</button>
+          <button type="button" className="x-small" onClick={onRemove}>×</button>
+        </div>
+      </div>
+
+      {banner.type === 'text' ? (
+        <>
+          <div className="row-grid-2">
+            <Field label={`${t('banner_text')} · EN`}>
+              <input value={pick(banner.text, 'en')} onChange={(e) => onChange({ text: setLangValue(banner.text, 'en', e.target.value) })} placeholder="Welcome" />
+            </Field>
+            <Field label={`${t('banner_text')} · AR`}>
+              <input dir="rtl" value={pick(banner.text, 'ar')} onChange={(e) => onChange({ text: setLangValue(banner.text, 'ar', e.target.value) })} placeholder="أهلاً وسهلاً" />
+            </Field>
+            <Field label={`${t('banner_subtitle')} · EN`}>
+              <input value={pick(banner.subtitle, 'en')} onChange={(e) => onChange({ subtitle: setLangValue(banner.subtitle, 'en', e.target.value) })} placeholder="Optional" />
+            </Field>
+            <Field label={`${t('banner_subtitle')} · AR`}>
+              <input dir="rtl" value={pick(banner.subtitle, 'ar')} onChange={(e) => onChange({ subtitle: setLangValue(banner.subtitle, 'ar', e.target.value) })} placeholder="اختياري" />
+            </Field>
+          </div>
+          <Field label={t('banner_bg')}>
+            <select value={banner.bg || 'purple'} onChange={(e) => onChange({ bg: e.target.value })}>
+              {Object.entries(BANNER_BGS).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
+            </select>
+          </Field>
+          <div className="banner-preview" style={{ background: BANNER_BGS[banner.bg || 'purple'].gradient }}>
+            <div className="banner-text" dir={lang === 'ar' ? 'rtl' : 'ltr'}>{previewText || '...'}</div>
+            {previewSub && <div className="banner-sub" dir={lang === 'ar' ? 'rtl' : 'ltr'}>{previewSub}</div>}
+          </div>
+        </>
+      ) : (
+        <Field label={t('banner_upload')}>
+          <ImageUpload value={banner.image_url} onUpload={uploadImage} onClear={() => onChange({ image_url: '' })} />
+        </Field>
+      )}
+    </div>
+  );
+}
+
+function StatRow({ stat, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
+  return (
+    <div className="card-row">
+      <div className="row-head">
+        <span style={{ fontSize: 12, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Stat</span>
+        <div className="row-actions">
+          <button type="button" className="x-small" disabled={!canUp} onClick={onUp}>↑</button>
+          <button type="button" className="x-small" disabled={!canDown} onClick={onDown}>↓</button>
+          <button type="button" className="x-small" onClick={onRemove}>×</button>
+        </div>
+      </div>
+      <div className="row-grid-2">
+        <Field label={`${t('stat_label')} · EN`}>
+          <input value={pick(stat.label, 'en')} onChange={(e) => onChange({ label: setLangValue(stat.label, 'en', e.target.value) })} placeholder="Rating" />
+        </Field>
+        <Field label={`${t('stat_label')} · AR`}>
+          <input dir="rtl" value={pick(stat.label, 'ar')} onChange={(e) => onChange({ label: setLangValue(stat.label, 'ar', e.target.value) })} placeholder="التقييم" />
+        </Field>
+        <Field label={`${t('stat_value')} · EN`}>
+          <input value={pick(stat.value, 'en')} onChange={(e) => onChange({ value: setLangValue(stat.value, 'en', e.target.value) })} placeholder="★ 4.9" />
+        </Field>
+        <Field label={`${t('stat_value')} · AR`}>
+          <input dir="rtl" value={pick(stat.value, 'ar')} onChange={(e) => onChange({ value: setLangValue(stat.value, 'ar', e.target.value) })} placeholder="★ 4.9" />
+        </Field>
+      </div>
+    </div>
+  );
+}
+
+function ButtonRow({ btn, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
+  const icon = btn.icon && BRAND_ICONS[btn.icon];
+  return (
+    <div className="card-row">
+      <div className="row-head">
+        <div className="brand-mini">
+          {icon && <svg viewBox="0 0 24 24"><path d={icon.path} /></svg>}
+        </div>
+        <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{icon?.label || 'Pick an icon'}</span>
+        <div className="row-actions">
+          <button type="button" className="x-small" disabled={!canUp} onClick={onUp}>↑</button>
+          <button type="button" className="x-small" disabled={!canDown} onClick={onDown}>↓</button>
+          <button type="button" className="x-small" onClick={onRemove}>×</button>
+        </div>
+      </div>
+      <Field label={t('button_icon')}>
+        <select value={btn.icon || ''} onChange={(e) => onChange({ icon: e.target.value })}>
+          <option value="">— choose an icon —</option>
+          {BRAND_KEYS.map(k => <option key={k} value={k}>{BRAND_ICONS[k].label}</option>)}
+        </select>
+      </Field>
+      <div className="row-grid-2">
+        <Field label={`${t('button_label')} · EN`}>
+          <input value={pick(btn.label, 'en')} onChange={(e) => onChange({ label: setLangValue(btn.label, 'en', e.target.value) })} placeholder="Contact me on WhatsApp" />
+        </Field>
+        <Field label={`${t('button_label')} · AR`}>
+          <input dir="rtl" value={pick(btn.label, 'ar')} onChange={(e) => onChange({ label: setLangValue(btn.label, 'ar', e.target.value) })} placeholder="تواصل معي عبر واتساب" />
+        </Field>
+      </div>
+      <Field label={t('button_action')}>
+        <select value={btn.action || 'link'} onChange={(e) => onChange({ action: e.target.value })}>
+          <option value="link">{t('button_action_link')}</option>
+          <option value="open_projects">{t('button_action_open_projects')}</option>
+        </select>
+      </Field>
+      {btn.action !== 'open_projects' && (
+        <Field label={t('button_href')}>
+          <input type="url" value={btn.href || ''} onChange={(e) => onChange({ href: e.target.value })} placeholder="https://wa.me/97450000000" />
+        </Field>
+      )}
+    </div>
+  );
+}
+
+function CardEditorStyles() {
+  return (
+    <style jsx global>{`
+      .editor .hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-4); max-width: 560px; line-height: 1.5; }
+      .editor .meta { font-size: 11px; color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-inline-start: 6px; }
+      .editor h2 { margin-top: var(--space-6); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: var(--space-3); }
+      .card-row {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        padding: var(--space-4);
+        margin-bottom: var(--space-3);
+        max-width: 640px;
+      }
+      .card-row .row-head { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-3); }
+      .card-row .row-tabs { display: inline-flex; gap: 2px; background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 3px; }
+      .card-row .row-tabs button { padding: 4px 12px; font-size: 12px; color: var(--text-tertiary); border: none; background: none; border-radius: 5px; cursor: pointer; }
+      .card-row .row-tabs button.active { background: var(--bg-hover); color: var(--text-primary); }
+      .card-row .row-actions { margin-inline-start: auto; display: flex; gap: 4px; }
+      .card-row .x-small {
+        width: 28px; height: 28px; border-radius: 6px;
+        background: var(--bg-elevated); color: var(--text-tertiary);
+        border: 1px solid var(--border);
+        font-size: 13px; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .card-row .x-small:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
+      .card-row .x-small:disabled { opacity: 0.3; cursor: not-allowed; }
+      .row-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 100%; }
+      .row-grid-2 .field { margin-bottom: 0; }
+      .banner-preview {
+        margin-top: var(--space-3);
+        border-radius: var(--radius-md);
+        padding: 28px 20px;
+        text-align: center;
+        min-height: 120px;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+      }
+      .banner-text {
+        font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif;
+        font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 4px;
+        line-height: 1.2;
+      }
+      .banner-sub { font-size: 13px; color: rgba(255,255,255,0.85); }
+      .brand-mini {
+        width: 30px; height: 30px;
+        display: flex; align-items: center; justify-content: center;
+        color: rgba(255,255,255,0.92);
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.07);
+        border-radius: 7px;
+      }
+      .brand-mini svg { width: 15px; height: 15px; fill: currentColor; }
+      .btn-add {
+        padding: 8px 14px;
+        background: var(--bg-elevated);
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .btn-add:hover { border-color: var(--border-strong); }
+    `}</style>
   );
 }
 
