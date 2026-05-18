@@ -208,6 +208,16 @@ export default function Home() {
       <Head>
         <title>{name}{tagline ? ` | ${tagline}` : ''}</title>
         <meta name="description" content={bio || tagline} />
+        {/* Open Graph (link previews on iMessage / WhatsApp / Slack / Discord) */}
+        <meta property="og:title" content={`${name}${tagline ? ` | ${tagline}` : ''}`} />
+        <meta property="og:description" content={bio || tagline} />
+        <meta property="og:type" content="profile" />
+        {avatarSrc && <meta property="og:image" content={avatarSrc} />}
+        {/* Twitter / X */}
+        <meta name="twitter:card" content={avatarSrc ? 'summary_large_image' : 'summary'} />
+        <meta name="twitter:title" content={name} />
+        <meta name="twitter:description" content={bio || tagline} />
+        {avatarSrc && <meta name="twitter:image" content={avatarSrc} />}
       </Head>
 
       <main className="page" dir={dir}>
