@@ -924,6 +924,10 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
         .row-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
         .danger-btn { padding: 8px 14px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border: 1px solid rgba(255,80,80,0.3); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; margin-inline-start: auto; font-family: inherit; }
         .danger-btn:hover { background: rgba(255, 80, 80, 0.18); }
+        @media (max-width: 720px) {
+          .row-grid-3 { grid-template-columns: 1fr; }
+          .danger-btn { margin-inline-start: 0; }
+        }
       `}</style>
     </div>
   );
@@ -986,12 +990,22 @@ function LinksEditor({ t, lang }) {
 
       <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
       <style jsx>{`
-        .link-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; max-width: 720px; }
+        .link-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; max-width: 720px; flex-wrap: wrap; }
         .link-actions { display: flex; flex-direction: column; gap: 2px; }
-        .brand { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07); cursor: pointer; }
+        .brand { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07); cursor: pointer; flex-shrink: 0; }
         .brand svg { width: 17px; height: 17px; fill: currentColor; }
         .brand:hover { background: rgba(255,255,255,0.08); }
-        .input-sm { padding: 9px 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 13px; font-family: inherit; }
+        .input-sm { padding: 9px 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 13px; font-family: inherit; min-width: 0; }
+        @media (max-width: 720px) {
+          .link-row { gap: 6px; }
+          /* Label input stays on row 1 with icon/actions, URL drops to row 2 full-width */
+          .link-row > input.input-sm:nth-of-type(2) {
+            flex: 1 0 100%;
+            width: 100% !important;
+            order: 99;
+          }
+          .input-sm { padding: 12px 14px; font-size: 16px; /* prevent iOS zoom */ }
+        }
       `}</style>
     </div>
   );
@@ -1150,6 +1164,13 @@ function AppearanceEditor({ t, lang }) {
         .device-toggle button { padding: 8px 14px; background: none; border: none; color: var(--text-tertiary); font-size: 12px; border-radius: 6px; cursor: pointer; font-family: inherit; }
         .device-toggle button.active { background: var(--bg-elevated); color: var(--text-primary); }
         .preview-shell { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; justify-content: center; }
+        @media (max-width: 720px) {
+          .preset-grid { grid-template-columns: repeat(2, 1fr); }
+          .color-grid { grid-template-columns: 1fr; }
+          .preview-shell { padding: 8px; }
+          .preview-shell :global(iframe) { height: 420px !important; }
+          .device-toggle button { padding: 10px 14px; }
+        }
       `}</style>
     </div>
   );
@@ -1716,6 +1737,12 @@ function EditorStyles() {
       .editor textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
       .editor input[type="color"] { width: 60px; height: 40px; padding: 4px; cursor: pointer; }
       .editor .saved-indicator { font-size: 13px; color: var(--accent); margin-inline-start: 4px; }
+      @media (max-width: 720px) {
+        .editor h1 { font-size: 20px; margin-bottom: var(--space-4); }
+        .editor input[type="text"], .editor input[type="email"], .editor input[type="password"], .editor input[type="url"], .editor input:not([type]), .editor textarea, .editor select {
+          max-width: 100%; padding: 12px 14px; font-size: 16px; /* 16px prevents iOS zoom on focus */
+        }
+      }
     `}</style>
   );
 }
@@ -1741,6 +1768,8 @@ function CardEditorStyles() {
       @media (max-width: 720px) {
         .row-grid-2 { grid-template-columns: 1fr; }
         .card-row { padding: var(--space-3); }
+        .card-row .x-small, .x-small { width: 36px; height: 36px; font-size: 14px; }
+        .btn-add { padding: 12px 16px; font-size: 14px; min-height: 44px; }
       }
       .banner-preview { margin-top: var(--space-3); border-radius: var(--radius-md); padding: 28px 20px; text-align: center; min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
       .banner-text { font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif; font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 4px; line-height: 1.2; }
