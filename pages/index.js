@@ -90,10 +90,10 @@ export default function Home() {
 
   if (!profile) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, color: 'var(--text-secondary)' }}>
-        <h1 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>Setup needed</h1>
+      <div dir={dir} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, color: 'var(--text-secondary)' }}>
+        <h1 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>{t('setup_needed_title')}</h1>
         <p style={{ fontSize: 14, maxWidth: 400, lineHeight: 1.6 }}>
-          Go to <code style={{ background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: 4 }}>/admin</code> to set up your portfolio.
+          {t('setup_needed_body')} <code style={{ background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: 4 }}>/admin</code> {t('setup_needed_admin')}
         </p>
       </div>
     );
@@ -119,7 +119,7 @@ export default function Home() {
       try { await navigator.share({ title: name, url: window.location.href }); }
       catch (e) { /* user cancelled */ }
     } else {
-      try { await navigator.clipboard.writeText(window.location.href); alert('Link copied'); }
+      try { await navigator.clipboard.writeText(window.location.href); alert(t('link_copied')); }
       catch (e) { /* ignore */ }
     }
   }
@@ -238,7 +238,7 @@ export default function Home() {
           {/* Empty-state nudge */}
           {banners.length === 0 && stats.length === 0 && ctas.length === 0 && (
             <div className="setup-hint">
-              <p>Your card is empty. Go to <a href="/admin">/admin → Card</a> to add banners, stats and buttons.</p>
+              <p>{t('card_empty_hint_a')} <a href="/admin">/admin → {t('nav_card')}</a> {t('card_empty_hint_b')}</p>
             </div>
           )}
 
