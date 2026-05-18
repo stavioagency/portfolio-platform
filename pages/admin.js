@@ -382,7 +382,7 @@ function ProfileEditor({ t, lang, editLang, setEditLang }) {
         <textarea id="profile-bio" rows={4} dir={rtlForEditLang ? 'rtl' : 'ltr'} value={pick(profile.bio, editLang)} onChange={(e) => bilingualPatch('bio', e.target.value)} />
       </Field>
       <Field id="profile-image" label={t('profile_image')}>
-        <ImageUpload value={profile.profile_image} onUpload={uploadImage} onClear={() => patch({ profile_image: '' })} />
+        <ImageUpload value={profile.profile_image} onUpload={uploadImage} onClear={() => patch({ profile_image: '' })} aspect={1} />
       </Field>
 
       <h2>{t('custom_fields_title')}</h2>
@@ -468,7 +468,7 @@ function CardEditor({ t, lang, editLang, setEditLang }) {
 
   function addBanner() { if ((profile.banners?.length || 0) >= 5) return; patch({ banners: [...(profile.banners || []), { id: newId(), type: 'text', text: emptyBilingual(), subtitle: emptyBilingual(), bg: 'purple', image_url: '' }] }); }
   function updateBanner(id, u) { patch({ banners: profile.banners.map(b => b.id === id ? { ...b, ...u } : b) }); }
-  function removeBanner(id) { if (!confirm(t('delete_project_confirm'))) return; patch({ banners: profile.banners.filter(b => b.id !== id) }); }
+  function removeBanner(id) { if (!confirm(t('confirm_remove'))) return; patch({ banners: profile.banners.filter(b => b.id !== id) }); }
   function moveBanner(id, dir) { const a = [...profile.banners]; const i = a.findIndex(b => b.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ banners: a }); }
   async function uploadBannerImage(bannerId, file) { const url = await uploadAsset(`banner-${bannerId}`, file); if (url) updateBanner(bannerId, { image_url: url }); }
 
@@ -490,7 +490,7 @@ function CardEditor({ t, lang, editLang, setEditLang }) {
 
       <h2>{t('brand_logo')}</h2>
       <p className="hint">{t('brand_logo_hint')}</p>
-      <ImageUpload value={profile.brand_logo} onUpload={uploadBrandLogo} onClear={() => patch({ brand_logo: '' })} />
+      <ImageUpload value={profile.brand_logo} onUpload={uploadBrandLogo} onClear={() => patch({ brand_logo: '' })} aspect={1} />
 
       <h2>{t('banners_title')} <span className="meta">· {t('banners_sub')} · {(profile.banners?.length || 0)}/5</span></h2>
       {profile.banners?.map((b, i) => (
@@ -555,7 +555,7 @@ function BannerRow({ banner, editLang, onChange, onRemove, onUp, onDown, canUp, 
         </>
       ) : (
         <Field id={`b-img-${banner.id}`} label={t('banner_upload')}>
-          <ImageUpload value={banner.image_url} onUpload={uploadImage} onClear={() => onChange({ image_url: '' })} />
+          <ImageUpload value={banner.image_url} onUpload={uploadImage} onClear={() => onChange({ image_url: '' })} aspect={16/9} />
         </Field>
       )}
     </div>
@@ -791,7 +791,7 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, editLang, setEd
       </div>
 
       <h2>{t('cover_image')}</h2>
-      <ImageUpload value={data.cover_image} onUpload={uploadCover} onClear={() => patch({ cover_image: '' })} />
+      <ImageUpload value={data.cover_image} onUpload={uploadCover} onClear={() => patch({ cover_image: '' })} aspect={1} />
 
       <h2>{t('external_link')}</h2>
       <Field id="p-ext" label="">
@@ -1101,7 +1101,14 @@ function AnalyticsEditor({ t, lang }) {
 
   const topReferrers = useMemo(() => {
     const counts = new Map();
-    pageViews.forEach(e => { const r = e.referrer ? new URL(e.referrer).hostname.replace(/^www\./, '') : 'Direct / unknown'; counts.set(r, (counts.get(r) || 0) + 1); });
+    pageViews.forEach(e => {
+      let r = 'Direct / unknown';
+      if (e.referrer) {
+        try { r = new URL(e.referrer).hostname.replace(/^www\./, ''); }
+        catch { r = e.referrer.slice(0, 40); }
+      }
+      counts.set(r, (counts.get(r) || 0) + 1);
+    });
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
   }, [pageViews]);
 
