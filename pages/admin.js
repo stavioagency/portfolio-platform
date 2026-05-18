@@ -60,6 +60,7 @@ export default function Admin() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lang, setLangState] = useState('ar');
+  const t = getTranslator(lang);
 
   useEffect(() => {
     const initial = readLang();
@@ -74,21 +75,52 @@ export default function Admin() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  function toggleLang() {
-    const next = lang === 'ar' ? 'en' : 'ar';
+  function setLang(next) {
     setLangState(next);
     applyLang(next);
   }
+  function toggleLang() {
+    setLang(lang === 'ar' ? 'en' : 'ar');
+  }
 
-  if (loading) return <div style={{ padding: 40, color: 'var(--text-secondary)' }}>Loading...</div>;
+  if (loading) return <div style={{ padding: 40, color: 'var(--text-secondary)' }}>{t('loading')}</div>;
 
   return (
     <>
-      <Head><title>Admin Dashboard</title></Head>
+      <Head><title>{t('head_title_admin')}</title></Head>
       {session
-        ? <Dashboard session={session} lang={lang} toggleLang={toggleLang} setLang={setLangState} />
+        ? <Dashboard session={session} lang={lang} toggleLang={toggleLang} setLang={setLang} />
         : <SignIn lang={lang} toggleLang={toggleLang} />}
     </>
+  );
+}
+
+function LangToggleButton({ lang, onClick }) {
+  // Shows the TARGET language (clicking switches TO this language)
+  const targetLabel = lang === 'ar' ? 'EN' : 'العربية';
+  return (
+    <button type="button" onClick={onClick} className="lang-toggle-btn" title={targetLabel}>
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <span>{lang === 'ar' ? 'EN' : 'ع'}</span>
+      <style jsx>{`
+        .lang-toggle-btn {
+          padding: 6px 12px;
+          background: var(--bg-elevated);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          color: var(--text-primary);
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-family: inherit;
+        }
+        .lang-toggle-btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+        .lang-toggle-btn svg { opacity: 0.7; }
+      `}</style>
+    </button>
   );
 }
 
@@ -121,28 +153,26 @@ function SignIn({ lang, toggleLang }) {
       <form className="signin-card" onSubmit={handleSubmit}>
         <div className="signin-top">
           <h1>{t('sign_in_heading')}</h1>
-          <button type="button" onClick={toggleLang} className="lang-btn">{lang === 'ar' ? 'EN' : 'ع'}</button>
+          <LangToggleButton lang={lang} onClick={toggleLang} />
         </div>
         <p className="signin-hint">{t('sign_in_hint')}</p>
         <label htmlFor="signin-username">{t('username')}</label>
-        <input id="signin-username" name="username" type="text" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus autoComplete="username" spellCheck="false" autoCapitalize="off" />
+        <input id="signin-username" name="username" type="text" dir="ltr" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus autoComplete="username" spellCheck="false" autoCapitalize="off" />
         <label htmlFor="signin-password">{t('password')}</label>
-        <input id="signin-password" name="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+        <input id="signin-password" name="password" type="password" dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
         {error && <div className="error">{error}</div>}
         <button type="submit" disabled={loading}>{loading ? t('signing_in') : t('sign_in')}</button>
       </form>
       <style jsx>{`
         .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
         .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
-        .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
         h1 { font-size: 22px; font-weight: 700; }
-        .lang-btn { padding: 4px 10px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 11px; color: var(--text-secondary); }
-        .lang-btn:hover { color: var(--text-primary); }
         .signin-hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-5); }
         label { display: block; font-size: 12px; font-weight: 500; color: var(--text-tertiary); margin: var(--space-4) 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
-        input { width: 100%; padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; transition: var(--transition); }
+        input { width: 100%; padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; transition: var(--transition); font-family: inherit; }
         input:focus { outline: none; border-color: var(--accent); }
-        button[type="submit"] { width: 100%; padding: 12px; background: var(--accent); color: var(--bg-primary); border-radius: var(--radius-md); font-weight: 600; font-size: 14px; margin-top: var(--space-5); transition: var(--transition); }
+        button[type="submit"] { width: 100%; padding: 12px; background: var(--accent); color: var(--bg-primary); border-radius: var(--radius-md); font-weight: 600; font-size: 14px; margin-top: var(--space-5); transition: var(--transition); border: none; cursor: pointer; }
         button[type="submit"]:hover:not(:disabled) { background: var(--accent-hover); }
         button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
         .error { margin-top: var(--space-4); padding: 10px 12px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 13px; }
@@ -156,10 +186,7 @@ function SignIn({ lang, toggleLang }) {
 // =========================================================
 function Dashboard({ session, lang, toggleLang, setLang }) {
   const [activeTab, setActiveTab] = useState('profile');
-  const [editLang, setEditLang] = useState(lang);
   const t = getTranslator(lang);
-
-  useEffect(() => setEditLang(lang), [lang]); // keep editLang in sync when chrome lang changes
 
   async function signOut() { await supabase.auth.signOut(); }
 
@@ -167,8 +194,8 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
     <div className="dashboard">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="sidebar-title">⚙️ Dashboard</div>
-          <button onClick={toggleLang} className="lang-btn">{lang === 'ar' ? 'EN' : 'ع'}</button>
+          <div className="sidebar-title">⚙️ {t('sidebar_title')}</div>
+          <LangToggleButton lang={lang} onClick={toggleLang} />
         </div>
 
         <nav className="nav">
@@ -186,37 +213,36 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             {t('view_live_site')}
           </a>
-          <SidebarUser session={session} />
+          <SidebarUser session={session} t={t} />
           <button onClick={signOut} className="signout-btn">{t('sign_out')}</button>
         </div>
       </aside>
 
       <main className="content">
-        {activeTab === 'profile'    && <ProfileEditor    t={t} lang={lang} editLang={editLang} setEditLang={setEditLang} />}
-        {activeTab === 'card'       && <CardEditor       t={t} lang={lang} editLang={editLang} setEditLang={setEditLang} />}
-        {activeTab === 'projects'   && <ProjectsEditor   t={t} lang={lang} editLang={editLang} setEditLang={setEditLang} />}
-        {activeTab === 'links'      && <LinksEditor      t={t} lang={lang} editLang={editLang} setEditLang={setEditLang} />}
+        {activeTab === 'profile'    && <ProfileEditor    t={t} lang={lang} />}
+        {activeTab === 'card'       && <CardEditor       t={t} lang={lang} />}
+        {activeTab === 'projects'   && <ProjectsEditor   t={t} lang={lang} />}
+        {activeTab === 'links'      && <LinksEditor      t={t} lang={lang} />}
         {activeTab === 'appearance' && <AppearanceEditor t={t} lang={lang} />}
         {activeTab === 'analytics'  && <AnalyticsEditor  t={t} lang={lang} />}
-        {activeTab === 'account'    && <AccountEditor    t={t} lang={lang} session={session} chromeLang={lang} setChromeLang={(l) => { setLang(l); applyLang(l); }} />}
+        {activeTab === 'account'    && <AccountEditor    t={t} lang={lang} session={session} setChromeLang={setLang} />}
       </main>
 
       <style jsx>{`
         .dashboard { display: flex; min-height: 100vh; }
-        .sidebar { width: 240px; background: var(--bg-secondary); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
-        .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-3) var(--space-5); }
+        .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
+        .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-3) var(--space-5); gap: 8px; }
         .sidebar-title { font-size: 14px; font-weight: 700; }
-        .lang-btn { padding: 4px 10px; background: var(--bg-elevated); border-radius: var(--radius-sm); font-size: 11px; color: var(--text-secondary); }
         .nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
         .sidebar-footer { padding: var(--space-3); border-top: 1px solid var(--border); }
         .view-site-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; margin-bottom: 10px; background: linear-gradient(180deg, rgba(159,167,255,0.12), rgba(159,167,255,0.04)); border: 1px solid rgba(159,167,255,0.25); border-radius: var(--radius-md); color: var(--text-primary); font-size: 12px; font-weight: 500; text-decoration: none; transition: var(--transition); }
         .view-site-btn:hover { background: rgba(159,167,255,0.18); }
-        .signout-btn { font-size: 12px; color: var(--text-tertiary); padding: 6px 0; }
+        .signout-btn { font-size: 12px; color: var(--text-tertiary); padding: 6px 0; background: none; border: none; cursor: pointer; font-family: inherit; }
         .signout-btn:hover { color: var(--text-primary); }
         .content { flex: 1; padding: var(--space-6) var(--space-8); overflow-y: auto; max-height: 100vh; }
         @media (max-width: 720px) {
           .dashboard { flex-direction: column; }
-          .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+          .sidebar { width: 100%; border-inline-end: none; border-bottom: 1px solid var(--border); }
           .content { padding: var(--space-5); }
         }
       `}</style>
@@ -230,7 +256,7 @@ function NavItem({ icon, label, active, onClick }) {
       <span className="nav-icon">{icon}</span>
       <span>{label}</span>
       <style jsx>{`
-        .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px; color: var(--text-secondary); transition: var(--transition); text-align: start; }
+        .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px; color: var(--text-secondary); transition: var(--transition); text-align: start; background: none; border: none; cursor: pointer; font-family: inherit; }
         .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
         .nav-item.active { background: linear-gradient(180deg, rgba(159,167,255,0.12), rgba(159,167,255,0.04)); color: var(--text-primary); font-weight: 500; box-shadow: inset 0 0 0 1px rgba(159,167,255,0.18); }
         .nav-icon { font-size: 14px; }
@@ -239,7 +265,7 @@ function NavItem({ icon, label, active, onClick }) {
   );
 }
 
-function SidebarUser({ session }) {
+function SidebarUser({ session, t }) {
   const [username, setUsername] = useState('');
   useEffect(() => {
     (async () => {
@@ -253,7 +279,7 @@ function SidebarUser({ session }) {
       <div className="avatar">{initial}</div>
       <div className="user-meta">
         <div className="user-name">{username || session.user.email.split('@')[0]}</div>
-        <div className="user-status"><span className="dot" />Live</div>
+        <div className="user-status"><span className="dot" />{t('status_live')}</div>
       </div>
       <style jsx>{`
         .user-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -262,28 +288,6 @@ function SidebarUser({ session }) {
         .user-name { font-size: 12px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .user-status { font-size: 10px; color: #7DD37D; display: flex; align-items: center; gap: 4px; }
         .dot { width: 6px; height: 6px; border-radius: 50%; background: #7DD37D; box-shadow: 0 0 6px #7DD37D; }
-      `}</style>
-    </div>
-  );
-}
-
-// =========================================================
-// Shared: EditLangToggle (top of every bilingual editor)
-// =========================================================
-function EditLangToggle({ editLang, setEditLang, t }) {
-  return (
-    <div className="edit-lang-banner">
-      <span>{t('editing_in')} <strong>{editLang === 'ar' ? 'العربية' : 'English'}</strong></span>
-      <div className="pill">
-        <button type="button" className={editLang === 'en' ? 'active' : ''} onClick={() => setEditLang('en')}>EN</button>
-        <button type="button" className={editLang === 'ar' ? 'active' : ''} onClick={() => setEditLang('ar')}>ع AR</button>
-      </div>
-      <style jsx>{`
-        .edit-lang-banner { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: linear-gradient(90deg, rgba(159,167,255,0.08), transparent); border: 1px solid rgba(159,167,255,0.18); border-radius: var(--radius-md); margin-bottom: var(--space-5); font-size: 12px; color: var(--text-secondary); max-width: 640px; }
-        .edit-lang-banner strong { color: var(--text-primary); }
-        .pill { direction: ltr; display: inline-flex; gap: 2px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 2px; margin-inline-start: auto; }
-        .pill button { padding: 4px 10px; font-size: 11px; background: none; color: var(--text-tertiary); border: none; border-radius: 4px; cursor: pointer; }
-        .pill button.active { background: var(--bg-elevated); color: var(--text-primary); }
       `}</style>
     </div>
   );
@@ -301,7 +305,7 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
       {extra}
       <style jsx>{`
         .actions { display: flex; gap: 10px; align-items: center; margin-top: var(--space-6); padding-top: var(--space-5); border-top: 1px solid var(--border); flex-wrap: wrap; }
-        .primary { padding: 10px 20px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(159,167,255,0.25), inset 0 1px 0 rgba(255,255,255,0.3); position: relative; }
+        .primary { padding: 10px 20px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(159,167,255,0.25), inset 0 1px 0 rgba(255,255,255,0.3); position: relative; font-family: inherit; }
         .primary:disabled { opacity: 0.5; cursor: not-allowed; }
         .unsaved-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ffb845; margin-inline-start: 6px; box-shadow: 0 0 6px #ffb845; vertical-align: middle; }
         .hint { font-size: 12px; color: var(--text-tertiary); }
@@ -312,9 +316,9 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
 }
 
 // =========================================================
-// Profile Editor — bilingual single toggle + custom fields + sections
+// Profile Editor — single-lang inputs (uses chrome lang)
 // =========================================================
-function ProfileEditor({ t, lang, editLang, setEditLang }) {
+function ProfileEditor({ t, lang }) {
   const [profile, setProfile] = useState({ name: emptyBilingual(), tagline: emptyBilingual(), bio: emptyBilingual(), profile_image: '', default_lang: 'ar', custom_fields: [], sections: { bio: true, custom_fields: true, projects: true, links: true, lang_switcher: true } });
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
@@ -337,7 +341,7 @@ function ProfileEditor({ t, lang, editLang, setEditLang }) {
     }
   }
   function patch(updates) { setProfile(p => ({ ...p, ...updates })); setDirty(true); }
-  function bilingualPatch(key, val) { patch({ [key]: setLangValue(profile[key], editLang, val) }); }
+  function bilingualPatch(key, val) { patch({ [key]: setLangValue(profile[key], lang, val) }); }
 
   async function save() {
     setSaving(true);
@@ -356,7 +360,7 @@ function ProfileEditor({ t, lang, editLang, setEditLang }) {
 
   function addCustomField() { patch({ custom_fields: [...(profile.custom_fields || []), { id: newId(), label: emptyBilingual(), value: emptyBilingual() }] }); }
   function updateCustomField(id, updates) { patch({ custom_fields: profile.custom_fields.map(f => f.id === id ? { ...f, ...updates } : f) }); }
-  function removeCustomField(id) { patch({ custom_fields: profile.custom_fields.filter(f => f.id !== id) }); }
+  function removeCustomField(id) { if (!confirm(t('confirm_remove'))) return; patch({ custom_fields: profile.custom_fields.filter(f => f.id !== id) }); }
   function moveCustomField(id, dir) {
     const arr = [...profile.custom_fields]; const i = arr.findIndex(f => f.id === id); const j = i + dir;
     if (j < 0 || j >= arr.length) return;
@@ -364,25 +368,22 @@ function ProfileEditor({ t, lang, editLang, setEditLang }) {
   }
   function toggleSection(key) { patch({ sections: { ...profile.sections, [key]: !profile.sections[key] } }); }
 
-  const rtlForEditLang = editLang === 'ar';
-
   return (
     <div className="editor">
       <h1>{t('nav_profile')}</h1>
-      <EditLangToggle editLang={editLang} setEditLang={setEditLang} t={t} />
 
-      <h2>Basics</h2>
-      <Field id="profile-name" label={`${t('name')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-        <input id="profile-name" dir={rtlForEditLang ? 'rtl' : 'ltr'} value={pick(profile.name, editLang)} onChange={(e) => bilingualPatch('name', e.target.value)} />
+      <h2>{t('basics')}</h2>
+      <Field id="profile-name" label={t('name')}>
+        <input id="profile-name" value={pick(profile.name, lang)} onChange={(e) => bilingualPatch('name', e.target.value)} />
       </Field>
-      <Field id="profile-tagline" label={`${t('tagline')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-        <input id="profile-tagline" dir={rtlForEditLang ? 'rtl' : 'ltr'} value={pick(profile.tagline, editLang)} onChange={(e) => bilingualPatch('tagline', e.target.value)} />
+      <Field id="profile-tagline" label={t('tagline')}>
+        <input id="profile-tagline" value={pick(profile.tagline, lang)} onChange={(e) => bilingualPatch('tagline', e.target.value)} />
       </Field>
-      <Field id="profile-bio" label={`${t('bio')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-        <textarea id="profile-bio" rows={4} dir={rtlForEditLang ? 'rtl' : 'ltr'} value={pick(profile.bio, editLang)} onChange={(e) => bilingualPatch('bio', e.target.value)} />
+      <Field id="profile-bio" label={t('bio')}>
+        <textarea id="profile-bio" rows={4} value={pick(profile.bio, lang)} onChange={(e) => bilingualPatch('bio', e.target.value)} />
       </Field>
       <Field id="profile-image" label={t('profile_image')}>
-        <ImageUpload value={profile.profile_image} onUpload={uploadImage} onClear={() => patch({ profile_image: '' })} aspect={1} />
+        <ImageUpload value={profile.profile_image} onUpload={uploadImage} onClear={() => patch({ profile_image: '' })} aspect={1} t={t} />
       </Field>
 
       <h2>{t('custom_fields_title')}</h2>
@@ -390,7 +391,7 @@ function ProfileEditor({ t, lang, editLang, setEditLang }) {
       {profile.custom_fields?.map((f, i) => (
         <div key={f.id} className="card-row">
           <div className="row-head">
-            <span style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Field</span>
+            <span className="row-tag">{t('item_field')}</span>
             <div className="row-actions">
               <button type="button" className="x-small" disabled={i === 0} onClick={() => moveCustomField(f.id, -1)}>↑</button>
               <button type="button" className="x-small" disabled={i === profile.custom_fields.length - 1} onClick={() => moveCustomField(f.id, 1)}>↓</button>
@@ -398,11 +399,11 @@ function ProfileEditor({ t, lang, editLang, setEditLang }) {
             </div>
           </div>
           <div className="row-grid-2">
-            <Field id={`cf-l-${f.id}`} label={`${t('custom_field_label')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-              <input id={`cf-l-${f.id}`} dir={rtlForEditLang ? 'rtl' : 'ltr'} value={pick(f.label, editLang)} onChange={(e) => updateCustomField(f.id, { label: setLangValue(f.label, editLang, e.target.value) })} />
+            <Field id={`cf-l-${f.id}`} label={t('custom_field_label')}>
+              <input id={`cf-l-${f.id}`} value={pick(f.label, lang)} onChange={(e) => updateCustomField(f.id, { label: setLangValue(f.label, lang, e.target.value) })} />
             </Field>
-            <Field id={`cf-v-${f.id}`} label={`${t('custom_field_value')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-              <input id={`cf-v-${f.id}`} dir={rtlForEditLang ? 'rtl' : 'ltr'} value={pick(f.value, editLang)} onChange={(e) => updateCustomField(f.id, { value: setLangValue(f.value, editLang, e.target.value) })} />
+            <Field id={`cf-v-${f.id}`} label={t('custom_field_value')}>
+              <input id={`cf-v-${f.id}`} value={pick(f.value, lang)} onChange={(e) => updateCustomField(f.id, { value: setLangValue(f.value, lang, e.target.value) })} />
             </Field>
           </div>
         </div>
@@ -435,9 +436,9 @@ function ProfileEditor({ t, lang, editLang, setEditLang }) {
 }
 
 // =========================================================
-// Card Editor (banners, stats, CTA buttons, brand logo)
+// Card Editor
 // =========================================================
-function CardEditor({ t, lang, editLang, setEditLang }) {
+function CardEditor({ t, lang }) {
   const [profile, setProfile] = useState({ banners: [], stats: [], cta_buttons: [], brand_logo: '' });
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
@@ -474,39 +475,38 @@ function CardEditor({ t, lang, editLang, setEditLang }) {
 
   function addStat() { if ((profile.stats?.length || 0) >= 3) return; patch({ stats: [...(profile.stats || []), { id: newId(), label: emptyBilingual(), value: emptyBilingual() }] }); }
   function updateStat(id, u) { patch({ stats: profile.stats.map(s => s.id === id ? { ...s, ...u } : s) }); }
-  function removeStat(id) { patch({ stats: profile.stats.filter(s => s.id !== id) }); }
+  function removeStat(id) { if (!confirm(t('confirm_remove'))) return; patch({ stats: profile.stats.filter(s => s.id !== id) }); }
   function moveStat(id, dir) { const a = [...profile.stats]; const i = a.findIndex(s => s.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ stats: a }); }
 
   function addButton() { patch({ cta_buttons: [...(profile.cta_buttons || []), { id: newId(), icon: 'whatsapp', label: emptyBilingual(), action: 'link', href: '' }] }); }
   function updateButton(id, u) { patch({ cta_buttons: profile.cta_buttons.map(b => b.id === id ? { ...b, ...u } : b) }); }
-  function removeButton(id) { patch({ cta_buttons: profile.cta_buttons.filter(b => b.id !== id) }); }
+  function removeButton(id) { if (!confirm(t('confirm_remove'))) return; patch({ cta_buttons: profile.cta_buttons.filter(b => b.id !== id) }); }
   function moveButton(id, dir) { const a = [...profile.cta_buttons]; const i = a.findIndex(b => b.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ cta_buttons: a }); }
 
   return (
     <div className="editor">
       <h1>{t('card_title')}</h1>
       <p className="hint">{t('card_sub')}</p>
-      <EditLangToggle editLang={editLang} setEditLang={setEditLang} t={t} />
 
       <h2>{t('brand_logo')}</h2>
       <p className="hint">{t('brand_logo_hint')}</p>
-      <ImageUpload value={profile.brand_logo} onUpload={uploadBrandLogo} onClear={() => patch({ brand_logo: '' })} aspect={1} />
+      <ImageUpload value={profile.brand_logo} onUpload={uploadBrandLogo} onClear={() => patch({ brand_logo: '' })} aspect={1} t={t} />
 
       <h2>{t('banners_title')} <span className="meta">· {t('banners_sub')} · {(profile.banners?.length || 0)}/5</span></h2>
       {profile.banners?.map((b, i) => (
-        <BannerRow key={b.id} banner={b} editLang={editLang} onChange={(u) => updateBanner(b.id, u)} onRemove={() => removeBanner(b.id)} onUp={() => moveBanner(b.id, -1)} onDown={() => moveBanner(b.id, 1)} canUp={i > 0} canDown={i < profile.banners.length - 1} uploadImage={(f) => uploadBannerImage(b.id, f)} t={t} />
+        <BannerRow key={b.id} banner={b} lang={lang} onChange={(u) => updateBanner(b.id, u)} onRemove={() => removeBanner(b.id)} onUp={() => moveBanner(b.id, -1)} onDown={() => moveBanner(b.id, 1)} canUp={i > 0} canDown={i < profile.banners.length - 1} uploadImage={(f) => uploadBannerImage(b.id, f)} t={t} />
       ))}
       {(profile.banners?.length || 0) < 5 && <button className="btn-add" onClick={addBanner}>+ {t('banner_add')}</button>}
 
       <h2>{t('stats_title')} <span className="meta">· {t('stats_sub')} · {(profile.stats?.length || 0)}/3</span></h2>
       {profile.stats?.map((s, i) => (
-        <StatRow key={s.id} stat={s} editLang={editLang} onChange={(u) => updateStat(s.id, u)} onRemove={() => removeStat(s.id)} onUp={() => moveStat(s.id, -1)} onDown={() => moveStat(s.id, 1)} canUp={i > 0} canDown={i < profile.stats.length - 1} t={t} />
+        <StatRow key={s.id} stat={s} lang={lang} onChange={(u) => updateStat(s.id, u)} onRemove={() => removeStat(s.id)} onUp={() => moveStat(s.id, -1)} onDown={() => moveStat(s.id, 1)} canUp={i > 0} canDown={i < profile.stats.length - 1} t={t} />
       ))}
       {(profile.stats?.length || 0) < 3 && <button className="btn-add" onClick={addStat}>+ {t('stat_add')}</button>}
 
       <h2>{t('buttons_title')} <span className="meta">· {t('buttons_sub')}</span></h2>
       {profile.cta_buttons?.map((b, i) => (
-        <ButtonRow key={b.id} btn={b} editLang={editLang} onChange={(u) => updateButton(b.id, u)} onRemove={() => removeButton(b.id)} onUp={() => moveButton(b.id, -1)} onDown={() => moveButton(b.id, 1)} canUp={i > 0} canDown={i < profile.cta_buttons.length - 1} t={t} />
+        <ButtonRow key={b.id} btn={b} lang={lang} onChange={(u) => updateButton(b.id, u)} onRemove={() => removeButton(b.id)} onUp={() => moveButton(b.id, -1)} onDown={() => moveButton(b.id, 1)} canUp={i > 0} canDown={i < profile.cta_buttons.length - 1} t={t} />
       ))}
       <button className="btn-add" onClick={addButton}>+ {t('button_add')}</button>
 
@@ -516,10 +516,9 @@ function CardEditor({ t, lang, editLang, setEditLang }) {
   );
 }
 
-function BannerRow({ banner, editLang, onChange, onRemove, onUp, onDown, canUp, canDown, uploadImage, t }) {
-  const rtl = editLang === 'ar';
-  const previewText = pick(banner.text, editLang) || pick(banner.text, 'en') || pick(banner.text, 'ar');
-  const previewSub = pick(banner.subtitle, editLang) || pick(banner.subtitle, 'en') || pick(banner.subtitle, 'ar');
+function BannerRow({ banner, lang, onChange, onRemove, onUp, onDown, canUp, canDown, uploadImage, t }) {
+  const previewText = pick(banner.text, lang) || pick(banner.text, 'en') || pick(banner.text, 'ar');
+  const previewSub = pick(banner.subtitle, lang) || pick(banner.subtitle, 'en') || pick(banner.subtitle, 'ar');
   return (
     <div className="card-row">
       <div className="row-head">
@@ -536,11 +535,11 @@ function BannerRow({ banner, editLang, onChange, onRemove, onUp, onDown, canUp, 
       {banner.type === 'text' ? (
         <>
           <div className="row-grid-2">
-            <Field id={`b-text-${banner.id}`} label={`${t('banner_text')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-              <input id={`b-text-${banner.id}`} dir={rtl ? 'rtl' : 'ltr'} value={pick(banner.text, editLang)} onChange={(e) => onChange({ text: setLangValue(banner.text, editLang, e.target.value) })} placeholder={rtl ? 'أهلاً وسهلاً' : 'Welcome'} />
+            <Field id={`b-text-${banner.id}`} label={t('banner_text')}>
+              <input id={`b-text-${banner.id}`} value={pick(banner.text, lang)} onChange={(e) => onChange({ text: setLangValue(banner.text, lang, e.target.value) })} placeholder={lang === 'ar' ? 'أهلاً وسهلاً' : 'Welcome'} />
             </Field>
-            <Field id={`b-sub-${banner.id}`} label={`${t('banner_subtitle')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-              <input id={`b-sub-${banner.id}`} dir={rtl ? 'rtl' : 'ltr'} value={pick(banner.subtitle, editLang)} onChange={(e) => onChange({ subtitle: setLangValue(banner.subtitle, editLang, e.target.value) })} placeholder={t('optional')} />
+            <Field id={`b-sub-${banner.id}`} label={t('banner_subtitle')}>
+              <input id={`b-sub-${banner.id}`} value={pick(banner.subtitle, lang)} onChange={(e) => onChange({ subtitle: setLangValue(banner.subtitle, lang, e.target.value) })} placeholder={t('optional')} />
             </Field>
           </div>
           <Field id={`b-bg-${banner.id}`} label={t('banner_bg')}>
@@ -549,25 +548,24 @@ function BannerRow({ banner, editLang, onChange, onRemove, onUp, onDown, canUp, 
             </select>
           </Field>
           <div className="banner-preview" style={{ background: BANNER_BGS[banner.bg || 'purple'].gradient }}>
-            <div className="banner-text" dir={rtl ? 'rtl' : 'ltr'}>{previewText || '...'}</div>
-            {previewSub && <div className="banner-sub" dir={rtl ? 'rtl' : 'ltr'}>{previewSub}</div>}
+            <div className="banner-text">{previewText || '...'}</div>
+            {previewSub && <div className="banner-sub">{previewSub}</div>}
           </div>
         </>
       ) : (
         <Field id={`b-img-${banner.id}`} label={t('banner_upload')}>
-          <ImageUpload value={banner.image_url} onUpload={uploadImage} onClear={() => onChange({ image_url: '' })} aspect={16/9} />
+          <ImageUpload value={banner.image_url} onUpload={uploadImage} onClear={() => onChange({ image_url: '' })} aspect={16/9} t={t} />
         </Field>
       )}
     </div>
   );
 }
 
-function StatRow({ stat, editLang, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
-  const rtl = editLang === 'ar';
+function StatRow({ stat, lang, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
   return (
     <div className="card-row">
       <div className="row-head">
-        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Stat</span>
+        <span className="row-tag">{t('item_stat')}</span>
         <div className="row-actions">
           <button type="button" className="x-small" disabled={!canUp} onClick={onUp}>↑</button>
           <button type="button" className="x-small" disabled={!canDown} onClick={onDown}>↓</button>
@@ -575,19 +573,18 @@ function StatRow({ stat, editLang, onChange, onRemove, onUp, onDown, canUp, canD
         </div>
       </div>
       <div className="row-grid-2">
-        <Field id={`s-l-${stat.id}`} label={`${t('stat_label')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-          <input id={`s-l-${stat.id}`} dir={rtl ? 'rtl' : 'ltr'} value={pick(stat.label, editLang)} onChange={(e) => onChange({ label: setLangValue(stat.label, editLang, e.target.value) })} placeholder={rtl ? 'التقييم' : 'Rating'} />
+        <Field id={`s-l-${stat.id}`} label={t('stat_label')}>
+          <input id={`s-l-${stat.id}`} value={pick(stat.label, lang)} onChange={(e) => onChange({ label: setLangValue(stat.label, lang, e.target.value) })} placeholder={lang === 'ar' ? 'التقييم' : 'Rating'} />
         </Field>
-        <Field id={`s-v-${stat.id}`} label={`${t('stat_value')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-          <input id={`s-v-${stat.id}`} dir={rtl ? 'rtl' : 'ltr'} value={pick(stat.value, editLang)} onChange={(e) => onChange({ value: setLangValue(stat.value, editLang, e.target.value) })} placeholder="★ 4.9" />
+        <Field id={`s-v-${stat.id}`} label={t('stat_value')}>
+          <input id={`s-v-${stat.id}`} value={pick(stat.value, lang)} onChange={(e) => onChange({ value: setLangValue(stat.value, lang, e.target.value) })} placeholder="★ 4.9" />
         </Field>
       </div>
     </div>
   );
 }
 
-function ButtonRow({ btn, editLang, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
-  const rtl = editLang === 'ar';
+function ButtonRow({ btn, lang, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const icon = btn.icon && BRAND_ICONS[normalizeIcon(btn.icon)];
   return (
@@ -604,8 +601,8 @@ function ButtonRow({ btn, editLang, onChange, onRemove, onUp, onDown, canUp, can
         </div>
       </div>
       <div className="row-grid-2">
-        <Field id={`bt-l-${btn.id}`} label={`${t('button_label')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-          <input id={`bt-l-${btn.id}`} dir={rtl ? 'rtl' : 'ltr'} value={pick(btn.label, editLang)} onChange={(e) => onChange({ label: setLangValue(btn.label, editLang, e.target.value) })} placeholder={rtl ? 'تواصل معي' : 'Contact me'} />
+        <Field id={`bt-l-${btn.id}`} label={t('button_label')}>
+          <input id={`bt-l-${btn.id}`} value={pick(btn.label, lang)} onChange={(e) => onChange({ label: setLangValue(btn.label, lang, e.target.value) })} placeholder={lang === 'ar' ? 'تواصل معي' : 'Contact me'} />
         </Field>
         <Field id={`bt-a-${btn.id}`} label={t('button_action')}>
           <select id={`bt-a-${btn.id}`} value={btn.action || 'link'} onChange={(e) => onChange({ action: e.target.value })}>
@@ -616,7 +613,7 @@ function ButtonRow({ btn, editLang, onChange, onRemove, onUp, onDown, canUp, can
       </div>
       {btn.action !== 'open_projects' && (
         <Field id={`bt-h-${btn.id}`} label={t('button_href')}>
-          <input id={`bt-h-${btn.id}`} type="url" value={btn.href || ''} onChange={(e) => onChange({ href: e.target.value })} placeholder="https://wa.me/97450000000" />
+          <input id={`bt-h-${btn.id}`} type="url" dir="ltr" value={btn.href || ''} onChange={(e) => onChange({ href: e.target.value })} placeholder="https://wa.me/97450000000" />
         </Field>
       )}
       {pickerOpen && <IconPickerModal selected={btn.icon} onPick={(k) => { onChange({ icon: k }); setPickerOpen(false); }} onClose={() => setPickerOpen(false)} t={t} />}
@@ -627,7 +624,7 @@ function ButtonRow({ btn, editLang, onChange, onRemove, onUp, onDown, canUp, can
 // =========================================================
 // Projects Editor
 // =========================================================
-function ProjectsEditor({ t, lang, editLang, setEditLang }) {
+function ProjectsEditor({ t, lang }) {
   const [projects, setProjects] = useState([]);
   const [editing, setEditing] = useState(null);
 
@@ -636,7 +633,8 @@ function ProjectsEditor({ t, lang, editLang, setEditLang }) {
 
   async function addProject() {
     const nextOrder = projects.length;
-    const { data, error } = await supabase.from('projects').insert({ title: { en: 'New Project', ar: '' }, display_order: nextOrder, images: [] }).select().single();
+    const defaultTitle = { en: 'New Project', ar: 'مشروع جديد' };
+    const { data, error } = await supabase.from('projects').insert({ title: defaultTitle, display_order: nextOrder, images: [] }).select().single();
     if (data) { setProjects([...projects, data]); setEditing(data); }
     if (error) alert(error.message);
   }
@@ -660,7 +658,7 @@ function ProjectsEditor({ t, lang, editLang, setEditLang }) {
     await Promise.all(updates.map(p => supabase.from('projects').update({ display_order: p.display_order }).eq('id', p.id)));
   }
 
-  if (editing) return <ProjectEditForm project={editing} onSave={updateProject} onBack={() => { setEditing(null); load(); }} onDelete={deleteProject} t={t} editLang={editLang} setEditLang={setEditLang} />;
+  if (editing) return <ProjectEditForm project={editing} onSave={updateProject} onBack={() => { setEditing(null); load(); }} onDelete={deleteProject} t={t} lang={lang} />;
 
   return (
     <div className="editor">
@@ -705,11 +703,11 @@ function ProjectsEditor({ t, lang, editLang, setEditLang }) {
       <EditorStyles /><SharedAdminStyles /><CardEditorStyles />
       <style jsx>{`
         .editor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-5); }
-        .btn-primary-inline { padding: 8px 16px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(159,167,255,0.25); }
+        .btn-primary-inline { padding: 8px 16px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(159,167,255,0.25); font-family: inherit; }
         .project-list { display: flex; flex-direction: column; gap: 6px; }
         .project-row { display: flex; align-items: center; gap: 6px; }
         .prow-actions { display: flex; flex-direction: column; gap: 2px; }
-        .prow-main { flex: 1; display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3); background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); text-align: start; transition: var(--transition); cursor: pointer; }
+        .prow-main { flex: 1; display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3); background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); text-align: start; transition: var(--transition); cursor: pointer; font-family: inherit; }
         .prow-main:hover { background: var(--bg-hover); border-color: var(--border-strong); }
         .prow-main img, .prow-cover-empty { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; }
         .prow-cover-empty { background: linear-gradient(135deg, #3a3a52, #1a1a22); }
@@ -725,15 +723,14 @@ function ProjectsEditor({ t, lang, editLang, setEditLang }) {
   );
 }
 
-function ProjectEditForm({ project, onSave, onBack, onDelete, t, editLang, setEditLang }) {
+function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
   const [data, setData] = useState(project);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
-  const rtl = editLang === 'ar';
 
   function patch(updates) { setData(d => ({ ...d, ...updates })); setDirty(true); }
-  function bilingualPatch(key, val) { patch({ [key]: setLangValue(data[key], editLang, val) }); }
+  function bilingualPatch(key, val) { patch({ [key]: setLangValue(data[key], lang, val) }); }
 
   async function save() {
     setSaving(true);
@@ -758,23 +755,22 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, editLang, setEd
   }
   function removeImage(idx) { patch({ images: data.images.filter((_, i) => i !== idx) }); }
 
-  const displayTitle = pick(data.title, editLang) || pick(data.title, 'en') || pick(data.title, 'ar') || 'Project';
+  const displayTitle = pick(data.title, lang) || pick(data.title, 'en') || pick(data.title, 'ar') || t('project_fallback');
 
   return (
     <div className="editor">
       <button onClick={onBack} className="back-btn">← {t('back')}</button>
       <h1>{displayTitle}</h1>
-      <EditLangToggle editLang={editLang} setEditLang={setEditLang} t={t} />
 
-      <h2>Basics</h2>
-      <Field id="p-title" label={`${t('project_title')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-        <input id="p-title" dir={rtl ? 'rtl' : 'ltr'} value={pick(data.title, editLang)} onChange={(e) => bilingualPatch('title', e.target.value)} />
+      <h2>{t('basics')}</h2>
+      <Field id="p-title" label={t('project_title')}>
+        <input id="p-title" value={pick(data.title, lang)} onChange={(e) => bilingualPatch('title', e.target.value)} />
       </Field>
-      <Field id="p-desc" label={`${t('project_description')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-        <input id="p-desc" dir={rtl ? 'rtl' : 'ltr'} value={pick(data.description, editLang)} onChange={(e) => bilingualPatch('description', e.target.value)} placeholder={rtl ? 'ملخص قصير' : 'Short summary'} />
+      <Field id="p-desc" label={t('project_description')}>
+        <input id="p-desc" value={pick(data.description, lang)} onChange={(e) => bilingualPatch('description', e.target.value)} placeholder={lang === 'ar' ? 'ملخص قصير' : 'Short summary'} />
       </Field>
-      <Field id="p-full" label={`${t('full_description')} · ${editLang === 'ar' ? 'AR' : 'EN'}`}>
-        <textarea id="p-full" rows={5} dir={rtl ? 'rtl' : 'ltr'} value={pick(data.full_description, editLang)} onChange={(e) => bilingualPatch('full_description', e.target.value)} />
+      <Field id="p-full" label={t('full_description')}>
+        <textarea id="p-full" rows={5} value={pick(data.full_description, lang)} onChange={(e) => bilingualPatch('full_description', e.target.value)} />
       </Field>
 
       <h2>{t('project_info')} <span className="meta">· {t('optional')}</span></h2>
@@ -783,7 +779,7 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, editLang, setEd
           <input id="p-client" value={data.client || ''} onChange={(e) => patch({ client: e.target.value })} />
         </Field>
         <Field id="p-year" label={t('project_year')}>
-          <input id="p-year" value={data.year || ''} onChange={(e) => patch({ year: e.target.value })} />
+          <input id="p-year" dir="ltr" value={data.year || ''} onChange={(e) => patch({ year: e.target.value })} />
         </Field>
         <Field id="p-role" label={t('project_role')}>
           <input id="p-role" value={data.role || ''} onChange={(e) => patch({ role: e.target.value })} />
@@ -791,25 +787,25 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, editLang, setEd
       </div>
 
       <h2>{t('cover_image')}</h2>
-      <ImageUpload value={data.cover_image} onUpload={uploadCover} onClear={() => patch({ cover_image: '' })} aspect={1} />
+      <ImageUpload value={data.cover_image} onUpload={uploadCover} onClear={() => patch({ cover_image: '' })} aspect={1} t={t} />
 
       <h2>{t('external_link')}</h2>
       <Field id="p-ext" label="">
-        <input id="p-ext" type="url" value={data.external_url || ''} onChange={(e) => patch({ external_url: e.target.value })} placeholder="https://..." />
+        <input id="p-ext" type="url" dir="ltr" value={data.external_url || ''} onChange={(e) => patch({ external_url: e.target.value })} placeholder="https://..." />
       </Field>
 
       <h2>{t('project_images')}</h2>
-      <MultiImageUpload images={data.images || []} onUpload={uploadGalleryImage} onRemove={removeImage} />
+      <MultiImageUpload images={data.images || []} onUpload={uploadGalleryImage} onRemove={removeImage} t={t} />
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty}
         extra={<button className="danger-btn" onClick={() => onDelete(data.id)} type="button">{t('delete')}</button>}
       />
       <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
       <style jsx>{`
-        .back-btn { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-4); padding: 4px 0; }
+        .back-btn { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-4); padding: 4px 0; background: none; border: none; cursor: pointer; font-family: inherit; }
         .back-btn:hover { color: var(--text-primary); }
         .row-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-        .danger-btn { padding: 8px 14px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border: 1px solid rgba(255,80,80,0.3); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; margin-inline-start: auto; }
+        .danger-btn { padding: 8px 14px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border: 1px solid rgba(255,80,80,0.3); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; margin-inline-start: auto; font-family: inherit; }
         .danger-btn:hover { background: rgba(255, 80, 80, 0.18); }
       `}</style>
     </div>
@@ -817,15 +813,14 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, editLang, setEd
 }
 
 // =========================================================
-// Links Editor — custom_links list with icon picker
+// Links Editor
 // =========================================================
-function LinksEditor({ t, lang, editLang, setEditLang }) {
+function LinksEditor({ t, lang }) {
   const [links, setLinks] = useState([]);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
   const [pickerForId, setPickerForId] = useState(null);
-  const rtl = editLang === 'ar';
 
   useEffect(() => { load(); }, []);
   async function load() {
@@ -842,14 +837,13 @@ function LinksEditor({ t, lang, editLang, setEditLang }) {
   }
   function add() { patch([...links, { id: newId(), icon: 'website', label: emptyBilingual(), href: '' }]); }
   function update(id, u) { patch(links.map(l => l.id === id ? { ...l, ...u } : l)); }
-  function remove(id) { patch(links.filter(l => l.id !== id)); }
+  function remove(id) { if (!confirm(t('confirm_remove'))) return; patch(links.filter(l => l.id !== id)); }
   function move(id, dir) { const a = [...links]; const i = a.findIndex(l => l.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch(a); }
 
   return (
     <div className="editor">
       <h1>{t('links_title')}</h1>
       <p className="hint">{t('links_sub')}</p>
-      <EditLangToggle editLang={editLang} setEditLang={setEditLang} t={t} />
 
       {links.map((l, i) => {
         const icon = BRAND_ICONS[normalizeIcon(l.icon)] || BRAND_ICONS.website;
@@ -862,8 +856,8 @@ function LinksEditor({ t, lang, editLang, setEditLang }) {
             <button type="button" className="brand" onClick={() => setPickerForId(l.id)} title={t('pick_icon')}>
               <svg viewBox="0 0 24 24"><path d={icon.path} /></svg>
             </button>
-            <input className="input-sm" dir={rtl ? 'rtl' : 'ltr'} placeholder={icon.label} value={pick(l.label, editLang)} onChange={(e) => update(l.id, { label: setLangValue(l.label, editLang, e.target.value) })} style={{ width: 160 }} />
-            <input className="input-sm" type="text" placeholder="https://..." value={l.href || ''} onChange={(e) => update(l.id, { href: e.target.value })} style={{ flex: 1 }} />
+            <input className="input-sm" placeholder={icon.label} value={pick(l.label, lang)} onChange={(e) => update(l.id, { label: setLangValue(l.label, lang, e.target.value) })} style={{ width: 160 }} />
+            <input className="input-sm" type="text" dir="ltr" placeholder="https://..." value={l.href || ''} onChange={(e) => update(l.id, { href: e.target.value })} style={{ flex: 1 }} />
             <button type="button" className="x-small" onClick={() => remove(l.id)}>×</button>
           </div>
         );
@@ -895,12 +889,12 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
       <div className="picker" onClick={(e) => e.stopPropagation()}>
         <div className="picker-head">
           <h3>{t('icon_picker_title')}</h3>
-          <button onClick={onClose} className="picker-close">×</button>
+          <button onClick={onClose} className="picker-close" type="button">×</button>
         </div>
         <input autoFocus placeholder={t('icon_picker_search')} value={q} onChange={(e) => setQ(e.target.value)} className="picker-search" />
         <div className="picker-grid">
           {filtered.map(k => (
-            <button key={k} className={`picker-cell ${selected === k ? 'sel' : ''}`} onClick={() => onPick(k)} title={BRAND_ICONS[k].label}>
+            <button key={k} type="button" className={`picker-cell ${selected === k ? 'sel' : ''}`} onClick={() => onPick(k)} title={BRAND_ICONS[k].label}>
               <svg viewBox="0 0 24 24"><path d={BRAND_ICONS[k].path} /></svg>
               <span>{BRAND_ICONS[k].label}</span>
             </button>
@@ -917,7 +911,7 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
         .picker-search { width: calc(100% - 40px); margin: 16px 20px 0; padding: 10px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); font-size: 14px; font-family: inherit; }
         .picker-search:focus { outline: none; border-color: var(--accent); }
         .picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; padding: 16px 20px; overflow-y: auto; }
-        .picker-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 6px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; color: rgba(255,255,255,0.92); transition: var(--transition); }
+        .picker-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 6px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; color: rgba(255,255,255,0.92); transition: var(--transition); font-family: inherit; }
         .picker-cell:hover { border-color: var(--border-strong); background: var(--bg-hover); }
         .picker-cell.sel { border-color: var(--accent); background: rgba(159,167,255,0.1); }
         .picker-cell svg { width: 20px; height: 20px; fill: currentColor; }
@@ -928,7 +922,7 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
 }
 
 // =========================================================
-// Appearance Editor — themes, custom colors, fonts, layout, preview
+// Appearance Editor
 // =========================================================
 function AppearanceEditor({ t, lang }) {
   const [appearance, setAppearance] = useState({ theme: 'midnight', tokens: { ...THEME_PRESETS.midnight.tokens }, font_heading: 'manrope', font_body: 'manrope', density: 'comfortable', radius: 'soft' });
@@ -1026,7 +1020,7 @@ function AppearanceEditor({ t, lang }) {
       <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
       <style jsx>{`
         .preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: var(--space-5); max-width: 640px; }
-        .preset { background: var(--bg-secondary); border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: 12px; cursor: pointer; text-align: center; transition: var(--transition); }
+        .preset { background: var(--bg-secondary); border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: 12px; cursor: pointer; text-align: center; transition: var(--transition); font-family: inherit; }
         .preset:hover { border-color: var(--border-strong); }
         .preset.active { border-color: var(--accent); }
         .preset-swatch { height: 42px; border-radius: var(--radius-sm); margin-bottom: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; border: 1px solid; }
@@ -1036,7 +1030,7 @@ function AppearanceEditor({ t, lang }) {
         .color-item input[type="color"] { width: 36px; height: 36px; padding: 2px; border-radius: 6px; cursor: pointer; }
         .color-item label { flex: 1; font-size: 12px; color: var(--text-secondary); }
         .device-toggle { direction: ltr; display: inline-flex; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; gap: 2px; margin-bottom: var(--space-4); }
-        .device-toggle button { padding: 8px 14px; background: none; border: none; color: var(--text-tertiary); font-size: 12px; border-radius: 6px; cursor: pointer; }
+        .device-toggle button { padding: 8px 14px; background: none; border: none; color: var(--text-tertiary); font-size: 12px; border-radius: 6px; cursor: pointer; font-family: inherit; }
         .device-toggle button.active { background: var(--bg-elevated); color: var(--text-primary); }
         .preview-shell { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; justify-content: center; }
       `}</style>
@@ -1047,11 +1041,11 @@ function AppearanceEditor({ t, lang }) {
 function normalizeColor(v) {
   if (!v) return '#000000';
   if (v.startsWith('#') && (v.length === 7 || v.length === 4)) return v;
-  return '#000000'; // fallback for rgba()
+  return '#000000';
 }
 
 // =========================================================
-// Analytics Editor — dashboard with stats + charts
+// Analytics Editor
 // =========================================================
 function AnalyticsEditor({ t, lang }) {
   const [range, setRange] = useState('7d');
@@ -1118,7 +1112,6 @@ function AnalyticsEditor({ t, lang }) {
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
   }, [pageViews]);
 
-  // Build simple area chart points from page_views over time
   const chartPath = useMemo(() => {
     if (pageViews.length === 0) return null;
     const buckets = 12;
@@ -1155,7 +1148,7 @@ function AnalyticsEditor({ t, lang }) {
       </div>
 
       {loading ? (
-        <p className="hint">Loading...</p>
+        <p className="hint">{t('loading')}</p>
       ) : events.length === 0 ? (
         <div className="empty-cta">
           <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
@@ -1201,7 +1194,7 @@ function AnalyticsEditor({ t, lang }) {
       <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
       <style jsx>{`
         .range-pills { direction: ltr; display: inline-flex; gap: 4px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; margin-bottom: var(--space-5); }
-        .range-pills button { padding: 6px 12px; font-size: 12px; color: var(--text-tertiary); border-radius: 6px; background: none; border: none; cursor: pointer; }
+        .range-pills button { padding: 6px 12px; font-size: 12px; color: var(--text-tertiary); border-radius: 6px; background: none; border: none; cursor: pointer; font-family: inherit; }
         .range-pills button.active { background: var(--bg-elevated); color: var(--text-primary); }
         .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: var(--space-6); }
         .chart-card { background: linear-gradient(180deg, var(--bg-secondary), rgba(19,19,24,0.6)); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); margin-bottom: var(--space-4); }
@@ -1283,7 +1276,7 @@ function TableCard({ title, headLabel, headValue, rows }) {
 // =========================================================
 // Account Editor
 // =========================================================
-function AccountEditor({ t, lang, session, chromeLang, setChromeLang }) {
+function AccountEditor({ t, lang, session, setChromeLang }) {
   const [username, setUsername] = useState('');
   const [defaultLang, setDefaultLang] = useState('ar');
   const [savingLang, setSavingLang] = useState(false);
@@ -1308,7 +1301,12 @@ function AccountEditor({ t, lang, session, chromeLang, setChromeLang }) {
     setDefaultLang(next); setSavingLang(true);
     const { error } = await supabase.from('profile').upsert({ id: 1, default_lang: next });
     setSavingLang(false);
-    if (!error) { setSavedLangMsg(t('saved')); setTimeout(() => setSavedLangMsg(''), 2000); }
+    if (!error) {
+      setSavedLangMsg(t('saved'));
+      // Also flip the admin chrome to match — feels weird if default lang doesn't apply
+      if (setChromeLang) setChromeLang(next);
+      setTimeout(() => setSavedLangMsg(''), 2000);
+    }
   }
 
   async function updatePassword(e) {
@@ -1317,7 +1315,6 @@ function AccountEditor({ t, lang, session, chromeLang, setChromeLang }) {
     if (newPwd.length < 8) { setPwdErr(t('password_too_short')); return; }
     if (newPwd !== confirmPwd) { setPwdErr(t('password_mismatch')); return; }
     setPwdLoading(true);
-    // re-auth with current password
     const { error: reAuthErr } = await supabase.auth.signInWithPassword({ email: session.user.email, password: curPwd });
     if (reAuthErr) { setPwdErr(t('invalid_credentials')); setPwdLoading(false); return; }
     const { error } = await supabase.auth.updateUser({ password: newPwd });
@@ -1328,7 +1325,7 @@ function AccountEditor({ t, lang, session, chromeLang, setChromeLang }) {
 
   async function deletePortfolio() {
     const typed = prompt(t('delete_portfolio_confirm'));
-    if (typed !== t('delete_portfolio_keyword')) return;
+    if (typed !== 'DELETE') return;
     await supabase.from('analytics_events').delete().neq('id', 0);
     await supabase.from('projects').delete().neq('id', 0);
     await supabase.from('profile').update({
@@ -1352,7 +1349,7 @@ function AccountEditor({ t, lang, session, chromeLang, setChromeLang }) {
         <div className="avatar-lg">{initial}</div>
         <div>
           <div className="user-name">{username || '—'}</div>
-          <div className="user-email">{session.user.email}</div>
+          <div className="user-email" dir="ltr">{session.user.email}</div>
         </div>
       </div>
 
@@ -1370,13 +1367,13 @@ function AccountEditor({ t, lang, session, chromeLang, setChromeLang }) {
       <h2>{t('change_password')}</h2>
       <form onSubmit={updatePassword} style={{ maxWidth: 500 }}>
         <Field id="pwd-cur" label={t('current_password')}>
-          <input id="pwd-cur" type="password" value={curPwd} onChange={(e) => setCurPwd(e.target.value)} autoComplete="current-password" required />
+          <input id="pwd-cur" type="password" dir="ltr" value={curPwd} onChange={(e) => setCurPwd(e.target.value)} autoComplete="current-password" required />
         </Field>
         <Field id="pwd-new" label={t('new_password')}>
-          <input id="pwd-new" type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" required />
+          <input id="pwd-new" type="password" dir="ltr" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" required />
         </Field>
         <Field id="pwd-conf" label={t('confirm_new_password')}>
-          <input id="pwd-conf" type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} autoComplete="new-password" required />
+          <input id="pwd-conf" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} autoComplete="new-password" required />
         </Field>
         {pwdErr && <div className="err">{pwdErr}</div>}
         {pwdMsg && <div className="ok">{pwdMsg} ✓</div>}
@@ -1395,9 +1392,9 @@ function AccountEditor({ t, lang, session, chromeLang, setChromeLang }) {
         .avatar-lg { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #9FA7FF, #6b73d6); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: var(--bg-primary); }
         .user-name { font-size: 14px; font-weight: 600; }
         .user-email { font-size: 12px; color: var(--text-tertiary); }
-        .btn-primary-inline { padding: 10px 18px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(159,167,255,0.25); }
+        .btn-primary-inline { padding: 10px 18px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(159,167,255,0.25); font-family: inherit; }
         .danger-card { padding: 16px; background: rgba(255,80,80,0.05); border: 1px solid rgba(255,80,80,0.2); border-radius: var(--radius-md); max-width: 500px; }
-        .danger-btn { padding: 8px 14px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border: 1px solid rgba(255,80,80,0.3); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; }
+        .danger-btn { padding: 8px 14px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border: 1px solid rgba(255,80,80,0.3); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; font-family: inherit; }
         .danger-btn:hover { background: rgba(255, 80, 80, 0.18); }
         .err { padding: 8px 12px; background: rgba(255,80,80,0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
         .ok { padding: 8px 12px; background: rgba(125,211,125,0.1); color: #7dd37d; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
@@ -1422,7 +1419,7 @@ function Field({ id, label, children }) {
   );
 }
 
-function ImageUpload({ value, onUpload, onClear, aspect }) {
+function ImageUpload({ value, onUpload, onClear, aspect, t }) {
   const [uploading, setUploading] = useState(false);
   const [cropFile, setCropFile] = useState(null);
   async function handleFile(e) {
@@ -1444,11 +1441,11 @@ function ImageUpload({ value, onUpload, onClear, aspect }) {
       <div className="preview">
         <img src={value} alt="" />
         <button type="button" onClick={onClear} className="remove">×</button>
-        {cropFile && <CropperModal file={cropFile} aspect={aspect} onDone={handleCropDone} onCancel={() => setCropFile(null)} />}
+        {cropFile && <CropperModal file={cropFile} aspect={aspect} onDone={handleCropDone} onCancel={() => setCropFile(null)} t={t} />}
         <style jsx>{`
           .preview { position: relative; display: inline-block; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border); }
           .preview img { max-width: 200px; max-height: 200px; display: block; }
-          .remove { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; background: rgba(0,0,0,0.7); color: white; border-radius: 50%; font-size: 16px; border: none; cursor: pointer; }
+          .remove { position: absolute; top: 6px; inset-inline-end: 6px; width: 26px; height: 26px; background: rgba(0,0,0,0.7); color: white; border-radius: 50%; font-size: 16px; border: none; cursor: pointer; font-family: inherit; }
         `}</style>
       </div>
     );
@@ -1457,19 +1454,19 @@ function ImageUpload({ value, onUpload, onClear, aspect }) {
     <>
       <label className="upload">
         <input type="file" accept="image/*" onChange={handleFile} />
-        <span>{uploading ? 'Uploading...' : '📷 Choose image'}</span>
+        <span>{uploading ? t('uploading') : `📷 ${t('choose_image')}`}</span>
         <style jsx>{`
           .upload { display: inline-flex; align-items: center; padding: 10px 16px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; transition: var(--transition); }
           .upload:hover { border-color: var(--border-strong); background: var(--bg-hover); }
           input { display: none; }
         `}</style>
       </label>
-      {cropFile && <CropperModal file={cropFile} aspect={aspect} onDone={handleCropDone} onCancel={() => setCropFile(null)} />}
+      {cropFile && <CropperModal file={cropFile} aspect={aspect} onDone={handleCropDone} onCancel={() => setCropFile(null)} t={t} />}
     </>
   );
 }
 
-function CropperModal({ file, aspect, onDone, onCancel }) {
+function CropperModal({ file, aspect, onDone, onCancel, t }) {
   const [src, setSrc] = useState(null);
   const [crop, setCrop] = useState(null);
   const [completedCrop, setCompletedCrop] = useState(null);
@@ -1510,7 +1507,7 @@ function CropperModal({ file, aspect, onDone, onCancel }) {
     <div className="cm-bg" onClick={onCancel}>
       <div className="cm" onClick={(e) => e.stopPropagation()}>
         <div className="cm-head">
-          <h3>Crop image</h3>
+          <h3>{t('crop_image')}</h3>
           <button onClick={onCancel} className="cm-close" type="button">×</button>
         </div>
         <div className="cm-body">
@@ -1521,8 +1518,8 @@ function CropperModal({ file, aspect, onDone, onCancel }) {
           )}
         </div>
         <div className="cm-foot">
-          <button onClick={onCancel} className="cm-cancel" type="button">Cancel</button>
-          <button onClick={confirmCrop} className="cm-confirm" type="button">Crop & upload</button>
+          <button onClick={onCancel} className="cm-cancel" type="button">{t('crop_cancel')}</button>
+          <button onClick={confirmCrop} className="cm-confirm" type="button">{t('crop_confirm')}</button>
         </div>
       </div>
       <style jsx>{`
@@ -1530,17 +1527,17 @@ function CropperModal({ file, aspect, onDone, onCancel }) {
         .cm { width: 100%; max-width: 720px; max-height: 90vh; background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; }
         .cm-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); }
         .cm-head h3 { font-size: 15px; font-weight: 600; }
-        .cm-close { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); font-size: 18px; cursor: pointer; }
+        .cm-close { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); font-size: 18px; cursor: pointer; font-family: inherit; }
         .cm-body { flex: 1; overflow: auto; padding: 16px; display: flex; align-items: center; justify-content: center; background: #000; }
         .cm-foot { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); justify-content: flex-end; }
-        .cm-cancel { padding: 8px 14px; background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; font-size: 13px; }
-        .cm-confirm { padding: 8px 16px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border: none; border-radius: var(--radius-md); cursor: pointer; font-weight: 600; font-size: 13px; }
+        .cm-cancel { padding: 8px 14px; background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; font-size: 13px; font-family: inherit; }
+        .cm-confirm { padding: 8px 16px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border: none; border-radius: var(--radius-md); cursor: pointer; font-weight: 600; font-size: 13px; font-family: inherit; }
       `}</style>
     </div>
   );
 }
 
-function MultiImageUpload({ images, onUpload, onRemove }) {
+function MultiImageUpload({ images, onUpload, onRemove, t }) {
   const [uploading, setUploading] = useState(false);
   async function handleFiles(e) {
     const files = Array.from(e.target.files || []);
@@ -1565,7 +1562,7 @@ function MultiImageUpload({ images, onUpload, onRemove }) {
         .thumbs { display: grid; grid-template-columns: repeat(auto-fill, 90px); gap: 8px; max-width: 600px; }
         .thumb { position: relative; }
         .thumb img { width: 90px; height: 90px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); }
-        .thumb button { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; background: rgba(0,0,0,0.7); color: white; border-radius: 50%; font-size: 14px; border: none; cursor: pointer; }
+        .thumb button { position: absolute; top: 4px; inset-inline-end: 4px; width: 22px; height: 22px; background: rgba(0,0,0,0.7); color: white; border-radius: 50%; font-size: 14px; border: none; cursor: pointer; font-family: inherit; }
         .add { width: 90px; height: 90px; background: var(--bg-elevated); border: 1.5px dashed var(--border-strong); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--text-tertiary); cursor: pointer; transition: var(--transition); }
         .add:hover { border-color: var(--accent); color: var(--accent); }
         input { display: none; }
@@ -1597,11 +1594,12 @@ function CardEditorStyles() {
       .editor h2 { margin-top: var(--space-6); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: var(--space-3); }
       .card-row { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-3); max-width: 640px; }
       .card-row .row-head { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-3); }
+      .card-row .row-tag { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; }
       .card-row .row-tabs { direction: ltr; display: inline-flex; gap: 2px; background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 3px; }
-      .card-row .row-tabs button { padding: 4px 12px; font-size: 12px; color: var(--text-tertiary); border: none; background: none; border-radius: 5px; cursor: pointer; }
+      .card-row .row-tabs button { padding: 4px 12px; font-size: 12px; color: var(--text-tertiary); border: none; background: none; border-radius: 5px; cursor: pointer; font-family: inherit; }
       .card-row .row-tabs button.active { background: var(--bg-hover); color: var(--text-primary); }
       .card-row .row-actions { margin-inline-start: auto; display: flex; gap: 4px; }
-      .card-row .x-small, .x-small { width: 28px; height: 28px; border-radius: 6px; background: var(--bg-elevated); color: var(--text-tertiary); border: 1px solid var(--border); font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+      .card-row .x-small, .x-small { width: 28px; height: 28px; border-radius: 6px; background: var(--bg-elevated); color: var(--text-tertiary); border: 1px solid var(--border); font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-family: inherit; }
       .card-row .x-small:hover:not(:disabled), .x-small:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
       .card-row .x-small:disabled, .x-small:disabled { opacity: 0.3; cursor: not-allowed; }
       .row-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 100%; }
@@ -1609,10 +1607,10 @@ function CardEditorStyles() {
       .banner-preview { margin-top: var(--space-3); border-radius: var(--radius-md); padding: 28px 20px; text-align: center; min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
       .banner-text { font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif; font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 4px; line-height: 1.2; }
       .banner-sub { font-size: 13px; color: rgba(255,255,255,0.85); }
-      .brand-mini { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07); border-radius: 7px; cursor: pointer; }
+      .brand-mini { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07); border-radius: 7px; cursor: pointer; font-family: inherit; }
       .brand-mini svg { width: 15px; height: 15px; fill: currentColor; }
       .brand-mini:hover { background: rgba(255,255,255,0.08); }
-      .btn-add { padding: 8px 14px; background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; }
+      .btn-add { padding: 8px 14px; background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; font-family: inherit; }
       .btn-add:hover { border-color: var(--border-strong); }
     `}</style>
   );
@@ -1624,9 +1622,9 @@ function SharedAdminStyles() {
       .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
       .toggle-row:last-child { border-bottom: none; }
       .switch { width: 36px; height: 20px; background: var(--bg-elevated); border-radius: 20px; position: relative; cursor: pointer; border: 1px solid var(--border); flex-shrink: 0; padding: 0; transition: var(--transition); }
-      .switch::after { content: ""; width: 14px; height: 14px; background: var(--text-tertiary); border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: var(--transition); }
+      .switch::after { content: ""; width: 14px; height: 14px; background: var(--text-tertiary); border-radius: 50%; position: absolute; top: 2px; inset-inline-start: 2px; transition: var(--transition); }
       .switch.on { background: var(--accent); border-color: var(--accent); }
-      .switch.on::after { background: var(--bg-primary); left: 18px; }
+      .switch.on::after { background: var(--bg-primary); inset-inline-start: 18px; }
     `}</style>
   );
 }
