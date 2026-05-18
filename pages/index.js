@@ -18,6 +18,25 @@ function readLang() {
   return localStorage.getItem('lang');
 }
 
+function getVisitorId() {
+  if (typeof window === 'undefined') return null;
+  let id = localStorage.getItem('visitor_id');
+  if (!id) {
+    id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem('visitor_id', id);
+  }
+  return id;
+}
+
+const FONT_STACKS = {
+  manrope:  "'Manrope', 'IBM Plex Sans Arabic', system-ui, sans-serif",
+  cairo:    "'Cairo', 'Manrope', system-ui, sans-serif",
+  reemkufi: "'Reem Kufi', 'Cairo', serif",
+  plexar:   "'IBM Plex Sans Arabic', 'Manrope', sans-serif",
+};
+const DENSITY_VALUES = { comfortable: 1.0, compact: 0.85, spacious: 1.15 };
+const RADIUS_VALUES  = { soft: 12, sharp: 4, pill: 24 };
+
 export default function Home() {
   const [profile, setProfile] = useState(null);
   const [projects, setProjects] = useState([]);
@@ -63,9 +82,39 @@ export default function Home() {
     if (!profile?.appearance) return;
     const a = profile.appearance;
     const root = document.documentElement;
+    // Legacy single-color fields (still respected)
     if (a.accent_color) root.style.setProperty('--accent', a.accent_color);
     if (a.bg_color) root.style.setProperty('--bg-primary', a.bg_color);
+    // New token system
+    if (a.tokens) {
+      const tk = a.tokens;
+      if (tk.bg)         root.style.setProperty('--bg-primary', tk.bg);
+      if (tk.surface)    root.style.setProperty('--bg-secondary', tk.surface);
+      if (tk.accent)     root.style.setProperty('--accent', tk.accent);
+      if (tk.text)       root.style.setProperty('--text-primary', tk.text);
+      if (tk.text_muted) root.style.setProperty('--text-tertiary', tk.text_muted);
+      if (tk.border)     root.style.setProperty('--border', tk.border);
+    }
+    // Fonts
+    if (a.font_heading && FONT_STACKS[a.font_heading]) root.style.setProperty('--font-heading', FONT_STACKS[a.font_heading]);
+    if (a.font_body    && FONT_STACKS[a.font_body])    root.style.setProperty('--font-body',    FONT_STACKS[a.font_body]);
+    // Density + radius
+    if (a.density && DENSITY_VALUES[a.density]) root.style.setProperty('--density', DENSITY_VALUES[a.density]);
+    if (a.radius  && RADIUS_VALUES[a.radius])   root.style.setProperty('--radius-md', `${RADIUS_VALUES[a.radius]}px`);
   }, [profile]);
+
+  // Log page_view once per mount (fire and forget)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const visitor_id = getVisitorId();
+    supabase.from('analytics_events').insert({
+      event_type: 'page_view',
+      path: window.location.pathname,
+      referrer: document.referrer || null,
+      user_agent: navigator.userAgent.slice(0, 200),
+      visitor_id,
+    }).then(() => {}).catch(() => {});
+  }, []);
 
   // Auto-advance banner every 5s
   useEffect(() => {
@@ -124,12 +173,26 @@ export default function Home() {
     }
   }
 
+  function logEvent(payload) {
+    if (typeof window === 'undefined') return;
+    supabase.from('analytics_events').insert({ visitor_id: getVisitorId(), ...payload }).then(() => {}).catch(() => {});
+  }
+
   function onCtaClick(btn) {
+    logEvent({ event_type: 'link_click', link_key: btn.icon || 'cta' });
     if (btn.action === 'open_projects') {
       setProjectsOpen(true);
       return;
     }
     if (btn.href) window.open(btn.href, '_blank', 'noopener,noreferrer');
+  }
+
+  function onSocialClick(iconKey) {
+    logEvent({ event_type: 'link_click', link_key: iconKey });
+  }
+
+  function onProjectOpen(projectId) {
+    logEvent({ event_type: 'project_view', project_id: projectId });
   }
 
   return (
@@ -154,7 +217,7 @@ export default function Home() {
                 const href = l.icon === 'whatsapp' && /^[+\d\s]+$/.test(l.href) ? `https://wa.me/${l.href.replace(/[^\d]/g, '')}` : l.href;
                 const isMail = l.icon === 'email' && l.href.includes('@');
                 return (
-                  <a key={i} href={isMail ? `mailto:${l.href}` : href} target="_blank" rel="noopener noreferrer" className="social-icon" aria-label={pick(l.label, lang)}>
+                  <a key={i} href={isMail ? `mailto:${l.href}` : href} target="_blank" rel="noopener noreferrer" className="social-icon" aria-label={pick(l.label, lang)} onClick={() => onSocialClick(l.icon)}>
                     <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
                   </a>
                 );
@@ -265,6 +328,7 @@ export default function Home() {
             t={t}
             lang={lang}
             onClose={() => setProjectsOpen(false)}
+            onOpenProject={onProjectOpen}
           />
         )}
       </main>
@@ -441,7 +505,7 @@ export default function Home() {
   );
 }
 
-function ProjectsModal({ projects, t, lang, onClose }) {
+function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
   const [expanded, setExpanded] = useState(null);
 
   useEffect(() => {
@@ -453,6 +517,11 @@ function ProjectsModal({ projects, t, lang, onClose }) {
       document.body.style.overflow = '';
     };
   }, [onClose]);
+
+  function toggleProject(id) {
+    if (expanded !== id) onOpenProject?.(id);
+    setExpanded(expanded === id ? null : id);
+  }
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -473,7 +542,7 @@ function ProjectsModal({ projects, t, lang, onClose }) {
                 const isOpen = expanded === p.id;
                 return (
                   <article key={p.id} className={`pcard ${isOpen ? 'open' : ''}`}>
-                    <button className="pcard-trigger" onClick={() => setExpanded(isOpen ? null : p.id)}>
+                    <button className="pcard-trigger" onClick={() => toggleProject(p.id)}>
                       {p.cover_image && (
                         <div className="pcard-cover"><img src={p.cover_image} alt={title} loading="lazy" /></div>
                       )}
@@ -484,6 +553,13 @@ function ProjectsModal({ projects, t, lang, onClose }) {
                     </button>
                     {isOpen && (
                       <div className="pcard-details">
+                        {(p.client || p.year || p.role) && (
+                          <div className="pcard-meta-grid">
+                            {p.client && <div><span>{t('project_client')}</span><strong>{p.client}</strong></div>}
+                            {p.year && <div><span>{t('project_year')}</span><strong>{p.year}</strong></div>}
+                            {p.role && <div><span>{t('project_role')}</span><strong>{p.role}</strong></div>}
+                          </div>
+                        )}
                         {full && <p className="pcard-full">{full}</p>}
                         {p.images && p.images.length > 0 && (
                           <div className="pcard-gallery">
@@ -549,6 +625,10 @@ function ProjectsModal({ projects, t, lang, onClose }) {
         .pcard-meta h3 { font-size: 16px; font-weight: 600; color: #fff; }
         .pcard-meta p { font-size: 13px; color: var(--text-tertiary); margin-top: 4px; }
         .pcard-details { padding: 0 20px 20px; }
+        .pcard-meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); margin-bottom: 8px; }
+        .pcard-meta-grid > div { display: flex; flex-direction: column; gap: 2px; }
+        .pcard-meta-grid span { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .pcard-meta-grid strong { font-size: 13px; color: var(--text-primary); font-weight: 600; }
         .pcard-full { font-size: 14px; color: var(--text-secondary); line-height: 1.7; padding-top: 12px; border-top: 1px solid var(--border); margin-bottom: 16px; }
         .pcard-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 16px; }
         .pcard-gallery img { width: 100%; border-radius: 8px; }
