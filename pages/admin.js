@@ -4,7 +4,7 @@ import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
-import { BRAND_ICONS, BRAND_KEYS } from '../lib/brand-icons';
+import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
 
 function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
 
@@ -281,7 +281,7 @@ function EditLangToggle({ editLang, setEditLang, t }) {
       <style jsx>{`
         .edit-lang-banner { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: linear-gradient(90deg, rgba(159,167,255,0.08), transparent); border: 1px solid rgba(159,167,255,0.18); border-radius: var(--radius-md); margin-bottom: var(--space-5); font-size: 12px; color: var(--text-secondary); max-width: 640px; }
         .edit-lang-banner strong { color: var(--text-primary); }
-        .pill { display: inline-flex; gap: 2px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 2px; margin-inline-start: auto; }
+        .pill { direction: ltr; display: inline-flex; gap: 2px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; padding: 2px; margin-inline-start: auto; }
         .pill button { padding: 4px 10px; font-size: 11px; background: none; color: var(--text-tertiary); border: none; border-radius: 4px; cursor: pointer; }
         .pill button.active { background: var(--bg-elevated); color: var(--text-primary); }
       `}</style>
@@ -589,7 +589,7 @@ function StatRow({ stat, editLang, onChange, onRemove, onUp, onDown, canUp, canD
 function ButtonRow({ btn, editLang, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
   const rtl = editLang === 'ar';
   const [pickerOpen, setPickerOpen] = useState(false);
-  const icon = btn.icon && BRAND_ICONS[btn.icon];
+  const icon = btn.icon && BRAND_ICONS[normalizeIcon(btn.icon)];
   return (
     <div className="card-row">
       <div className="row-head">
@@ -852,7 +852,7 @@ function LinksEditor({ t, lang, editLang, setEditLang }) {
       <EditLangToggle editLang={editLang} setEditLang={setEditLang} t={t} />
 
       {links.map((l, i) => {
-        const icon = BRAND_ICONS[l.icon] || BRAND_ICONS.website;
+        const icon = BRAND_ICONS[normalizeIcon(l.icon)] || BRAND_ICONS.website;
         return (
           <div key={l.id} className="link-row">
             <div className="link-actions">
@@ -1035,7 +1035,7 @@ function AppearanceEditor({ t, lang }) {
         .color-item { display: flex; align-items: center; gap: 10px; padding: 8px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); }
         .color-item input[type="color"] { width: 36px; height: 36px; padding: 2px; border-radius: 6px; cursor: pointer; }
         .color-item label { flex: 1; font-size: 12px; color: var(--text-secondary); }
-        .device-toggle { display: inline-flex; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; gap: 2px; margin-bottom: var(--space-4); }
+        .device-toggle { direction: ltr; display: inline-flex; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; gap: 2px; margin-bottom: var(--space-4); }
         .device-toggle button { padding: 8px 14px; background: none; border: none; color: var(--text-tertiary); font-size: 12px; border-radius: 6px; cursor: pointer; }
         .device-toggle button.active { background: var(--bg-elevated); color: var(--text-primary); }
         .preview-shell { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; justify-content: center; }
@@ -1200,7 +1200,7 @@ function AnalyticsEditor({ t, lang }) {
 
       <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
       <style jsx>{`
-        .range-pills { display: inline-flex; gap: 4px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; margin-bottom: var(--space-5); }
+        .range-pills { direction: ltr; display: inline-flex; gap: 4px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; margin-bottom: var(--space-5); }
         .range-pills button { padding: 6px 12px; font-size: 12px; color: var(--text-tertiary); border-radius: 6px; background: none; border: none; cursor: pointer; }
         .range-pills button.active { background: var(--bg-elevated); color: var(--text-primary); }
         .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: var(--space-6); }
@@ -1597,7 +1597,7 @@ function CardEditorStyles() {
       .editor h2 { margin-top: var(--space-6); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: var(--space-3); }
       .card-row { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-3); max-width: 640px; }
       .card-row .row-head { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-3); }
-      .card-row .row-tabs { display: inline-flex; gap: 2px; background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 3px; }
+      .card-row .row-tabs { direction: ltr; display: inline-flex; gap: 2px; background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 3px; }
       .card-row .row-tabs button { padding: 4px 12px; font-size: 12px; color: var(--text-tertiary); border: none; background: none; border-radius: 5px; cursor: pointer; }
       .card-row .row-tabs button.active { background: var(--bg-hover); color: var(--text-primary); }
       .card-row .row-actions { margin-inline-start: auto; display: flex; gap: 4px; }
