@@ -1,225 +1,178 @@
-# Portfolio Platform — Setup Guide
+# Portfolio Platform
 
-This guide takes you from zero to a live portfolio site. **No terminal. No coding required.** Just web browser clicks.
+A self-hosted, bilingual (Arabic / English) portfolio site + admin dashboard. Built on Next.js + Supabase, deployed on Vercel.
 
-Time estimate: 30–45 minutes the first time. Don't rush. Take breaks.
-
----
-
-## What you're building
-
-A portfolio website + admin dashboard where you (or your clients) can:
-- Edit profile info, bio, social links
-- Add projects with images, descriptions, galleries
-- Customize colors and language
-- All changes live instantly, visible to anyone visiting the site
-
-Tech stack (don't worry about understanding these — just names):
-- **Next.js** = the frontend framework
-- **Supabase** = the database + login system + image storage
-- **Vercel** = where your site lives online (free hosting)
-- **GitHub** = where your code lives (free)
+The public site is a "linktree-style" card showing your brand logo, name, banners, stats, and CTA buttons. The admin lets you edit every piece of it without writing code.
 
 ---
 
-## Step 1: Create accounts (10 min)
+## Tech stack
 
-You need three accounts. All free. Use the same email if you want.
-
-1. **GitHub** → https://github.com/signup
-2. **Vercel** → https://vercel.com/signup (click "Continue with GitHub")
-3. **Supabase** → https://supabase.com/dashboard/sign-up (click "Continue with GitHub")
-
-All three accounts let you sign in with GitHub. Easier.
+- **Next.js 14** (Pages Router) — frontend
+- **Supabase** — Postgres database, auth, storage, RLS
+- **Vercel** — hosting
+- **react-image-crop** — manual image cropping on upload
+- **Free Google Fonts** — Manrope, Cairo, Reem Kufi, IBM Plex Sans Arabic
 
 ---
 
-## Step 2: Set up Supabase (the backend) (10 min)
+## First-time setup (single-tenant)
 
-1. Go to https://supabase.com/dashboard
-2. Click **"New project"**
-3. Name it whatever you want (e.g. `portfolio-platform`)
-4. Set a database password — **save this somewhere, you might need it later**
-5. Pick a region close to your users (for Doha, pick `Asia Pacific (Singapore)` or `Middle East`)
-6. Click **"Create new project"** — wait ~2 minutes for it to set up
-
-### Set up the database tables
-
-7. Once your project is ready, look at the left sidebar → click **"SQL Editor"**
-8. Click **"+ New query"**
-9. Open the file `supabase-setup.sql` from this project (in any text editor or just on GitHub)
-10. **Copy everything**, paste into the SQL Editor
-11. Click **"Run"** (bottom right). You should see "Success."
-
-### Create the storage bucket for images
-
-12. Left sidebar → click **"Storage"**
-13. Click **"New bucket"**
-14. Name: `media`
-15. ✅ Check **"Public bucket"**
-16. Click **"Save"**
-
-### Create your admin user (for logging into the dashboard)
-
-17. Left sidebar → click **"Authentication"** → **"Users"**
-18. Click **"Add user"** → **"Create new user"**
-19. Enter your email + a password (save the password!)
-20. ✅ Check **"Auto Confirm User"** (so you don't need email verification)
-21. Click **"Create user"**
-
-### Get your API keys (you'll paste these into Vercel)
-
-22. Left sidebar → click **"Project Settings"** (gear icon at bottom) → **"API"**
-23. You'll see two important values. Keep this tab open, you'll copy from here:
-    - **Project URL** (looks like `https://xxxxx.supabase.co`)
-    - **anon public** key (a long string starting with `eyJ...`)
+1. **Create Supabase project** → https://supabase.com/dashboard
+2. **Run the SQL migrations in order**, each in Supabase SQL Editor:
+   - `supabase-setup.sql`        (base schema)
+   - `supabase-migration-v2.sql` (bilingual fields, analytics, usernames)
+   - `supabase-migration-v3.sql` (banners, stats, CTA buttons, brand logo)
+   - `supabase-migration-v4.sql` (project metadata: client / year / role)
+   - `supabase-migration-v5.sql` (icon backfill fix)
+   - `supabase-migration-v6.sql` (RLS hardening — admins only can write)
+3. **Create the `media` storage bucket** in Supabase → Storage → New bucket → Public
+4. **Create an admin auth user** in Supabase → Authentication → Users → Add user (with Auto Confirm)
+5. **Create a username for that user**:
+   ```sql
+   INSERT INTO admin_usernames (username, user_id)
+   SELECT 'yourusername', id FROM auth.users WHERE email = 'you@example.com';
+   ```
+6. **Deploy to Vercel**:
+   - Connect this GitHub repo
+   - Add env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - Deploy
+7. **Sign in at `/admin`** with your username + password
 
 ---
 
-## Step 3: Upload the code to GitHub (5 min)
+## File map
 
-1. Go to https://github.com/new
-2. Repository name: `portfolio-platform` (or whatever)
-3. Set it to **Private** (so others can't see your code)
-4. ✅ Check **"Add a README file"**
-5. Click **"Create repository"**
-
-### Upload all the project files
-
-6. On the new repo page, click **"uploading an existing file"** (it's a link in the empty repo message). Or use **"Add file"** → **"Upload files"**
-7. Drag **all the files and folders** from this project into the upload area:
-   - `pages/` folder
-   - `lib/` folder
-   - `styles/` folder
-   - `package.json`
-   - `next.config.js`
-   - `.gitignore`
-   - `.env.local.example`
-   - `supabase-setup.sql`
-   - `README.md` (this file)
-8. Scroll down, click **"Commit changes"**
+```
+pages/
+  index.js          # Public site — the linktree-style card
+  admin.js          # Admin dashboard — 7 tabs
+  _app.js           # Next.js root + react-image-crop CSS
+  _document.js      # HTML lang/dir default + favicon
+lib/
+  supabase.js       # Supabase client
+  i18n.js           # Bilingual JSON helpers (pick / setLangValue)
+  translations.js   # UI strings (EN + AR)
+  brand-icons.js    # Inline SVG paths for 25+ social platforms
+styles/
+  globals.css       # Design tokens (colors, fonts, spacing, radii)
+public/
+  favicon.svg
+next.config.js      # Image domains + security headers
+package.json
+```
 
 ---
 
-## Step 4: Deploy to Vercel (5 min)
+## Admin dashboard — 7 tabs
 
-1. Go to https://vercel.com/new
-2. Click **"Import"** next to your `portfolio-platform` repo
-3. **Important:** Before clicking "Deploy", expand **"Environment Variables"** section
-4. Add two variables (copy from the Supabase tab you left open):
-
-   | Name | Value |
-   |---|---|
-   | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase Project URL |
-   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anon public key |
-
-5. Click **"Deploy"** → wait 1-2 minutes
-6. When it's done, you'll see a "Congratulations" screen. Click the screenshot to open your live site.
-
-Your site is live. Note the URL — it'll be something like `portfolio-platform-xxxx.vercel.app`.
+| Tab | What it controls |
+|---|---|
+| **Profile** | Name, tagline, bio (all bilingual), profile image, custom fields, section visibility toggles |
+| **Card** | Brand logo, banners (text or image, up to 5, slider), stats (up to 3), CTA buttons |
+| **Projects** | Add / edit / reorder projects, bilingual title + descriptions, cover + gallery images, optional client / year / role metadata |
+| **Links** | Social + contact links with icon picker (25+ brands), bilingual labels, drag to reorder |
+| **Appearance** | Theme presets, color tokens, fonts, density, corner roundness, live device preview |
+| **Analytics** | Page views, unique visitors, project views, contact clicks, top referrers, country breakdown |
+| **Account** | Signed-in user, default language (also flips admin chrome), change password, danger zone |
 
 ---
 
-## Step 5: First login + setup (5 min)
+## Bilingual model
 
-1. Visit `your-site-url.vercel.app/admin`
-2. Sign in with the email + password you created in Step 2 (the admin user)
-3. You're in the dashboard. Fill out:
-   - **Profile tab**: name, tagline, bio, upload profile image
-   - **Projects tab**: click "+ Add Project" to create your first one
-   - **Links tab**: paste your Instagram, WhatsApp, etc.
-   - **Appearance tab**: pick your accent color
-4. Save each tab
-5. Visit your main site URL (without `/admin`) to see your portfolio live
+Every user-facing string is bilingual:
+
+- **Admin chrome strings** live in `lib/translations.js` (keyed)
+- **User content** (name, bio, project titles, etc.) is stored as JSONB `{ en: "...", ar: "..." }` in the database; read via `pick(field, lang)`
+- **One language toggle** (sidebar top-right with globe icon) controls BOTH the admin chrome AND which language of bilingual content is being edited
+
+When the chrome is set to Arabic, the whole UI flips RTL and every input you fill in saves to the Arabic side of the bilingual JSON.
 
 ---
 
-## How to update the site after deploy
+## How content flows
 
-Two ways:
+```
+Admin edits in admin.js
+        ↓
+Supabase JSONB columns (profile.name, projects.title, etc.)
+        ↓
+Public site (index.js) reads via pick(field, lang) → shows in visitor's chosen language
+```
 
-### A. Change content (text, images, projects)
-Just go to `/admin` and edit. Changes are live instantly.
+Analytics events are inserted by the public site on every page view / project view / link click, into `analytics_events`. The Analytics tab reads them.
 
-### B. Change code (design, features)
-1. Edit files on GitHub directly (click any file → pencil icon → edit → commit)
-2. Vercel auto-deploys within ~1 minute
+---
+
+## Security model
+
+- Public can **read** profile + projects (so the site renders for visitors)
+- Public can **insert** into `analytics_events` (so the site can log views)
+- Only users in `admin_usernames` can **write** to profile / projects or **read** analytics events
+- Only users in `admin_usernames` can upload / modify / delete in the `media` storage bucket
+- Auth.users without an `admin_usernames` row have read-only access — even if they sign up via Supabase Auth somehow
+
+This is enforced by RLS policies set up in migration v6.
+
+---
+
+## Updating content vs updating code
+
+- **Content** (name, bio, projects, banners, etc.) → go to `/admin`, edit, save. Live immediately.
+- **Code** (design changes, new features) → edit files on GitHub directly. Vercel auto-redeploys within ~1 minute.
 
 ---
 
 ## Common issues
 
 **"Application error" on first visit**
-- Check Vercel → your project → **Logs** for the error
-- Most common: environment variables not set. Project → Settings → Environment Variables
-- After fixing, click **Deployments** → top deployment → **⋯** → **Redeploy**
+Check Vercel → your project → Logs. Almost always: env vars missing. Set them in Project → Settings → Environment Variables, then redeploy.
 
-**Can't log into /admin**
-- Make sure you created a user in Supabase → Authentication → Users
-- Make sure you checked "Auto Confirm User"
+**Can't sign into /admin**
+- Did you run the `INSERT INTO admin_usernames` step?
+- Is the user "Auto Confirmed" in Supabase → Authentication → Users?
+- Try resetting the password from Supabase Auth dashboard.
 
 **Images not uploading**
-- Check that the `media` bucket exists in Supabase → Storage
-- Make sure it's set to **Public**
-- Make sure you ran the storage policies SQL (step 2 #11)
+- Check the `media` bucket exists and is **Public**
+- After migration v6, only users in `admin_usernames` can upload — make sure the signed-in user is in that table
 
-**Site shows "Setup needed"**
-- Means the database is connected but has no profile row
-- Either: SQL script wasn't run, or the seed `INSERT` didn't happen
-- Go to Supabase → Table Editor → `profile` table → manually add row with `id = 1`
+**Schema cache errors ("Could not find column X")**
+You haven't run a migration. Run all migrations in order (v2 → v6).
 
----
-
-## Project structure (for reference)
-
-```
-portfolio-platform/
-├── pages/
-│   ├── _app.js          # Next.js root
-│   ├── _document.js     # HTML lang/dir setup
-│   ├── index.js         # Public portfolio page
-│   └── admin.js         # Admin dashboard
-├── lib/
-│   ├── supabase.js      # Database client
-│   └── translations.js  # AR + EN strings
-├── styles/
-│   └── globals.css      # Global styles + design tokens
-├── package.json         # Dependencies
-├── next.config.js       # Next.js config
-├── supabase-setup.sql   # Database schema
-└── .env.local.example   # Env var template
-```
+**Public site card is empty**
+Visit `/admin` → Card tab → add at least one banner, stat, or CTA button. Or add some projects.
 
 ---
 
-## Known limitations (we'll address these later)
+## Deferred / not yet implemented
 
-1. **Single profile only** — this version supports one client per deployment. For multi-client (one platform serving many portfolios), we need to add tenant separation. Easy to add later.
-2. **No image compression on upload** — Supabase free tier has 1GB storage, enough for a few hundred images. Add compression if you outgrow it.
-3. **Basic project gallery only** — no video/PDF embed yet, no nested case-study layers from the brief. Coming in next version.
-4. **No analytics** — add Umami or Plausible later by pasting their script tag into `pages/_document.js`.
+Things on the roadmap but not built:
 
----
-
-## What was deferred from the full brief
-
-You asked for an aggressive scope. Some pieces from your original brief aren't in v1:
-
-- ✗ Multi-client tenant system (one platform → many portfolios)
-- ✗ Nested expandable case-study layers
-- ✗ Video / PDF / embed support
-- ✗ Bulk upload with reorder
-- ✗ Categories and tags
-- ✗ Viewer/admin permissions (only single admin for now)
-- ✗ Analytics dashboard
-- ✗ Publish/draft workflow
-
-These are real work and worth doing properly when you're not tired. v1 covers the core: portfolio + projects + admin + media + auth + Arabic/English. That's enough to deliver to a real client.
+- **Custom domain** — point your domain at Vercel (add in Vercel → Settings → Domains)
+- **Multi-tenant** — currently one deployment = one portfolio. To serve multiple designers, you'd need a tenant column and per-tenant routing
+- **Real geo IP** for the country column in Analytics (currently always shows "Unknown")
+- **Image optimization** via `next/image` (currently using plain `<img>`)
+- **Sitemap.xml / robots.txt** for SEO
+- **Email config** in Supabase for working password resets (Auth → Email Templates → SMTP)
 
 ---
 
-## When you get stuck
+## Maintenance notes for future deploys
 
-- Vercel logs: your project → Deployments → click the latest → see errors
-- Supabase logs: project → Logs → API
-- Send me a screenshot of any error and I can debug
+When making schema changes:
+1. Create a new `supabase-migration-vN.sql`
+2. Make it idempotent (`IF NOT EXISTS`, guard with checks)
+3. Add it to the migration list in this README
+4. Run it in Supabase BEFORE pushing the corresponding code
+
+When making code changes:
+- Files in `pages/` are routed automatically by Next.js
+- Don't touch `lib/i18n.js` or `lib/brand-icons.js` without testing both EN + AR
+- Always add new user-facing strings to `lib/translations.js` (both EN + AR blocks)
+
+---
+
+## License / credits
+
+Built for designakum. Brand icons sourced from [simple-icons](https://simpleicons.org) (CC0).
