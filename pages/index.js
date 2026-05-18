@@ -3,7 +3,7 @@ import Head from 'next/head';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
 import { pick } from '../lib/i18n';
-import { BRAND_ICONS } from '../lib/brand-icons';
+import { BRAND_ICONS, normalizeIcon } from '../lib/brand-icons';
 
 const BANNER_BGS = {
   purple: 'linear-gradient(135deg, #7a72d6, #9FA7FF)',
@@ -151,9 +151,16 @@ export default function Home() {
   const name = pick(profile.name, lang);
   const tagline = pick(profile.tagline, lang);
   const bio = pick(profile.bio, lang);
-  const banners = (profile.banners || []).filter(b => b.type !== 'image' || b.image_url); // skip empty image banners
-  const stats = (profile.stats || []).filter(s => pick(s.value, lang) || pick(s.value, 'en') || pick(s.label, lang) || pick(s.label, 'en')); // skip fully-empty stats
-  const ctas = (profile.cta_buttons || []).filter(b => b.action === 'open_projects' || b.href); // skip CTAs with no destination
+  const banners = (profile.banners || []).filter(b => {
+    if (b.type === 'image') return !!b.image_url;
+    return pick(b.text, 'en') || pick(b.text, 'ar');
+  });
+  const stats = (profile.stats || []).filter(s => pick(s.value, lang) || pick(s.value, 'en') || pick(s.label, lang) || pick(s.label, 'en'));
+  const ctas = (profile.cta_buttons || []).filter(b => {
+    const hasLabel = pick(b.label, lang) || pick(b.label, 'en') || pick(b.label, 'ar');
+    if (!hasLabel) return false;
+    return b.action === 'open_projects' || b.href;
+  });
   const links = profile.custom_links || [];
   const customFields = profile.custom_fields || [];
   const sections = profile.sections || {};
@@ -218,12 +225,13 @@ export default function Home() {
 
             <div className="socials">
               {socialIcons.map((l, i) => {
-                const ic = BRAND_ICONS[l.icon];
+                const iconKey = normalizeIcon(l.icon);
+                const ic = BRAND_ICONS[iconKey];
                 if (!ic) return null;
-                const href = l.icon === 'whatsapp' && /^[+\d\s]+$/.test(l.href) ? `https://wa.me/${l.href.replace(/[^\d]/g, '')}` : l.href;
-                const isMail = l.icon === 'email' && l.href.includes('@');
+                const href = iconKey === 'whatsapp' && /^[+\d\s]+$/.test(l.href) ? `https://wa.me/${l.href.replace(/[^\d]/g, '')}` : l.href;
+                const isMail = iconKey === 'email' && l.href.includes('@');
                 return (
-                  <a key={i} href={isMail ? `mailto:${l.href}` : href} target="_blank" rel="noopener noreferrer" className="social-icon" aria-label={pick(l.label, lang)} onClick={() => onSocialClick(l.icon)}>
+                  <a key={i} href={isMail ? `mailto:${l.href}` : href} target="_blank" rel="noopener noreferrer" className="social-icon" aria-label={pick(l.label, lang)} onClick={() => onSocialClick(iconKey)}>
                     <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
                   </a>
                 );
@@ -308,28 +316,37 @@ export default function Home() {
             </div>
           )}
 
-          {/* CTA BUTTONS */}
-          {ctas.length > 0 && (
-            <div className="ctas">
-              {ctas.map((b, i) => {
-                const ic = b.icon && BRAND_ICONS[b.icon];
-                const label = pick(b.label, lang) || pick(b.label, 'en');
-                return (
-                  <button key={b.id || i} className="cta" onClick={() => onCtaClick(b)}>
-                    {ic && (
-                      <span className="cta-icon">
-                        <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
-                      </span>
-                    )}
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {/* CTA BUTTONS (+ auto-projects button if user has projects but no open_projects CTA) */}
+          {(() => {
+            const hasOpenProjectsCta = ctas.some(b => b.action === 'open_projects');
+            const showProjects = (sections.projects !== false) && projects.length > 0;
+            const finalCtas = (showProjects && !hasOpenProjectsCta)
+              ? [...ctas, { id: '__auto_projects', icon: null, label: { en: t('open_portfolio'), ar: t('open_portfolio') }, action: 'open_projects', href: '' }]
+              : ctas;
+            if (finalCtas.length === 0) return null;
+            return (
+              <div className="ctas">
+                {finalCtas.map((b, i) => {
+                  const iconKey = normalizeIcon(b.icon);
+                  const ic = iconKey && BRAND_ICONS[iconKey];
+                  const label = pick(b.label, lang) || pick(b.label, 'en');
+                  return (
+                    <button key={b.id || i} className="cta" onClick={() => onCtaClick(b)}>
+                      {ic && (
+                        <span className="cta-icon">
+                          <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
+                        </span>
+                      )}
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
-          {/* Empty-state nudge */}
-          {banners.length === 0 && stats.length === 0 && ctas.length === 0 && (
+          {/* Empty-state nudge — only show when card is truly empty */}
+          {banners.length === 0 && stats.length === 0 && ctas.length === 0 && projects.length === 0 && !showBio && !showCustomFields && (
             <div className="setup-hint">
               <p>{t('card_empty_hint_a')} <a href="/admin">/admin → {t('nav_card')}</a> {t('card_empty_hint_b')}</p>
             </div>
