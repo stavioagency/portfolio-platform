@@ -44,12 +44,16 @@ export default function Home() {
   const [lang, setLang] = useState('ar');
   const [bannerIdx, setBannerIdx] = useState(0);
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const t = getTranslator(lang);
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
 
   useEffect(() => {
     loadData();
+    // detect admin (we hide setup hints from non-admin visitors)
+    supabase.auth.getSession().then(({ data }) => setIsAdmin(!!data.session));
   }, []);
 
   async function loadData() {
@@ -82,10 +86,8 @@ export default function Home() {
     if (!profile?.appearance) return;
     const a = profile.appearance;
     const root = document.documentElement;
-    // Legacy single-color fields (still respected)
     if (a.accent_color) root.style.setProperty('--accent', a.accent_color);
     if (a.bg_color) root.style.setProperty('--bg-primary', a.bg_color);
-    // New token system
     if (a.tokens) {
       const tk = a.tokens;
       if (tk.bg)         root.style.setProperty('--bg-primary', tk.bg);
@@ -95,15 +97,13 @@ export default function Home() {
       if (tk.text_muted) root.style.setProperty('--text-tertiary', tk.text_muted);
       if (tk.border)     root.style.setProperty('--border', tk.border);
     }
-    // Fonts
     if (a.font_heading && FONT_STACKS[a.font_heading]) root.style.setProperty('--font-heading', FONT_STACKS[a.font_heading]);
     if (a.font_body    && FONT_STACKS[a.font_body])    root.style.setProperty('--font-body',    FONT_STACKS[a.font_body]);
-    // Density + radius
     if (a.density && DENSITY_VALUES[a.density]) root.style.setProperty('--density', DENSITY_VALUES[a.density]);
     if (a.radius  && RADIUS_VALUES[a.radius])   root.style.setProperty('--radius-md', `${RADIUS_VALUES[a.radius]}px`);
   }, [profile]);
 
-  // Log page_view once per mount (fire and forget)
+  // Log page_view once per mount
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const visitor_id = getVisitorId();
@@ -142,7 +142,7 @@ export default function Home() {
       <div dir={dir} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, color: 'var(--text-secondary)' }}>
         <h1 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>{t('setup_needed_title')}</h1>
         <p style={{ fontSize: 14, maxWidth: 400, lineHeight: 1.6 }}>
-          {t('setup_needed_body')} <code style={{ background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: 4 }}>/admin</code> {t('setup_needed_admin')}
+          {t('setup_needed_body')} <code style={{ background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: 4 }} dir="ltr">/admin</code> {t('setup_needed_admin')}
         </p>
       </div>
     );
@@ -161,74 +161,77 @@ export default function Home() {
     if (!hasLabel) return false;
     return b.action === 'open_projects' || b.href;
   });
-  const links = profile.custom_links || [];
+  const allLinks = profile.custom_links || [];
   const customFields = profile.custom_fields || [];
   const sections = profile.sections || {};
   const showBio = sections.bio !== false && bio;
   const showCustomFields = sections.custom_fields !== false && customFields.length > 0;
-  const langSwitcherOn = sections.lang_switcher !== false; // default on
+  const showAbout = showBio || showCustomFields;
+  const showLinks = sections.links !== false; // honor toggle
+  const langSwitcherOn = sections.lang_switcher !== false;
   const avatarSrc = profile.brand_logo || profile.profile_image || null;
 
-  // Top social icons (first 3 from custom_links that have an icon)
-  const socialIcons = links
-    .filter(l => l.icon && l.href)
-    .slice(0, 3);
+  // Top social icons (first 3 with icon + href), only if section enabled
+  const socialIcons = showLinks
+    ? allLinks.filter(l => l.icon && l.href).slice(0, 3)
+    : [];
 
   const initial = (name || '?').trim()[0] || '?';
-
-  async function handleShare() {
-    if (navigator.share) {
-      try { await navigator.share({ title: name, url: window.location.href }); }
-      catch (e) { /* user cancelled */ }
-    } else {
-      try { await navigator.clipboard.writeText(window.location.href); alert(t('link_copied')); }
-      catch (e) { /* ignore */ }
-    }
-  }
 
   function logEvent(payload) {
     if (typeof window === 'undefined') return;
     supabase.from('analytics_events').insert({ visitor_id: getVisitorId(), ...payload }).then(() => {}).catch(() => {});
   }
-
   function onCtaClick(btn) {
     logEvent({ event_type: 'link_click', link_key: btn.icon || 'cta' });
-    if (btn.action === 'open_projects') {
-      setProjectsOpen(true);
-      return;
-    }
+    if (btn.action === 'open_projects') { setProjectsOpen(true); return; }
     if (btn.href) window.open(btn.href, '_blank', 'noopener,noreferrer');
   }
-
   function onSocialClick(iconKey) {
     logEvent({ event_type: 'link_click', link_key: iconKey });
   }
-
   function onProjectOpen(projectId) {
     logEvent({ event_type: 'project_view', project_id: projectId });
   }
+
+  // CTAs to render — append auto "open_projects" button if user has projects but no such CTA
+  const hasOpenProjectsCta = ctas.some(b => b.action === 'open_projects');
+  const showProjects = (sections.projects !== false) && projects.length > 0;
+  const finalCtas = (showProjects && !hasOpenProjectsCta)
+    ? [...ctas, { id: '__auto_projects', icon: null, label: { en: t('open_portfolio'), ar: t('open_portfolio') }, action: 'open_projects', href: '' }]
+    : ctas;
+
+  const cardIsEmpty = banners.length === 0 && stats.length === 0 && finalCtas.length === 0 && !showAbout;
 
   return (
     <>
       <Head>
         <title>{name}{tagline ? ` | ${tagline}` : ''}</title>
-        <meta name="description" content={pick(profile.bio, lang) || tagline} />
+        <meta name="description" content={bio || tagline} />
       </Head>
 
       <main className="page" dir={dir}>
         <div className="card">
-          {/* TOP BAR */}
+
+          {/* TOP BAR — lang switcher (was: share button) · socials · BIGGER brand logo */}
           <div className="top-bar">
-            <button className="icon-btn" onClick={handleShare} aria-label={t('share')}>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            </button>
+            {langSwitcherOn ? (
+              <button className="lang-pill" onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} title={lang === 'ar' ? 'Switch to English' : 'التحويل إلى العربية'}>
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                <span>{lang === 'ar' ? 'EN' : 'ع'}</span>
+              </button>
+            ) : (
+              <span />
+            )}
 
             <div className="socials">
               {socialIcons.map((l, i) => {
                 const iconKey = normalizeIcon(l.icon);
                 const ic = BRAND_ICONS[iconKey];
                 if (!ic) return null;
-                const href = iconKey === 'whatsapp' && /^[+\d\s]+$/.test(l.href) ? `https://wa.me/${l.href.replace(/[^\d]/g, '')}` : l.href;
+                const href = iconKey === 'whatsapp' && /^[+\d\s]+$/.test(l.href)
+                  ? `https://wa.me/${l.href.replace(/[^\d]/g, '')}`
+                  : l.href;
                 const isMail = iconKey === 'email' && l.href.includes('@');
                 return (
                   <a key={i} href={isMail ? `mailto:${l.href}` : href} target="_blank" rel="noopener noreferrer" className="social-icon" aria-label={pick(l.label, lang)} onClick={() => onSocialClick(iconKey)}>
@@ -245,37 +248,45 @@ export default function Home() {
             </div>
           </div>
 
-          {/* NAME */}
+          {/* NAME + About toggle */}
           <div className="name-block">
             <h1>{name}</h1>
             {tagline && <p>{tagline}</p>}
+            {showAbout && (
+              <button className="about-toggle" onClick={() => setAboutOpen(o => !o)}>
+                <span>{aboutOpen ? '↑' : '↓'}</span>
+                {aboutOpen ? t('about_hide') : t('about_show')}
+              </button>
+            )}
           </div>
 
-          {/* BIO */}
-          {showBio && (
-            <div className="bio-block">
-              <p>{bio}</p>
+          {/* ABOUT (collapsible: bio + custom fields) */}
+          {aboutOpen && (
+            <div className="about-section">
+              {showBio && (
+                <div className="bio-block">
+                  <p>{bio}</p>
+                </div>
+              )}
+              {showCustomFields && (
+                <div className="cf-grid">
+                  {customFields.map(f => {
+                    const fl = pick(f.label, lang) || pick(f.label, 'en');
+                    const fv = pick(f.value, lang) || pick(f.value, 'en');
+                    if (!fl && !fv) return null;
+                    return (
+                      <div key={f.id} className="cf-row">
+                        {fl && <span className="cf-label">{fl}</span>}
+                        {fv && <span className="cf-value">{fv}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
-          {/* CUSTOM FIELDS */}
-          {showCustomFields && (
-            <div className="cf-grid">
-              {customFields.map(f => {
-                const fl = pick(f.label, lang) || pick(f.label, 'en');
-                const fv = pick(f.value, lang) || pick(f.value, 'en');
-                if (!fl && !fv) return null;
-                return (
-                  <div key={f.id} className="cf-row">
-                    {fl && <span className="cf-label">{fl}</span>}
-                    {fv && <span className="cf-value">{fv}</span>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* BANNER SLIDER */}
+          {/* BANNER SLIDER (3:2 aspect, more dominant) */}
           {banners.length > 0 && (
             <div className="banner-frame">
               {banners.map((b, i) => (
@@ -316,47 +327,33 @@ export default function Home() {
             </div>
           )}
 
-          {/* CTA BUTTONS (+ auto-projects button if user has projects but no open_projects CTA) */}
-          {(() => {
-            const hasOpenProjectsCta = ctas.some(b => b.action === 'open_projects');
-            const showProjects = (sections.projects !== false) && projects.length > 0;
-            const finalCtas = (showProjects && !hasOpenProjectsCta)
-              ? [...ctas, { id: '__auto_projects', icon: null, label: { en: t('open_portfolio'), ar: t('open_portfolio') }, action: 'open_projects', href: '' }]
-              : ctas;
-            if (finalCtas.length === 0) return null;
-            return (
-              <div className="ctas">
-                {finalCtas.map((b, i) => {
-                  const iconKey = normalizeIcon(b.icon);
-                  const ic = iconKey && BRAND_ICONS[iconKey];
-                  const label = pick(b.label, lang) || pick(b.label, 'en');
-                  return (
-                    <button key={b.id || i} className="cta" onClick={() => onCtaClick(b)}>
-                      {ic && (
-                        <span className="cta-icon">
-                          <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
-                        </span>
-                      )}
-                      <span>{label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })()}
-
-          {/* Empty-state nudge — only show when card is truly empty */}
-          {banners.length === 0 && stats.length === 0 && ctas.length === 0 && projects.length === 0 && !showBio && !showCustomFields && (
-            <div className="setup-hint">
-              <p>{t('card_empty_hint_a')} <a href="/admin">/admin → {t('nav_card')}</a> {t('card_empty_hint_b')}</p>
+          {/* CTA BUTTONS — first is PRIMARY (accent border + tint), rest are ghost */}
+          {finalCtas.length > 0 && (
+            <div className="ctas">
+              {finalCtas.map((b, i) => {
+                const iconKey = normalizeIcon(b.icon);
+                const ic = iconKey && BRAND_ICONS[iconKey];
+                const label = pick(b.label, lang) || pick(b.label, 'en');
+                const isPrimary = i === 0;
+                return (
+                  <button key={b.id || i} className={`cta ${isPrimary ? 'primary' : ''}`} onClick={() => onCtaClick(b)}>
+                    {ic && (
+                      <span className="cta-icon">
+                        <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
+                      </span>
+                    )}
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
 
-          {/* Lang switcher (small, bottom of card) */}
-          {langSwitcherOn && (
-            <button className="lang-switch" onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}>
-              {lang === 'ar' ? 'English' : 'العربية'}
-            </button>
+          {/* Empty-state nudge — ADMIN ONLY (visitors see nothing extra) */}
+          {cardIsEmpty && isAdmin && (
+            <div className="setup-hint">
+              <p>{t('card_empty_hint_a')} <a href="/admin">/admin → {t('nav_card')}</a> {t('card_empty_hint_b')}</p>
+            </div>
           )}
         </div>
 
@@ -403,46 +400,51 @@ export default function Home() {
           padding: 20px;
           box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
         }
-        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
-        .icon-btn {
-          width: 38px; height: 38px;
-          display: flex; align-items: center; justify-content: center;
+        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 8px; }
+
+        /* Lang pill (replaces share button) */
+        .lang-pill {
+          padding: 7px 12px;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
           background: rgba(255,255,255,0.06);
           border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 10px;
+          border-radius: 999px;
           color: rgba(255,255,255,0.85);
+          font-size: 11px;
+          font-weight: 600;
           cursor: pointer;
+          letter-spacing: 0.04em;
+          font-family: inherit;
           transition: var(--transition);
         }
-        .icon-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .lang-pill:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
         .socials { display: flex; gap: 4px; align-items: center; }
         .social-icon {
-          width: 32px; height: 32px;
+          width: 30px; height: 30px;
           display: flex; align-items: center; justify-content: center;
           color: rgba(255,255,255,0.7);
           transition: var(--transition);
         }
-        .social-icon:hover { color: #fff; }
+        .social-icon:hover { color: #fff; transform: translateY(-1px); }
         .social-icon svg { width: 15px; height: 15px; fill: currentColor; }
+
+        /* BIGGER brand logo (56px) with accent glow */
         .brand-logo {
-          width: 46px; height: 46px;
+          width: 56px; height: 56px;
           border-radius: 50%;
-          border: 1.5px solid rgba(159,167,255,0.5);
-          background: rgba(159,167,255,0.08);
+          border: 1.5px solid rgba(159,167,255,0.55);
+          background: rgba(159,167,255,0.1);
           display: flex; align-items: center; justify-content: center;
-          font-size: 18px; font-weight: 700;
-          color: rgba(255,255,255,0.9);
+          font-size: 22px; font-weight: 700;
+          color: rgba(255,255,255,0.95);
           overflow: hidden;
           flex-shrink: 0;
+          box-shadow: 0 0 24px rgba(159,167,255,0.18), inset 0 1px 0 rgba(255,255,255,0.1);
         }
         .brand-logo img { width: 100%; height: 100%; object-fit: cover; }
-
-        .bio-block { padding: 12px 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; margin-bottom: 14px; }
-        .bio-block p { font-size: 13px; line-height: 1.6; color: rgba(255,255,255,0.75); text-align: start; }
-        .cf-grid { display: flex; flex-direction: column; gap: 1px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden; margin-bottom: 14px; }
-        .cf-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(20,20,28,0.6); font-size: 12px; }
-        .cf-label { color: rgba(255,255,255,0.5); }
-        .cf-value { color: rgba(255,255,255,0.92); font-weight: 500; text-align: end; }
 
         .name-block { text-align: end; margin-bottom: 20px; padding: 0 6px; }
         .name-block h1 {
@@ -452,15 +454,41 @@ export default function Home() {
           letter-spacing: -0.01em;
           margin-bottom: 4px;
         }
-        .name-block p { font-size: 13px; color: rgba(255,255,255,0.5); }
+        .name-block p { font-size: 13px; color: rgba(255,255,255,0.5); margin-bottom: 8px; }
+        .about-toggle {
+          padding: 4px 12px;
+          font-size: 11px;
+          color: rgba(255,255,255,0.6);
+          background: none;
+          border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 999px;
+          cursor: pointer;
+          font-family: inherit;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          transition: var(--transition);
+        }
+        .about-toggle:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
 
+        .about-section { margin-bottom: 14px; animation: aboutIn 0.25s ease; }
+        @keyframes aboutIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+        .bio-block { padding: 12px 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; margin-bottom: 10px; }
+        .bio-block p { font-size: 13px; line-height: 1.6; color: rgba(255,255,255,0.75); text-align: start; }
+        .cf-grid { display: flex; flex-direction: column; gap: 1px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden; }
+        .cf-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(20,20,28,0.6); font-size: 12px; }
+        .cf-label { color: rgba(255,255,255,0.5); }
+        .cf-value { color: rgba(255,255,255,0.92); font-weight: 500; text-align: end; }
+
+        /* Banner 3:2 (was 16:9) — bigger / more dominant */
         .banner-frame {
           position: relative;
           width: 100%;
-          aspect-ratio: 16 / 9;
-          border-radius: 16px;
+          aspect-ratio: 3 / 2;
+          border-radius: 18px;
           overflow: hidden;
-          margin-bottom: 16px;
+          margin-bottom: 18px;
           background: rgba(0,0,0,0.2);
         }
         .banner {
@@ -470,20 +498,20 @@ export default function Home() {
           transition: opacity 0.5s ease;
         }
         .banner.active { opacity: 1; }
-        .banner-content { text-align: center; padding: 24px; }
+        .banner-content { text-align: center; padding: 28px; }
         .banner-text {
           font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif;
-          font-size: 30px; font-weight: 700; color: #fff; margin-bottom: 8px;
-          line-height: 1.2;
+          font-size: 36px; font-weight: 700; color: #fff; margin-bottom: 10px;
+          line-height: 1.15;
         }
-        .banner-sub { font-size: 13px; color: rgba(255,255,255,0.85); line-height: 1.5; }
-        .banner-dots { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; }
+        .banner-sub { font-size: 14px; color: rgba(255,255,255,0.9); line-height: 1.5; }
+        .banner-dots { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; }
         .banner-dots button {
           width: 6px; height: 3px; background: rgba(255,255,255,0.4);
           border: none; border-radius: 2px; padding: 0; cursor: pointer;
           transition: var(--transition);
         }
-        .banner-dots button.on { width: 18px; background: #fff; }
+        .banner-dots button.on { width: 20px; background: #fff; }
 
         .stats {
           display: grid; gap: 1px;
@@ -515,7 +543,25 @@ export default function Home() {
           cursor: pointer;
           transition: var(--transition);
         }
-        .cta:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.14); }
+        .cta:hover {
+          background: rgba(255,255,255,0.1);
+          border-color: rgba(255,255,255,0.14);
+          transform: translateY(-1px);
+        }
+        .cta:active { transform: translateY(0); }
+
+        /* PRIMARY CTA — accent border, subtle accent tint, soft accent shadow */
+        .cta.primary {
+          background: linear-gradient(180deg, rgba(159,167,255,0.18), rgba(159,167,255,0.08));
+          border: 1px solid rgba(159,167,255,0.35);
+          box-shadow: 0 4px 14px rgba(159,167,255,0.15), inset 0 1px 0 rgba(255,255,255,0.08);
+        }
+        .cta.primary:hover {
+          background: linear-gradient(180deg, rgba(159,167,255,0.25), rgba(159,167,255,0.12));
+          border-color: rgba(159,167,255,0.5);
+          box-shadow: 0 6px 18px rgba(159,167,255,0.22), inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+
         .cta-icon {
           width: 28px; height: 28px;
           display: flex; align-items: center; justify-content: center;
@@ -527,23 +573,16 @@ export default function Home() {
         .cta-icon svg { width: 14px; height: 14px; fill: currentColor; }
 
         .setup-hint {
-          padding: 24px;
+          padding: 20px;
           text-align: center;
           color: rgba(255,255,255,0.5);
-          font-size: 13px;
+          font-size: 12px;
+          background: rgba(159,167,255,0.06);
+          border: 1px dashed rgba(159,167,255,0.2);
+          border-radius: 12px;
+          margin-top: 12px;
         }
         .setup-hint a { color: var(--accent); text-decoration: underline; }
-
-        .lang-switch {
-          display: block; margin: 16px auto 0;
-          padding: 6px 14px;
-          background: none; border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 999px;
-          color: rgba(255,255,255,0.55);
-          font-size: 11px; cursor: pointer;
-          transition: var(--transition);
-        }
-        .lang-switch:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
 
         .footer {
           margin-top: 32px;
@@ -554,6 +593,14 @@ export default function Home() {
         }
         .footer-credit a { color: rgba(255,255,255,0.55); }
         .footer-credit a:hover { color: #fff; }
+
+        /* Mobile spacing tightens */
+        @media (max-width: 480px) {
+          .page { padding: 24px 12px; }
+          .card { padding: 16px; border-radius: 20px; }
+          .name-block h1 { font-size: 22px; }
+          .banner-text { font-size: 28px; }
+        }
       `}</style>
     </>
   );
@@ -610,7 +657,7 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
                         {(p.client || p.year || p.role) && (
                           <div className="pcard-meta-grid">
                             {p.client && <div><span>{t('project_client')}</span><strong>{p.client}</strong></div>}
-                            {p.year && <div><span>{t('project_year')}</span><strong>{p.year}</strong></div>}
+                            {p.year && <div><span>{t('project_year')}</span><strong dir="ltr">{p.year}</strong></div>}
                             {p.role && <div><span>{t('project_role')}</span><strong>{p.role}</strong></div>}
                           </div>
                         )}
@@ -664,6 +711,7 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
           background: var(--bg-elevated); border: 1px solid var(--border);
           border-radius: 50%; font-size: 20px; color: var(--text-secondary);
           cursor: pointer; display: flex; align-items: center; justify-content: center;
+          font-family: inherit;
         }
         .modal-close:hover { color: #fff; }
         .modal-body { padding: 24px; }
@@ -671,7 +719,7 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
         .grid { display: flex; flex-direction: column; gap: 12px; }
         .pcard { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: var(--transition); }
         .pcard:hover { border-color: var(--border-strong); }
-        .pcard-trigger { display: block; width: 100%; padding: 0; text-align: inherit; background: none; border: none; cursor: pointer; }
+        .pcard-trigger { display: block; width: 100%; padding: 0; text-align: inherit; background: none; border: none; cursor: pointer; font-family: inherit; }
         .pcard-cover { width: 100%; aspect-ratio: 1; overflow: hidden; background: var(--bg-primary); }
         .pcard-cover img { width: 100%; height: 100%; object-fit: cover; transition: var(--transition-slow); }
         .pcard:hover .pcard-cover img { transform: scale(1.02); }
