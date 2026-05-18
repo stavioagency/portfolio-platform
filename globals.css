@@ -36,9 +36,14 @@
   --space-10: 64px;
 
   --font-sans: 'Manrope', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+  --font-heading: 'Manrope', 'Cairo', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+  --font-body: 'Manrope', 'IBM Plex Sans Arabic', system-ui, sans-serif;
 
   --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* density multiplier — admin Appearance editor overrides this */
+  --density: 1;
 }
 
 *, *::before, *::after {
