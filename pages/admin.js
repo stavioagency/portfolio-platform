@@ -186,26 +186,60 @@ function SignIn({ lang, toggleLang }) {
 // =========================================================
 function Dashboard({ session, lang, toggleLang, setLang }) {
   const [activeTab, setActiveTab] = useState('profile');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const t = getTranslator(lang);
 
+  const TAB_LABELS = {
+    profile: t('nav_profile'), card: t('nav_card'), projects: t('nav_projects'),
+    links: t('nav_links'), appearance: t('nav_appearance'),
+    analytics: t('nav_analytics'), account: t('nav_account'),
+  };
+
+  function navigate(tab) {
+    setActiveTab(tab);
+    setSidebarOpen(false); // auto-close drawer on mobile after picking a tab
+  }
   async function signOut() { await supabase.auth.signOut(); }
+
+  // Lock body scroll when drawer is open (mobile)
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.body.style.overflow = sidebarOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [sidebarOpen]);
 
   return (
     <div className="dashboard">
-      <aside className="sidebar">
+      {/* MOBILE TOP BAR — only visible <720px */}
+      <header className="mobile-bar">
+        <button className="hamburger" onClick={() => setSidebarOpen(true)} aria-label="Open menu" type="button">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <span className="mobile-tab-label">{TAB_LABELS[activeTab]}</span>
+        <LangToggleButton lang={lang} onClick={toggleLang} />
+      </header>
+
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <div className="sidebar-title">⚙️ {t('sidebar_title')}</div>
-          <LangToggleButton lang={lang} onClick={toggleLang} />
+          <div className="sidebar-header-right">
+            <LangToggleButton lang={lang} onClick={toggleLang} />
+            <button type="button" className="drawer-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">×</button>
+          </div>
         </div>
 
         <nav className="nav">
-          <NavItem icon="👤" label={t('nav_profile')}    active={activeTab === 'profile'}    onClick={() => setActiveTab('profile')} />
-          <NavItem icon="🪪" label={t('nav_card')}       active={activeTab === 'card'}       onClick={() => setActiveTab('card')} />
-          <NavItem icon="📁" label={t('nav_projects')}   active={activeTab === 'projects'}   onClick={() => setActiveTab('projects')} />
-          <NavItem icon="🔗" label={t('nav_links')}      active={activeTab === 'links'}      onClick={() => setActiveTab('links')} />
-          <NavItem icon="🎨" label={t('nav_appearance')} active={activeTab === 'appearance'} onClick={() => setActiveTab('appearance')} />
-          <NavItem icon="📊" label={t('nav_analytics')}  active={activeTab === 'analytics'}  onClick={() => setActiveTab('analytics')} />
-          <NavItem icon="⚙️" label={t('nav_account')}    active={activeTab === 'account'}    onClick={() => setActiveTab('account')} />
+          <NavItem icon="👤" label={t('nav_profile')}    active={activeTab === 'profile'}    onClick={() => navigate('profile')} />
+          <NavItem icon="🪪" label={t('nav_card')}       active={activeTab === 'card'}       onClick={() => navigate('card')} />
+          <NavItem icon="📁" label={t('nav_projects')}   active={activeTab === 'projects'}   onClick={() => navigate('projects')} />
+          <NavItem icon="🔗" label={t('nav_links')}      active={activeTab === 'links'}      onClick={() => navigate('links')} />
+          <NavItem icon="🎨" label={t('nav_appearance')} active={activeTab === 'appearance'} onClick={() => navigate('appearance')} />
+          <NavItem icon="📊" label={t('nav_analytics')}  active={activeTab === 'analytics'}  onClick={() => navigate('analytics')} />
+          <NavItem icon="⚙️" label={t('nav_account')}    active={activeTab === 'account'}    onClick={() => navigate('account')} />
         </nav>
 
         <div className="sidebar-footer">
@@ -217,6 +251,9 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
           <button onClick={signOut} className="signout-btn">{t('sign_out')}</button>
         </div>
       </aside>
+
+      {/* Backdrop — only visible on mobile when drawer is open */}
+      <div className={`backdrop ${sidebarOpen ? 'show' : ''}`} onClick={() => setSidebarOpen(false)} aria-hidden="true" />
 
       <main className="content">
         {activeTab === 'profile'    && <ProfileEditor    t={t} lang={lang} />}
@@ -232,7 +269,9 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
         .dashboard { display: flex; min-height: 100vh; }
         .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
         .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-3) var(--space-5); gap: 8px; }
+        .sidebar-header-right { display: flex; align-items: center; gap: 6px; }
         .sidebar-title { font-size: 14px; font-weight: 700; }
+        .drawer-close { display: none; width: 32px; height: 32px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); font-size: 20px; cursor: pointer; font-family: inherit; align-items: center; justify-content: center; }
         .nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
         .sidebar-footer { padding: var(--space-3); border-top: 1px solid var(--border); }
         .view-site-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; margin-bottom: 10px; background: linear-gradient(180deg, rgba(159,167,255,0.12), rgba(159,167,255,0.04)); border: 1px solid rgba(159,167,255,0.25); border-radius: var(--radius-md); color: var(--text-primary); font-size: 12px; font-weight: 500; text-decoration: none; transition: var(--transition); }
@@ -240,10 +279,88 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
         .signout-btn { font-size: 12px; color: var(--text-tertiary); padding: 6px 0; background: none; border: none; cursor: pointer; font-family: inherit; }
         .signout-btn:hover { color: var(--text-primary); }
         .content { flex: 1; padding: var(--space-6) var(--space-8); overflow-y: auto; max-height: 100vh; }
+
+        /* Mobile-only elements hidden by default */
+        .mobile-bar { display: none; }
+        .backdrop { display: none; }
+        .hamburger { display: none; }
+
         @media (max-width: 720px) {
-          .dashboard { flex-direction: column; }
-          .sidebar { width: 100%; border-inline-end: none; border-bottom: 1px solid var(--border); }
-          .content { padding: var(--space-5); }
+          .dashboard { display: block; min-height: 100vh; }
+          .mobile-bar {
+            display: flex;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px 14px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+          }
+          .hamburger {
+            display: flex;
+            width: 40px; height: 40px;
+            align-items: center; justify-content: center;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-family: inherit;
+          }
+          .mobile-tab-label {
+            flex: 1;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          /* Sidebar becomes a slide-out drawer */
+          .sidebar {
+            position: fixed;
+            top: 0;
+            inset-inline-start: 0;
+            bottom: 0;
+            width: 280px;
+            max-width: 84vw;
+            transform: translateX(-100%);
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 100;
+            border-inline-end: 1px solid var(--border);
+            box-shadow: 0 0 40px rgba(0,0,0,0.4);
+            overflow-y: auto;
+          }
+          .sidebar.open { transform: translateX(0); }
+          .drawer-close { display: inline-flex; }
+          /* In RTL, the drawer comes from the right */
+          :global([dir="rtl"]) .sidebar { transform: translateX(100%); }
+          :global([dir="rtl"]) .sidebar.open { transform: translateX(0); }
+
+          .backdrop {
+            display: block;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            -webkit-backdrop-filter: blur(4px);
+            backdrop-filter: blur(4px);
+            z-index: 90;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+          }
+          .backdrop.show { opacity: 1; pointer-events: auto; }
+
+          .content { padding: var(--space-4) var(--space-4); max-height: none; }
+
+          /* Bigger tap targets on mobile */
+          .nav-item { padding: 12px 14px; font-size: 14px; min-height: 44px; }
         }
       `}</style>
     </div>
@@ -1419,12 +1536,27 @@ function Field({ id, label, children }) {
   );
 }
 
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
+
+function validateUpload(file, t) {
+  if (!file.type || !file.type.startsWith('image/')) {
+    alert(t('upload_not_image'));
+    return false;
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    alert(t('upload_too_large'));
+    return false;
+  }
+  return true;
+}
+
 function ImageUpload({ value, onUpload, onClear, aspect, t }) {
   const [uploading, setUploading] = useState(false);
   const [cropFile, setCropFile] = useState(null);
   async function handleFile(e) {
     const file = e.target.files?.[0]; if (!file) return;
     e.target.value = '';
+    if (!validateUpload(file, t)) return;
     if (aspect) {
       setCropFile(file);
       return;
@@ -1541,8 +1673,10 @@ function MultiImageUpload({ images, onUpload, onRemove, t }) {
   const [uploading, setUploading] = useState(false);
   async function handleFiles(e) {
     const files = Array.from(e.target.files || []);
-    setUploading(true); for (const f of files) await onUpload(f); setUploading(false);
     e.target.value = '';
+    const valid = files.filter(f => validateUpload(f, t));
+    if (valid.length === 0) return;
+    setUploading(true); for (const f of valid) await onUpload(f); setUploading(false);
   }
   return (
     <div className="multi-upload">
@@ -1604,6 +1738,10 @@ function CardEditorStyles() {
       .card-row .x-small:disabled, .x-small:disabled { opacity: 0.3; cursor: not-allowed; }
       .row-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 100%; }
       .row-grid-2 .field { margin-bottom: 0; }
+      @media (max-width: 720px) {
+        .row-grid-2 { grid-template-columns: 1fr; }
+        .card-row { padding: var(--space-3); }
+      }
       .banner-preview { margin-top: var(--space-3); border-radius: var(--radius-md); padding: 28px 20px; text-align: center; min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
       .banner-text { font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif; font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 4px; line-height: 1.2; }
       .banner-sub { font-size: 13px; color: rgba(255,255,255,0.85); }
