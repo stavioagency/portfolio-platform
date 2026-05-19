@@ -556,7 +556,10 @@ function ProfileEditor({ t, lang }) {
 // Card Editor
 // =========================================================
 function CardEditor({ t, lang }) {
-  const [profile, setProfile] = useState({ banners: [], stats: [], cta_buttons: [], brand_logo: '' });
+  const [profile, setProfile] = useState({
+    banners: [], stats: [], cta_buttons: [], brand_logo: '',
+    top_ticker: { enabled: false, text: emptyBilingual(), bg_color: '#9FA7FF', text_color: '#0a0a0c', speed: 'medium' },
+  });
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
@@ -564,9 +567,22 @@ function CardEditor({ t, lang }) {
   useEffect(() => { load(); }, []);
 
   async function load() {
-    const { data } = await supabase.from('profile').select('banners, stats, cta_buttons, brand_logo').eq('id', 1).maybeSingle();
-    if (data) setProfile({ banners: data.banners || [], stats: data.stats || [], cta_buttons: data.cta_buttons || [], brand_logo: data.brand_logo || '' });
+    const { data } = await supabase.from('profile').select('banners, stats, cta_buttons, brand_logo, top_ticker').eq('id', 1).maybeSingle();
+    if (data) setProfile({
+      banners: data.banners || [],
+      stats: data.stats || [],
+      cta_buttons: data.cta_buttons || [],
+      brand_logo: data.brand_logo || '',
+      top_ticker: {
+        enabled: data.top_ticker?.enabled || false,
+        text: data.top_ticker?.text || emptyBilingual(),
+        bg_color: data.top_ticker?.bg_color || '#9FA7FF',
+        text_color: data.top_ticker?.text_color || '#0a0a0c',
+        speed: data.top_ticker?.speed || 'medium',
+      },
+    });
   }
+  function patchTicker(updates) { setProfile(p => ({ ...p, top_ticker: { ...p.top_ticker, ...updates } })); setDirty(true); }
   function patch(updates) { setProfile(p => ({ ...p, ...updates })); setDirty(true); }
   async function save() {
     setSaving(true);
@@ -608,6 +624,42 @@ function CardEditor({ t, lang }) {
       <h2>{t('brand_logo')}</h2>
       <p className="hint">{t('brand_logo_hint')}</p>
       <ImageUpload value={profile.brand_logo} onUpload={uploadBrandLogo} onClear={() => patch({ brand_logo: '' })} aspect={1} hint={t('img_hint_brand_logo')} t={t} />
+
+      <h2>{t('ticker_title')} <span className="meta">· {t('ticker_sub')}</span></h2>
+      <div className="card-row" style={{ maxWidth: 640 }}>
+        <div className="toggle-row" style={{ paddingTop: 0 }}>
+          <span>{t('ticker_enabled')}</span>
+          <button type="button" className={`switch ${profile.top_ticker?.enabled ? 'on' : ''}`} onClick={() => patchTicker({ enabled: !profile.top_ticker?.enabled })} aria-pressed={!!profile.top_ticker?.enabled} />
+        </div>
+        {profile.top_ticker?.enabled && (
+          <>
+            <div className="row-grid-2">
+              <Field id="ticker-text" label={t('ticker_text')}>
+                <input id="ticker-text" value={pick(profile.top_ticker.text, lang)} onChange={(e) => patchTicker({ text: setLangValue(profile.top_ticker.text, lang, e.target.value) })} placeholder={lang === 'ar' ? 'متاح لمشاريع جديدة · تواصل معي' : 'Available for new projects · contact me'} />
+              </Field>
+              <Field id="ticker-speed" label={t('ticker_speed')}>
+                <select id="ticker-speed" value={profile.top_ticker.speed || 'medium'} onChange={(e) => patchTicker({ speed: e.target.value })}>
+                  <option value="slow">{t('ticker_speed_slow')}</option>
+                  <option value="medium">{t('ticker_speed_medium')}</option>
+                  <option value="fast">{t('ticker_speed_fast')}</option>
+                </select>
+              </Field>
+            </div>
+            <div className="row-grid-2" style={{ marginTop: 10 }}>
+              <Field id="ticker-bg" label={t('ticker_bg')}>
+                <input id="ticker-bg" type="color" value={profile.top_ticker.bg_color || '#9FA7FF'} onChange={(e) => patchTicker({ bg_color: e.target.value })} />
+              </Field>
+              <Field id="ticker-text-color" label={t('ticker_text_color')}>
+                <input id="ticker-text-color" type="color" value={profile.top_ticker.text_color || '#0a0a0c'} onChange={(e) => patchTicker({ text_color: e.target.value })} />
+              </Field>
+            </div>
+            {/* live preview */}
+            <div style={{ marginTop: 12, background: profile.top_ticker.bg_color || '#9FA7FF', color: profile.top_ticker.text_color || '#0a0a0c', padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+              {pick(profile.top_ticker.text, lang) || pick(profile.top_ticker.text, 'en') || (lang === 'ar' ? 'معاينة نص الشريط...' : 'Preview of ticker text...')}
+            </div>
+          </>
+        )}
+      </div>
 
       <h2>{t('banners_title')} <span className="meta">· {t('banners_sub')} · {(profile.banners?.length || 0)}/5</span></h2>
       {profile.banners?.map((b, i) => (
