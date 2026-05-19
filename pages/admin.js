@@ -500,7 +500,7 @@ function ProfileEditor({ t, lang }) {
         <textarea id="profile-bio" rows={4} value={pick(profile.bio, lang)} onChange={(e) => bilingualPatch('bio', e.target.value)} />
       </Field>
       <Field id="profile-image" label={t('profile_image')}>
-        <ImageUpload value={profile.profile_image} onUpload={uploadImage} onClear={() => patch({ profile_image: '' })} aspect={1} t={t} />
+        <ImageUpload value={profile.profile_image} onUpload={uploadImage} onClear={() => patch({ profile_image: '' })} aspect={1} hint={t('img_hint_profile')} t={t} />
       </Field>
 
       <h2>{t('custom_fields_title')}</h2>
@@ -607,7 +607,7 @@ function CardEditor({ t, lang }) {
 
       <h2>{t('brand_logo')}</h2>
       <p className="hint">{t('brand_logo_hint')}</p>
-      <ImageUpload value={profile.brand_logo} onUpload={uploadBrandLogo} onClear={() => patch({ brand_logo: '' })} aspect={1} t={t} />
+      <ImageUpload value={profile.brand_logo} onUpload={uploadBrandLogo} onClear={() => patch({ brand_logo: '' })} aspect={1} hint={t('img_hint_brand_logo')} t={t} />
 
       <h2>{t('banners_title')} <span className="meta">· {t('banners_sub')} · {(profile.banners?.length || 0)}/5</span></h2>
       {profile.banners?.map((b, i) => (
@@ -671,7 +671,7 @@ function BannerRow({ banner, lang, onChange, onRemove, onUp, onDown, canUp, canD
         </>
       ) : (
         <Field id={`b-img-${banner.id}`} label={t('banner_upload')}>
-          <ImageUpload value={banner.image_url} onUpload={uploadImage} onClear={() => onChange({ image_url: '' })} aspect={16/9} t={t} />
+          <ImageUpload value={banner.image_url} onUpload={uploadImage} onClear={() => onChange({ image_url: '' })} aspect={3/2} hint={t('img_hint_banner')} t={t} />
         </Field>
       )}
     </div>
@@ -904,7 +904,7 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
       </div>
 
       <h2>{t('cover_image')}</h2>
-      <ImageUpload value={data.cover_image} onUpload={uploadCover} onClear={() => patch({ cover_image: '' })} aspect={1} t={t} />
+      <ImageUpload value={data.cover_image} onUpload={uploadCover} onClear={() => patch({ cover_image: '' })} aspect={1} hint={t('img_hint_cover')} t={t} />
 
       <h2>{t('external_link')}</h2>
       <Field id="p-ext" label="">
@@ -912,7 +912,7 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
       </Field>
 
       <h2>{t('project_images')}</h2>
-      <MultiImageUpload images={data.images || []} onUpload={uploadGalleryImage} onRemove={removeImage} t={t} />
+      <MultiImageUpload images={data.images || []} onUpload={uploadGalleryImage} onRemove={removeImage} hint={t('img_hint_gallery')} t={t} />
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty}
         extra={<button className="danger-btn" onClick={() => onDelete(data.id)} type="button">{t('delete')}</button>}
@@ -1463,7 +1463,7 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
 
   async function deletePortfolio() {
     const typed = prompt(t('delete_portfolio_confirm'));
-    if (typed !== 'DELETE') return;
+    if (typed !== t('delete_portfolio_keyword')) return;
     await supabase.from('analytics_events').delete().neq('id', 0);
     await supabase.from('projects').delete().neq('id', 0);
     await supabase.from('profile').update({
@@ -1571,7 +1571,7 @@ function validateUpload(file, t) {
   return true;
 }
 
-function ImageUpload({ value, onUpload, onClear, aspect, t }) {
+function ImageUpload({ value, onUpload, onClear, aspect, hint, t }) {
   const [uploading, setUploading] = useState(false);
   const [cropFile, setCropFile] = useState(null);
   async function handleFile(e) {
@@ -1589,33 +1589,32 @@ function ImageUpload({ value, onUpload, onClear, aspect, t }) {
     setCropFile(null);
     setUploading(true); await onUpload(out); setUploading(false);
   }
-  if (value) {
-    return (
-      <div className="preview">
-        <img src={value} alt="" />
-        <button type="button" onClick={onClear} className="remove">×</button>
-        {cropFile && <CropperModal file={cropFile} aspect={aspect} onDone={handleCropDone} onCancel={() => setCropFile(null)} t={t} />}
-        <style jsx>{`
-          .preview { position: relative; display: inline-block; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border); }
-          .preview img { max-width: 200px; max-height: 200px; display: block; }
-          .remove { position: absolute; top: 6px; inset-inline-end: 6px; width: 26px; height: 26px; background: rgba(0,0,0,0.7); color: white; border-radius: 50%; font-size: 16px; border: none; cursor: pointer; font-family: inherit; }
-        `}</style>
-      </div>
-    );
-  }
   return (
-    <>
-      <label className="upload">
-        <input type="file" accept="image/*" onChange={handleFile} />
-        <span>{uploading ? t('uploading') : `📷 ${t('choose_image')}`}</span>
-        <style jsx>{`
-          .upload { display: inline-flex; align-items: center; padding: 10px 16px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; transition: var(--transition); }
-          .upload:hover { border-color: var(--border-strong); background: var(--bg-hover); }
-          input { display: none; }
-        `}</style>
-      </label>
+    <div className="iu">
+      {value ? (
+        <div className="preview">
+          <img src={value} alt="" />
+          <button type="button" onClick={onClear} className="remove">×</button>
+        </div>
+      ) : (
+        <label className="upload">
+          <input type="file" accept="image/*" onChange={handleFile} />
+          <span>{uploading ? t('uploading') : `📷 ${t('choose_image')}`}</span>
+        </label>
+      )}
+      {hint && <div className="img-hint">{hint}</div>}
       {cropFile && <CropperModal file={cropFile} aspect={aspect} onDone={handleCropDone} onCancel={() => setCropFile(null)} t={t} />}
-    </>
+      <style jsx>{`
+        .iu { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+        .preview { position: relative; display: inline-block; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border); }
+        .preview img { max-width: 200px; max-height: 200px; display: block; }
+        .remove { position: absolute; top: 6px; inset-inline-end: 6px; width: 26px; height: 26px; background: rgba(0,0,0,0.7); color: white; border-radius: 50%; font-size: 16px; border: none; cursor: pointer; font-family: inherit; }
+        .upload { display: inline-flex; align-items: center; padding: 10px 16px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; transition: var(--transition); }
+        .upload:hover { border-color: var(--border-strong); background: var(--bg-hover); }
+        .upload input { display: none; }
+        .img-hint { font-size: 11px; color: var(--text-muted); line-height: 1.5; max-width: 360px; text-align: start; }
+      `}</style>
+    </div>
   );
 }
 
@@ -1690,7 +1689,7 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
   );
 }
 
-function MultiImageUpload({ images, onUpload, onRemove, t }) {
+function MultiImageUpload({ images, onUpload, onRemove, hint, t }) {
   const [uploading, setUploading] = useState(false);
   async function handleFiles(e) {
     const files = Array.from(e.target.files || []);
@@ -1713,7 +1712,9 @@ function MultiImageUpload({ images, onUpload, onRemove, t }) {
           <span>{uploading ? '...' : '+'}</span>
         </label>
       </div>
+      {hint && <div className="img-hint">{hint}</div>}
       <style jsx>{`
+        .multi-upload { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
         .thumbs { display: grid; grid-template-columns: repeat(auto-fill, 90px); gap: 8px; max-width: 600px; }
         .thumb { position: relative; }
         .thumb img { width: 90px; height: 90px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); }
@@ -1721,6 +1722,7 @@ function MultiImageUpload({ images, onUpload, onRemove, t }) {
         .add { width: 90px; height: 90px; background: var(--bg-elevated); border: 1.5px dashed var(--border-strong); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--text-tertiary); cursor: pointer; transition: var(--transition); }
         .add:hover { border-color: var(--accent); color: var(--accent); }
         input { display: none; }
+        .img-hint { font-size: 11px; color: var(--text-muted); line-height: 1.5; max-width: 360px; text-align: start; }
       `}</style>
     </div>
   );
