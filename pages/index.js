@@ -164,6 +164,9 @@ export default function Home() {
   const allLinks = profile.custom_links || [];
   const customFields = profile.custom_fields || [];
   const sections = profile.sections || {};
+  const ticker = profile.top_ticker || {};
+  const tickerText = pick(ticker.text, lang) || pick(ticker.text, 'en') || pick(ticker.text, 'ar');
+  const showTicker = !!ticker.enabled && !!tickerText;
   const showBio = sections.bio !== false && bio;
   const showCustomFields = sections.custom_fields !== false && customFields.length > 0;
   const showAbout = showBio || showCustomFields;
@@ -220,7 +223,21 @@ export default function Home() {
         {avatarSrc && <meta name="twitter:image" content={avatarSrc} />}
       </Head>
 
-      <main className="page" dir={dir}>
+      <main className={`page ${showTicker ? 'has-ticker' : ''}`} dir={dir}>
+        {/* TOP TICKER — scrolls right-to-left, full-width strip above the card */}
+        {showTicker && (
+          <div
+            className={`ticker speed-${ticker.speed || 'medium'}`}
+            style={{ background: ticker.bg_color || '#9FA7FF', color: ticker.text_color || '#0a0a0c' }}
+          >
+            <div className="ticker-track">
+              {/* Two copies for seamless loop */}
+              <span className="ticker-text">{tickerText}</span>
+              <span className="ticker-text" aria-hidden="true">{tickerText}</span>
+            </div>
+          </div>
+        )}
+
         <div className="card">
 
           {/* TOP BAR — lang switcher (was: share button) · socials · BIGGER brand logo */}
@@ -397,7 +414,42 @@ export default function Home() {
           display: flex;
           flex-direction: column;
           align-items: center;
-          padding: 40px 20px;
+          padding: 80px 20px 40px; /* card sits lower from the top */
+        }
+        .page.has-ticker { padding-top: 100px; /* extra room when ticker strip is visible */ }
+
+        /* TOP TICKER — scrolls right-to-left always (regardless of page dir) */
+        .ticker {
+          position: fixed;
+          top: 0; left: 0; right: 0;
+          height: 36px;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          z-index: 50;
+          font-size: 13px;
+          font-weight: 500;
+          box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+        }
+        .ticker-track {
+          display: flex;
+          gap: 60px;
+          padding-inline-start: 60px;
+          white-space: nowrap;
+          animation: tickerScroll linear infinite;
+          direction: ltr; /* force LTR so the marquee scrolls predictably */
+        }
+        .ticker.speed-slow .ticker-track   { animation-duration: 60s; }
+        .ticker.speed-medium .ticker-track { animation-duration: 35s; }
+        .ticker.speed-fast .ticker-track   { animation-duration: 20s; }
+        .ticker:hover .ticker-track { animation-play-state: paused; }
+        .ticker-text { display: inline-block; }
+        @keyframes tickerScroll {
+          from { transform: translateX(0); }
+          to   { transform: translateX(-50%); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ticker-track { animation: none; transform: none; padding-inline-start: 20px; }
         }
         .card {
           width: 100%;
