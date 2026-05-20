@@ -389,12 +389,9 @@ export default function Home() {
           )}
         </div>
 
-        {/* FOOTER — custom user line (color editable) + fixed designakum credit below */}
+        {/* FOOTER — custom user line only */}
         <footer className="footer" style={{ color: footerColor }}>
           <span>{customFooterText || `© ${name} ${new Date().getFullYear()}`}</span>
-          <span className="footer-credit">
-            {t('copyright_made_by')} <a href="https://designakum.com" target="_blank" rel="noopener noreferrer" style={{ color: footerColor }}><strong>designakum</strong></a>
-          </span>
         </footer>
 
         {/* PROJECTS MODAL */}
