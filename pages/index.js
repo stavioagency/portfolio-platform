@@ -167,6 +167,10 @@ export default function Home() {
   const ticker = profile.top_ticker || {};
   const tickerText = pick(ticker.text, lang) || pick(ticker.text, 'en') || pick(ticker.text, 'ar');
   const showTicker = !!ticker.enabled && !!tickerText;
+
+  const footer = profile.footer || {};
+  const customFooterText = pick(footer.text, lang) || pick(footer.text, 'en') || pick(footer.text, 'ar');
+  const footerColor = footer.color || 'rgba(255,255,255,0.3)';
   const showBio = sections.bio !== false && bio;
   const showCustomFields = sections.custom_fields !== false && customFields.length > 0;
   const showAbout = showBio || showCustomFields;
@@ -240,7 +244,7 @@ export default function Home() {
 
         <div className="card">
 
-          {/* TOP BAR — lang switcher (was: share button) · socials · BIGGER brand logo */}
+          {/* TOP BAR — lang switcher + socials (brand logo moved to name-block) */}
           <div className="top-bar">
             {langSwitcherOn ? (
               <button className="lang-pill" onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} title={lang === 'ar' ? 'Switch to English' : 'التحويل إلى العربية'}>
@@ -267,24 +271,25 @@ export default function Home() {
                 );
               })}
             </div>
+          </div>
 
+          {/* NAME BLOCK — brand logo now sits next to the name (side-by-side header pair) */}
+          <div className="name-block">
             <div className="brand-logo">
               {avatarSrc
                 ? <img src={avatarSrc} alt={name} />
                 : <span>{initial}</span>}
             </div>
-          </div>
-
-          {/* NAME + About toggle */}
-          <div className="name-block">
-            <h1>{name}</h1>
-            {tagline && <p>{tagline}</p>}
-            {showAbout && (
-              <button className="about-toggle" onClick={() => setAboutOpen(o => !o)}>
-                <span>{aboutOpen ? '↑' : '↓'}</span>
-                {aboutOpen ? t('about_hide') : t('about_show')}
-              </button>
-            )}
+            <div className="name-text">
+              <h1>{name}</h1>
+              {tagline && <p>{tagline}</p>}
+              {showAbout && (
+                <button className="about-toggle" onClick={() => setAboutOpen(o => !o)}>
+                  <span>{aboutOpen ? '↑' : '↓'}</span>
+                  {aboutOpen ? t('about_hide') : t('about_show')}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* ABOUT (collapsible: bio + custom fields) */}
@@ -384,11 +389,11 @@ export default function Home() {
           )}
         </div>
 
-        {/* FOOTER */}
-        <footer className="footer">
-          <span>© {name} {new Date().getFullYear()}</span>
+        {/* FOOTER — custom user line (color editable) + fixed designakum credit below */}
+        <footer className="footer" style={{ color: footerColor }}>
+          <span>{customFooterText || `© ${name} ${new Date().getFullYear()}`}</span>
           <span className="footer-credit">
-            {t('copyright_made_by')} <a href="https://designakum.com" target="_blank" rel="noopener noreferrer"><strong>designakum</strong></a>
+            {t('copyright_made_by')} <a href="https://designakum.com" target="_blank" rel="noopener noreferrer" style={{ color: footerColor }}><strong>designakum</strong></a>
           </span>
         </footer>
 
@@ -508,7 +513,18 @@ export default function Home() {
         }
         .brand-logo img { width: 100%; height: 100%; object-fit: cover; }
 
-        .name-block { text-align: end; margin-bottom: 20px; padding: 0 6px; }
+        .name-block {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 20px;
+          padding: 0 6px;
+        }
+        .name-text {
+          flex: 1;
+          min-width: 0;
+          text-align: start; /* text hugs the avatar — start = right in RTL, left in LTR */
+        }
         .name-block h1 {
           font-family: 'Cairo', 'Manrope', sans-serif;
           font-size: 26px; font-weight: 700;
