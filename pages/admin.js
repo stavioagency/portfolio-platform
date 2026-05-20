@@ -559,6 +559,7 @@ function CardEditor({ t, lang }) {
   const [profile, setProfile] = useState({
     banners: [], stats: [], cta_buttons: [], brand_logo: '',
     top_ticker: { enabled: false, text: emptyBilingual(), bg_color: '#9FA7FF', text_color: '#0a0a0c', speed: 'medium' },
+    footer: { text: emptyBilingual(), color: 'rgba(255,255,255,0.3)' },
   });
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
@@ -567,7 +568,7 @@ function CardEditor({ t, lang }) {
   useEffect(() => { load(); }, []);
 
   async function load() {
-    const { data } = await supabase.from('profile').select('banners, stats, cta_buttons, brand_logo, top_ticker').eq('id', 1).maybeSingle();
+    const { data } = await supabase.from('profile').select('banners, stats, cta_buttons, brand_logo, top_ticker, footer').eq('id', 1).maybeSingle();
     if (data) setProfile({
       banners: data.banners || [],
       stats: data.stats || [],
@@ -580,9 +581,14 @@ function CardEditor({ t, lang }) {
         text_color: data.top_ticker?.text_color || '#0a0a0c',
         speed: data.top_ticker?.speed || 'medium',
       },
+      footer: {
+        text: data.footer?.text || emptyBilingual(),
+        color: data.footer?.color || 'rgba(255,255,255,0.3)',
+      },
     });
   }
   function patchTicker(updates) { setProfile(p => ({ ...p, top_ticker: { ...p.top_ticker, ...updates } })); setDirty(true); }
+  function patchFooter(updates) { setProfile(p => ({ ...p, footer: { ...p.footer, ...updates } })); setDirty(true); }
   function patch(updates) { setProfile(p => ({ ...p, ...updates })); setDirty(true); }
   async function save() {
     setSaving(true);
@@ -678,6 +684,16 @@ function CardEditor({ t, lang }) {
         <ButtonRow key={b.id} btn={b} lang={lang} onChange={(u) => updateButton(b.id, u)} onRemove={() => removeButton(b.id)} onUp={() => moveButton(b.id, -1)} onDown={() => moveButton(b.id, 1)} canUp={i > 0} canDown={i < profile.cta_buttons.length - 1} t={t} />
       ))}
       <button className="btn-add" onClick={addButton}>+ {t('button_add')}</button>
+
+      <h2>{t('footer_title')} <span className="meta">· {t('footer_sub')}</span></h2>
+      <div className="card-row" style={{ maxWidth: 640 }}>
+        <Field id="footer-text" label={t('footer_text')}>
+          <input id="footer-text" value={pick(profile.footer?.text, lang)} onChange={(e) => patchFooter({ text: setLangValue(profile.footer?.text, lang, e.target.value) })} placeholder={lang === 'ar' ? '© فيصل فهد 2026' : '© Your Name 2026'} />
+        </Field>
+        <Field id="footer-color" label={t('footer_color')}>
+          <input id="footer-color" type="color" value={profile.footer?.color?.startsWith('#') ? profile.footer.color : '#4d4d57'} onChange={(e) => patchFooter({ color: e.target.value })} />
+        </Field>
+      </div>
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
       <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
