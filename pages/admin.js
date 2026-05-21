@@ -1658,7 +1658,8 @@ function ImageUpload({ value, onUpload, onClear, aspect, hint, t }) {
     setUploading(true); await onUpload(file); setUploading(false);
   }
   async function handleCropDone(blob) {
-    const out = new File([blob], cropFile.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+    const ext = blob.type === 'image/png' ? '.png' : '.jpg';
+    const out = new File([blob], cropFile.name.replace(/\.[^.]+$/, ext), { type: blob.type || 'image/jpeg' });
     setCropFile(null);
     setUploading(true); await onUpload(out); setUploading(false);
   }
@@ -1725,7 +1726,8 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
       0, 0,
       canvas.width, canvas.height
     );
-    canvas.toBlob((blob) => { if (blob) onDone(blob); }, 'image/jpeg', 0.92);
+    const mime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+    canvas.toBlob((blob) => { if (blob) onDone(blob); }, mime, 0.92);
   }
 
   return (
