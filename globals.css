@@ -67,7 +67,7 @@ body {
 }
 
 [dir="rtl"] body {
-  font-family: 'IBM Plex Sans Arabic', 'Manrope', system-ui, sans-serif;
+  font-family: var(--font-sans);
 }
 
 a { color: inherit; text-decoration: none; }
