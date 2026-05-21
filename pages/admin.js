@@ -224,6 +224,9 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
       </header>
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+        <div className="sidebar-logo">
+          <img src="/logo.png" alt="ديزاينكم" />
+        </div>
         <div className="sidebar-header">
           <div className="sidebar-title">⚙️ {t('sidebar_title')}</div>
           <div className="sidebar-header-right">
@@ -266,8 +269,10 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
       </main>
 
       <style jsx>{`
-        .dashboard { display: flex; min-height: 100vh; }
+        .dashboard { display: flex; min-height: 100vh; background-image: url('/pattern.png'); background-repeat: no-repeat; background-attachment: fixed; background-position: bottom -50px right -50px; background-size: 470px auto; }
         .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
+        .sidebar-logo { padding: var(--space-2) var(--space-3) 0; }
+        .sidebar-logo img { height: 26px; width: auto; display: block; }
         .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-3) var(--space-5); gap: 8px; }
         .sidebar-header-right { display: flex; align-items: center; gap: 6px; }
         .sidebar-title { font-size: 14px; font-weight: 700; }
