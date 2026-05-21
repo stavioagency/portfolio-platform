@@ -504,6 +504,7 @@ export default function Home() {
         .brand-logo {
           width: 56px; height: 56px;
           border-radius: 50%;
+          border: 1.5px solid rgba(159,167,255,0.55);
           display: flex; align-items: center; justify-content: center;
           font-size: 22px; font-weight: 700;
           color: rgba(255,255,255,0.95);
