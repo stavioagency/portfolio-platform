@@ -432,6 +432,7 @@ export default function Home() {
           overflow: hidden;
           display: flex;
           align-items: center;
+          direction: ltr;
           z-index: 50;
           font-size: 13px;
           font-weight: 500;
