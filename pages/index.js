@@ -106,6 +106,19 @@ export default function Home() {
     if (a.radius  && RADIUS_VALUES[a.radius])   root.style.setProperty('--card-radius', `${RADIUS_VALUES[a.radius]}px`);
   }, [profile]);
 
+  // Use the profile image / brand logo as the browser tab icon (favicon)
+  useEffect(() => {
+    const src = profile?.brand_logo || profile?.profile_image;
+    if (!src) return;
+    let link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = src;
+  }, [profile]);
+
   // Log page_view once per mount
   useEffect(() => {
     if (typeof window === 'undefined') return;
