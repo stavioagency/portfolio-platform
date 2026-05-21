@@ -1755,7 +1755,18 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
         .cm-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); }
         .cm-head h3 { font-size: 15px; font-weight: 600; }
         .cm-close { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); font-size: 18px; cursor: pointer; font-family: inherit; }
-        .cm-body { flex: 1; overflow: auto; padding: 16px; display: flex; align-items: center; justify-content: center; background: #000; }
+        .cm-body {
+          flex: 1; overflow: auto; padding: 16px;
+          display: flex; align-items: center; justify-content: center;
+          background-color: #e8e8e8;
+          background-image:
+            linear-gradient(45deg, #bcbcbc 25%, transparent 25%),
+            linear-gradient(-45deg, #bcbcbc 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #bcbcbc 75%),
+            linear-gradient(-45deg, transparent 75%, #bcbcbc 75%);
+          background-size: 20px 20px;
+          background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+        }
         .cm-foot { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); justify-content: flex-end; }
         .cm-cancel { padding: 8px 14px; background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; font-size: 13px; font-family: inherit; }
         .cm-confirm { padding: 8px 16px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border: none; border-radius: var(--radius-md); cursor: pointer; font-weight: 600; font-size: 13px; font-family: inherit; }
