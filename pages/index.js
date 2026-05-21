@@ -439,6 +439,8 @@ export default function Home() {
         }
         .ticker-track {
           display: flex;
+          width: max-content;
+          flex-shrink: 0;
           gap: 60px;
           padding-inline-start: 60px;
           white-space: nowrap;
@@ -449,7 +451,7 @@ export default function Home() {
         .ticker.speed-medium .ticker-track { animation-duration: 35s; }
         .ticker.speed-fast .ticker-track   { animation-duration: 20s; }
         .ticker:hover .ticker-track { animation-play-state: paused; }
-        .ticker-text { display: inline-block; }
+        .ticker-text { display: inline-block; flex-shrink: 0; }
         @keyframes tickerScroll {
           from { transform: translateX(0); }
           to   { transform: translateX(-50%); }
