@@ -34,7 +34,6 @@ const FONT_STACKS = {
   reemkufi: "'Reem Kufi', 'Cairo', serif",
   plexar:   "'IBM Plex Sans Arabic', 'Manrope', sans-serif",
 };
-const DENSITY_VALUES = { comfortable: 1.0, compact: 0.85, spacious: 1.15 };
 const RADIUS_VALUES  = { soft: 12, sharp: 4, pill: 24 };
 
 export default function Home() {
@@ -102,7 +101,6 @@ export default function Home() {
       root.style.setProperty('--font-body', FONT_STACKS[a.font_body]);
       root.style.setProperty('--font-sans', FONT_STACKS[a.font_body]);
     }
-    if (a.density && DENSITY_VALUES[a.density]) root.style.setProperty('--density', DENSITY_VALUES[a.density]);
     if (a.radius  && RADIUS_VALUES[a.radius])   root.style.setProperty('--card-radius', `${RADIUS_VALUES[a.radius]}px`);
   }, [profile]);
 
@@ -468,10 +466,10 @@ export default function Home() {
           -webkit-backdrop-filter: blur(20px);
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: var(--card-radius, 24px);
-          padding: calc(20px * var(--density));
+          padding: 20px;
           box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
         }
-        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: calc(20px * var(--density)); gap: 8px; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 8px; }
 
         /* Lang pill (replaces share button) */
         .lang-pill {
@@ -506,22 +504,19 @@ export default function Home() {
         .brand-logo {
           width: 56px; height: 56px;
           border-radius: 50%;
-          border: 1.5px solid rgba(159,167,255,0.55);
-          background: rgba(159,167,255,0.1);
           display: flex; align-items: center; justify-content: center;
           font-size: 22px; font-weight: 700;
           color: rgba(255,255,255,0.95);
           overflow: hidden;
           flex-shrink: 0;
-          box-shadow: 0 0 24px rgba(159,167,255,0.18), inset 0 1px 0 rgba(255,255,255,0.1);
         }
-        .brand-logo img { width: 100%; height: 100%; object-fit: cover; }
+        .brand-logo img { width: 100%; height: 100%; object-fit: contain; }
 
         .name-block {
           display: flex;
           align-items: center;
           gap: 14px;
-          margin-bottom: calc(20px * var(--density));
+          margin-bottom: 20px;
           padding: 0 6px;
         }
         .name-text {
@@ -530,7 +525,7 @@ export default function Home() {
           text-align: start; /* text hugs the avatar — start = right in RTL, left in LTR */
         }
         .name-block h1 {
-          font-family: var(--font-heading);
+          font-family: 'Cairo', 'Manrope', sans-serif;
           font-size: 26px; font-weight: 700;
           color: #fff;
           letter-spacing: -0.01em;
@@ -570,7 +565,7 @@ export default function Home() {
           aspect-ratio: 3 / 2;
           border-radius: 18px;
           overflow: hidden;
-          margin-bottom: calc(18px * var(--density));
+          margin-bottom: 18px;
           background: rgba(0,0,0,0.2);
         }
         .banner {
@@ -582,7 +577,7 @@ export default function Home() {
         .banner.active { opacity: 1; }
         .banner-content { text-align: center; padding: 28px; }
         .banner-text {
-          font-family: var(--font-heading);
+          font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif;
           font-size: 36px; font-weight: 700; color: #fff; margin-bottom: 10px;
           line-height: 1.15;
         }
@@ -601,7 +596,7 @@ export default function Home() {
           border: 1px solid rgba(255,255,255,0.06);
           border-radius: 14px;
           overflow: hidden;
-          margin-bottom: calc(16px * var(--density));
+          margin-bottom: 16px;
         }
         .stat {
           padding: 14px 8px;
@@ -611,11 +606,11 @@ export default function Home() {
         .stat-value { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
         .stat-label { font-size: 11px; color: rgba(255,255,255,0.5); }
 
-        .ctas { display: flex; flex-direction: column; gap: calc(8px * var(--density)); }
+        .ctas { display: flex; flex-direction: column; gap: 8px; }
         .cta {
           width: 100%;
           display: flex; align-items: center; justify-content: center; gap: 10px;
-          padding: calc(14px * var(--density));
+          padding: 14px;
           background: rgba(255,255,255,0.06);
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: var(--card-radius, 14px);
@@ -679,7 +674,7 @@ export default function Home() {
         /* Mobile spacing tightens */
         @media (max-width: 480px) {
           .page { padding: 24px 12px; }
-          .card { padding: calc(16px * var(--density)); border-radius: var(--card-radius, 20px); }
+          .card { padding: 16px; border-radius: var(--card-radius, 20px); }
           .name-block h1 { font-size: 22px; }
           .banner-text { font-size: 28px; }
         }
