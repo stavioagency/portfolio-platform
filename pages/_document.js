@@ -5,7 +5,7 @@ export default function Document() {
     <Html lang="ar" dir="rtl">
       <Head>
         <meta name="theme-color" content="#0a0a0c" />
-        <link rel="icon" href="/logo.png" type="image/png" />
+        <link rel="icon" href="/favicon.png" type="image/png" />
       </Head>
       <body>
         <Main />
