@@ -98,9 +98,12 @@ export default function Home() {
       if (tk.border)     root.style.setProperty('--border', tk.border);
     }
     if (a.font_heading && FONT_STACKS[a.font_heading]) root.style.setProperty('--font-heading', FONT_STACKS[a.font_heading]);
-    if (a.font_body    && FONT_STACKS[a.font_body])    root.style.setProperty('--font-body',    FONT_STACKS[a.font_body]);
+    if (a.font_body && FONT_STACKS[a.font_body]) {
+      root.style.setProperty('--font-body', FONT_STACKS[a.font_body]);
+      root.style.setProperty('--font-sans', FONT_STACKS[a.font_body]);
+    }
     if (a.density && DENSITY_VALUES[a.density]) root.style.setProperty('--density', DENSITY_VALUES[a.density]);
-    if (a.radius  && RADIUS_VALUES[a.radius])   root.style.setProperty('--radius-md', `${RADIUS_VALUES[a.radius]}px`);
+    if (a.radius  && RADIUS_VALUES[a.radius])   root.style.setProperty('--card-radius', `${RADIUS_VALUES[a.radius]}px`);
   }, [profile]);
 
   // Log page_view once per mount
@@ -180,7 +183,7 @@ export default function Home() {
 
   // Top social icons (first 3 with icon + href), only if section enabled
   const socialIcons = showLinks
-    ? allLinks.filter(l => l.icon && l.href).slice(0, 3)
+    ? allLinks.filter(l => l.icon && l.href)
     : [];
 
   const initial = (name || '?').trim()[0] || '?';
@@ -235,9 +238,10 @@ export default function Home() {
             style={{ background: ticker.bg_color || '#9FA7FF', color: ticker.text_color || '#0a0a0c' }}
           >
             <div className="ticker-track">
-              {/* Two copies for seamless loop */}
-              <span className="ticker-text">{tickerText}</span>
-              <span className="ticker-text" aria-hidden="true">{tickerText}</span>
+              {/* Repeated copies so the strip fills wide screens seamlessly */}
+              {Array.from({ length: 24 }).map((_, i) => (
+                <span className="ticker-text" key={i} aria-hidden={i > 0}>{tickerText}</span>
+              ))}
             </div>
           </div>
         )}
@@ -460,11 +464,11 @@ export default function Home() {
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
           border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 24px;
-          padding: 20px;
+          border-radius: var(--card-radius, 24px);
+          padding: calc(20px * var(--density));
           box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
         }
-        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 8px; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: calc(20px * var(--density)); gap: 8px; }
 
         /* Lang pill (replaces share button) */
         .lang-pill {
@@ -485,7 +489,7 @@ export default function Home() {
         }
         .lang-pill:hover { background: rgba(255,255,255,0.1); color: #fff; }
 
-        .socials { display: flex; gap: 4px; align-items: center; }
+        .socials { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
         .social-icon {
           width: 30px; height: 30px;
           display: flex; align-items: center; justify-content: center;
@@ -514,7 +518,7 @@ export default function Home() {
           display: flex;
           align-items: center;
           gap: 14px;
-          margin-bottom: 20px;
+          margin-bottom: calc(20px * var(--density));
           padding: 0 6px;
         }
         .name-text {
@@ -523,7 +527,7 @@ export default function Home() {
           text-align: start; /* text hugs the avatar — start = right in RTL, left in LTR */
         }
         .name-block h1 {
-          font-family: 'Cairo', 'Manrope', sans-serif;
+          font-family: var(--font-heading);
           font-size: 26px; font-weight: 700;
           color: #fff;
           letter-spacing: -0.01em;
@@ -563,7 +567,7 @@ export default function Home() {
           aspect-ratio: 3 / 2;
           border-radius: 18px;
           overflow: hidden;
-          margin-bottom: 18px;
+          margin-bottom: calc(18px * var(--density));
           background: rgba(0,0,0,0.2);
         }
         .banner {
@@ -575,7 +579,7 @@ export default function Home() {
         .banner.active { opacity: 1; }
         .banner-content { text-align: center; padding: 28px; }
         .banner-text {
-          font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif;
+          font-family: var(--font-heading);
           font-size: 36px; font-weight: 700; color: #fff; margin-bottom: 10px;
           line-height: 1.15;
         }
@@ -594,7 +598,7 @@ export default function Home() {
           border: 1px solid rgba(255,255,255,0.06);
           border-radius: 14px;
           overflow: hidden;
-          margin-bottom: 16px;
+          margin-bottom: calc(16px * var(--density));
         }
         .stat {
           padding: 14px 8px;
@@ -604,14 +608,14 @@ export default function Home() {
         .stat-value { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
         .stat-label { font-size: 11px; color: rgba(255,255,255,0.5); }
 
-        .ctas { display: flex; flex-direction: column; gap: 8px; }
+        .ctas { display: flex; flex-direction: column; gap: calc(8px * var(--density)); }
         .cta {
           width: 100%;
           display: flex; align-items: center; justify-content: center; gap: 10px;
-          padding: 14px;
+          padding: calc(14px * var(--density));
           background: rgba(255,255,255,0.06);
           border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 14px;
+          border-radius: var(--card-radius, 14px);
           color: #fff;
           font-family: inherit;
           font-size: 14px; font-weight: 600;
@@ -672,7 +676,7 @@ export default function Home() {
         /* Mobile spacing tightens */
         @media (max-width: 480px) {
           .page { padding: 24px 12px; }
-          .card { padding: 16px; border-radius: 20px; }
+          .card { padding: calc(16px * var(--density)); border-radius: var(--card-radius, 20px); }
           .name-block h1 { font-size: 22px; }
           .banner-text { font-size: 28px; }
         }
