@@ -164,7 +164,7 @@ function SignIn({ lang, toggleLang }) {
         <button type="submit" disabled={loading}>{loading ? t('signing_in') : t('sign_in')}</button>
       </form>
       <style jsx>{`
-        .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; --accent: #4f6ef2; --accent-hover: #6d86ff; --text-secondary: #fff; --text-tertiary: #fff; --text-muted: #fff; }
+        .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background-color: #0c1530; --accent: #4f6ef2; --accent-hover: #6d86ff; --bg-primary: #0c1530; --bg-secondary: #14203f; --bg-elevated: #1d2c52; --bg-hover: #283a66; --text-secondary: #fff; --text-tertiary: #fff; --text-muted: #fff; }
         .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
         .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
         h1 { font-size: 22px; font-weight: 700; }
@@ -269,7 +269,7 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
       </main>
 
       <style jsx>{`
-        .dashboard { display: flex; min-height: 100vh; background-image: url('/pattern.png'); background-repeat: no-repeat; background-attachment: fixed; background-position: bottom -50px right -50px; background-size: 470px auto; --accent: #4f6ef2; --accent-hover: #6d86ff; --text-secondary: #fff; --text-tertiary: #fff; --text-muted: #fff; }
+        .dashboard { display: flex; min-height: 100vh; background-color: #0c1530; background-image: url('/pattern.png'); background-repeat: no-repeat; background-attachment: fixed; background-position: bottom -50px right -50px; background-size: 470px auto; --accent: #4f6ef2; --accent-hover: #6d86ff; --bg-primary: #0c1530; --bg-secondary: #14203f; --bg-elevated: #1d2c52; --bg-hover: #283a66; --text-secondary: #fff; --text-tertiary: #fff; --text-muted: #fff; }
         .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
         .sidebar-logo { padding: var(--space-2) var(--space-3) 0; }
         .sidebar-logo img { height: 26px; width: auto; display: block; }
