@@ -92,7 +92,7 @@ export default function Admin() {
     });
   }
   useEffect(() => {
-    const c = theme === 'light' ? '#ffffff' : '#0c1530';
+    const c = theme === 'light' ? '#ffffff' : '#060912';
     document.body.style.background = c;
     document.documentElement.style.background = c;
     return () => { document.body.style.background = ''; document.documentElement.style.background = ''; };
@@ -207,8 +207,8 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
         <button type="submit" disabled={loading}>{loading ? t('signing_in') : t('sign_in')}</button>
       </form>
       <style jsx>{`
-        .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
-        .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #0c1530; --bg-secondary: #14203f; --bg-elevated: #1d2c52; --bg-hover: #283a66; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #0c1530; }
+        .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
+        .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
         .signin-wrap.light { --on-bg: 12,21,48; --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1; --text-primary: #0c1530; --text-secondary: #0c1530; --text-tertiary: #0c1530; --text-muted: #0c1530; background-color: #ffffff; }
         .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
         .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
@@ -270,7 +270,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
-          <img src="/logo.png" alt="ديزاينكم" />
+          <img src={theme === 'light' ? '/logo-light.png' : '/logo.png'} alt="ديزاينكم" />
         </div>
         <div className="sidebar-header">
           <div className="sidebar-title">⚙️ {t('sidebar_title')}</div>
@@ -314,8 +314,8 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
       </main>
 
       <style jsx>{`
-        .dashboard { display: flex; min-height: 100vh; --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
-        .dashboard.dark { --on-bg: 255,255,255; --bg-primary: #0c1530; --bg-secondary: #14203f; --bg-elevated: #1d2c52; --bg-hover: #283a66; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #0c1530; }
+        .dashboard { display: flex; min-height: 100vh; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
+        .dashboard.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
         .dashboard.light { --on-bg: 12,21,48; --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1; --text-primary: #0c1530; --text-secondary: #0c1530; --text-tertiary: #0c1530; --text-muted: #0c1530; background-color: #ffffff; }
         .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
         .sidebar-logo { padding: var(--space-2) var(--space-3) 0; }
@@ -1763,8 +1763,12 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
     const scaleX = img.naturalWidth / img.width;
     const scaleY = img.naturalHeight / img.height;
     const canvas = document.createElement('canvas');
-    canvas.width = Math.floor(completedCrop.width * scaleX);
-    canvas.height = Math.floor(completedCrop.height * scaleY);
+    const cropW = completedCrop.width * scaleX;
+    const cropH = completedCrop.height * scaleY;
+    const MAX_OUT = 1400; // cap output so uploads stay light and load fast on mobile
+    const outScale = Math.min(1, MAX_OUT / Math.max(cropW, cropH));
+    canvas.width = Math.round(cropW * outScale);
+    canvas.height = Math.round(cropH * outScale);
     const ctx = canvas.getContext('2d');
     ctx.drawImage(
       img,
