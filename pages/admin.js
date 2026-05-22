@@ -1395,6 +1395,12 @@ function AnalyticsEditor({ t, lang }) {
     return { line, area };
   }, [pageViews, range]);
 
+  const fmtTime = (iso) => {
+    try { return new Date(iso).toLocaleString(lang === 'ar' ? 'ar' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }); }
+    catch (e) { return iso || '—'; }
+  };
+  const recentVisits = pageViews.slice(0, 20).map(e => [fmtTime(e.created_at), e.country || '—']);
+
   return (
     <div className="editor">
       <h1>{t('analytics_title')}</h1>
@@ -1446,6 +1452,8 @@ function AnalyticsEditor({ t, lang }) {
             <TableCard title={t('top_referrers')} headLabel={t('source')} headValue={t('visits')} rows={topReferrers} />
             <TableCard title={t('visitors_by_country')} headLabel={t('country')} headValue={t('visits')} rows={topCountries} />
           </div>
+
+          <TableCard title={t('recent_visits')} headLabel={t('time')} headValue={t('country')} rows={recentVisits} />
         </>
       )}
 
@@ -1455,7 +1463,7 @@ function AnalyticsEditor({ t, lang }) {
         .range-pills button { padding: 6px 12px; font-size: 12px; color: var(--text-tertiary); border-radius: 6px; background: none; border: none; cursor: pointer; font-family: inherit; }
         .range-pills button.active { background: var(--bg-elevated); color: var(--text-primary); }
         .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: var(--space-6); }
-        .chart-card { background: linear-gradient(180deg, var(--bg-secondary), rgba(19,19,24,0.6)); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); margin-bottom: var(--space-4); }
+        .chart-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); margin-bottom: var(--space-4); }
         .chart-title { font-size: 14px; font-weight: 600; margin-bottom: var(--space-4); }
         .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: var(--space-4); }
         @media (max-width: 720px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } .twocol { grid-template-columns: 1fr; } }
@@ -1471,7 +1479,7 @@ function StatCard({ label, value }) {
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value.toLocaleString()}</div>
       <style jsx>{`
-        .stat-card { background: linear-gradient(180deg, var(--bg-secondary), rgba(19,19,24,0.6)); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); position: relative; overflow: hidden; }
+        .stat-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); position: relative; overflow: hidden; }
         .stat-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(var(--on-bg),0.08), transparent); }
         .stat-label { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
         .stat-value { font-size: 26px; font-weight: 700; letter-spacing: -.02em; color: var(--text-primary); }
@@ -1493,7 +1501,7 @@ function BarChartCard({ title, rows }) {
         </div>
       ))}
       <style jsx>{`
-        .bcc { background: linear-gradient(180deg, var(--bg-secondary), rgba(19,19,24,0.6)); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); }
+        .bcc { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); }
         .bcc-title { font-size: 14px; font-weight: 600; margin-bottom: var(--space-4); }
         .bcc-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; font-size: 13px; }
         .bcc-row + .bcc-row { border-top: 1px solid var(--border); }
@@ -1518,7 +1526,7 @@ function TableCard({ title, headLabel, headValue, rows }) {
         </table>
       )}
       <style jsx>{`
-        .tcc { background: linear-gradient(180deg, var(--bg-secondary), rgba(19,19,24,0.6)); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); }
+        .tcc { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); }
         .tcc-title { font-size: 14px; font-weight: 600; margin-bottom: var(--space-4); }
         .tcc table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .tcc th { text-align: start; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-tertiary); font-weight: 500; padding: 8px 0; border-bottom: 1px solid var(--border); }
