@@ -1392,8 +1392,14 @@ function AnalyticsEditor({ t, lang }) {
     const pts = counts.map((c, i) => `${i * stepX},${h - (c / max) * (h - 20)}`);
     const line = `M${pts.join(' L')}`;
     const area = `${line} L${w},${h} L0,${h} Z`;
-    return { line, area };
-  }, [pageViews, range]);
+    const fmtAxis = (ts) => {
+      const d = new Date(ts);
+      if (range === '24h') return d.toLocaleTimeString(lang === 'ar' ? 'ar' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleDateString(lang === 'ar' ? 'ar' : 'en-GB', { day: 'numeric', month: 'short' });
+    };
+    const labels = [0, 0.25, 0.5, 0.75, 1].map(f => fmtAxis(start + f * span));
+    return { line, area, labels };
+  }, [pageViews, range, lang]);
 
   const fmtTime = (iso) => {
     try { return new Date(iso).toLocaleString(lang === 'ar' ? 'ar' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }); }
@@ -1440,6 +1446,9 @@ function AnalyticsEditor({ t, lang }) {
                 <path d={chartPath.area} fill="url(#ag)" />
                 <path d={chartPath.line} fill="none" stroke="#4f6ef2" strokeWidth="2" />
               </svg>
+              <div className="chart-axis">
+                {chartPath.labels.map((l, i) => <span key={i}>{l}</span>)}
+              </div>
             </div>
           )}
 
@@ -1465,6 +1474,7 @@ function AnalyticsEditor({ t, lang }) {
         .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: var(--space-6); }
         .chart-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); margin-bottom: var(--space-4); }
         .chart-title { font-size: 14px; font-weight: 600; margin-bottom: var(--space-4); }
+        .chart-axis { direction: ltr; display: flex; justify-content: space-between; margin-top: 8px; font-size: 10px; color: var(--text-tertiary); }
         .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: var(--space-4); }
         @media (max-width: 720px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } .twocol { grid-template-columns: 1fr; } }
         .empty-cta { padding: 48px 24px; text-align: center; border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); background: linear-gradient(180deg, rgba(79,110,242,0.04), transparent); max-width: 560px; }
