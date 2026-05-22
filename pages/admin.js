@@ -164,7 +164,7 @@ function SignIn({ lang, toggleLang }) {
         <button type="submit" disabled={loading}>{loading ? t('signing_in') : t('sign_in')}</button>
       </form>
       <style jsx>{`
-        .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; --accent: #4f6ef2; --accent-hover: #6d86ff; --text-secondary: #fff; --text-tertiary: #fff; --text-muted: #fff; }
         .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
         .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
         h1 { font-size: 22px; font-weight: 700; }
@@ -172,7 +172,7 @@ function SignIn({ lang, toggleLang }) {
         label { display: block; font-size: 12px; font-weight: 500; color: var(--text-tertiary); margin: var(--space-4) 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
         input { width: 100%; padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; transition: var(--transition); font-family: inherit; }
         input:focus { outline: none; border-color: var(--accent); }
-        button[type="submit"] { width: 100%; padding: 12px; background: var(--accent); color: var(--bg-primary); border-radius: var(--radius-md); font-weight: 600; font-size: 14px; margin-top: var(--space-5); transition: var(--transition); border: none; cursor: pointer; }
+        button[type="submit"] { width: 100%; padding: 12px; background: var(--accent); color: #fff; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; margin-top: var(--space-5); transition: var(--transition); border: none; cursor: pointer; }
         button[type="submit"]:hover:not(:disabled) { background: var(--accent-hover); }
         button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
         .error { margin-top: var(--space-4); padding: 10px 12px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 13px; }
@@ -269,7 +269,7 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
       </main>
 
       <style jsx>{`
-        .dashboard { display: flex; min-height: 100vh; background-image: url('/pattern.png'); background-repeat: no-repeat; background-attachment: fixed; background-position: bottom -50px right -50px; background-size: 470px auto; }
+        .dashboard { display: flex; min-height: 100vh; background-image: url('/pattern.png'); background-repeat: no-repeat; background-attachment: fixed; background-position: bottom -50px right -50px; background-size: 470px auto; --accent: #4f6ef2; --accent-hover: #6d86ff; --text-secondary: #fff; --text-tertiary: #fff; --text-muted: #fff; }
         .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
         .sidebar-logo { padding: var(--space-2) var(--space-3) 0; }
         .sidebar-logo img { height: 26px; width: auto; display: block; }
@@ -279,8 +279,8 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
         .drawer-close { display: none; width: 32px; height: 32px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); font-size: 20px; cursor: pointer; font-family: inherit; align-items: center; justify-content: center; }
         .nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
         .sidebar-footer { padding: var(--space-3); border-top: 1px solid var(--border); }
-        .view-site-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; margin-bottom: 10px; background: linear-gradient(180deg, rgba(159,167,255,0.12), rgba(159,167,255,0.04)); border: 1px solid rgba(159,167,255,0.25); border-radius: var(--radius-md); color: var(--text-primary); font-size: 12px; font-weight: 500; text-decoration: none; transition: var(--transition); }
-        .view-site-btn:hover { background: rgba(159,167,255,0.18); }
+        .view-site-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; margin-bottom: 10px; background: linear-gradient(180deg, rgba(79,110,242,0.12), rgba(79,110,242,0.04)); border: 1px solid rgba(79,110,242,0.25); border-radius: var(--radius-md); color: var(--text-primary); font-size: 12px; font-weight: 500; text-decoration: none; transition: var(--transition); }
+        .view-site-btn:hover { background: rgba(79,110,242,0.18); }
         .signout-btn { font-size: 12px; color: var(--text-tertiary); padding: 6px 0; background: none; border: none; cursor: pointer; font-family: inherit; }
         .signout-btn:hover { color: var(--text-primary); }
         .content { flex: 1; padding: var(--space-6) var(--space-8); overflow-y: auto; max-height: 100vh; }
@@ -380,7 +380,7 @@ function NavItem({ icon, label, active, onClick }) {
       <style jsx>{`
         .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px; color: var(--text-secondary); transition: var(--transition); text-align: start; background: none; border: none; cursor: pointer; font-family: inherit; }
         .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .nav-item.active { background: linear-gradient(180deg, rgba(159,167,255,0.12), rgba(159,167,255,0.04)); color: var(--text-primary); font-weight: 500; box-shadow: inset 0 0 0 1px rgba(159,167,255,0.18); }
+        .nav-item.active { background: linear-gradient(180deg, rgba(79,110,242,0.12), rgba(79,110,242,0.04)); color: var(--text-primary); font-weight: 500; box-shadow: inset 0 0 0 1px rgba(79,110,242,0.18); }
         .nav-icon { font-size: 14px; }
       `}</style>
     </button>
@@ -405,7 +405,7 @@ function SidebarUser({ session, t }) {
       </div>
       <style jsx>{`
         .user-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        .avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #9FA7FF, #6b73d6); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--bg-primary); flex-shrink: 0; }
+        .avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #4f6ef2, #2d47a8); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0; }
         .user-meta { min-width: 0; flex: 1; }
         .user-name { font-size: 12px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .user-status { font-size: 10px; color: #7DD37D; display: flex; align-items: center; gap: 4px; }
@@ -427,7 +427,7 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
       {extra}
       <style jsx>{`
         .actions { display: flex; gap: 10px; align-items: center; margin-top: var(--space-6); padding-top: var(--space-5); border-top: 1px solid var(--border); flex-wrap: wrap; }
-        .primary { padding: 10px 20px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(159,167,255,0.25), inset 0 1px 0 rgba(255,255,255,0.3); position: relative; font-family: inherit; }
+        .primary { padding: 10px 20px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(79,110,242,0.25), inset 0 1px 0 rgba(255,255,255,0.3); position: relative; font-family: inherit; }
         .primary:disabled { opacity: 0.5; cursor: not-allowed; }
         .unsaved-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ffb845; margin-inline-start: 6px; box-shadow: 0 0 6px #ffb845; vertical-align: middle; }
         .hint { font-size: 12px; color: var(--text-tertiary); }
@@ -893,7 +893,7 @@ function ProjectsEditor({ t, lang }) {
       <EditorStyles /><SharedAdminStyles /><CardEditorStyles />
       <style jsx>{`
         .editor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-5); }
-        .btn-primary-inline { padding: 8px 16px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(159,167,255,0.25); font-family: inherit; }
+        .btn-primary-inline { padding: 8px 16px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(79,110,242,0.25); font-family: inherit; }
         .project-list { display: flex; flex-direction: column; gap: 6px; }
         .project-row { display: flex; align-items: center; gap: 6px; }
         .prow-actions { display: flex; flex-direction: column; gap: 2px; }
@@ -905,7 +905,7 @@ function ProjectsEditor({ t, lang }) {
         .prow-title { font-size: 14px; font-weight: 600; }
         .prow-desc { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .chevron { color: var(--text-muted); font-size: 18px; }
-        .empty-cta { padding: 48px 24px; text-align: center; border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); background: linear-gradient(180deg, rgba(159,167,255,0.04), transparent); }
+        .empty-cta { padding: 48px 24px; text-align: center; border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); background: linear-gradient(180deg, rgba(79,110,242,0.04), transparent); }
         .empty-icon { font-size: 32px; margin-bottom: 8px; }
         .empty-title { font-size: 14px; color: var(--text-tertiary); margin-bottom: 16px; }
       `}</style>
@@ -1117,7 +1117,7 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
         .picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; padding: 16px 20px; overflow-y: auto; }
         .picker-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 6px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; color: rgba(255,255,255,0.92); transition: var(--transition); font-family: inherit; }
         .picker-cell:hover { border-color: var(--border-strong); background: var(--bg-hover); }
-        .picker-cell.sel { border-color: var(--accent); background: rgba(159,167,255,0.1); }
+        .picker-cell.sel { border-color: var(--accent); background: rgba(79,110,242,0.1); }
         .picker-cell svg { width: 20px; height: 20px; fill: currentColor; }
         .picker-cell span { font-size: 10px; color: var(--text-tertiary); text-align: center; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; max-width: 100%; white-space: nowrap; }
       `}</style>
@@ -1380,12 +1380,12 @@ function AnalyticsEditor({ t, lang }) {
               <svg viewBox="0 0 600 160" preserveAspectRatio="none" style={{ width: '100%', height: 160 }}>
                 <defs>
                   <linearGradient id="ag" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#9FA7FF" stopOpacity=".4" />
-                    <stop offset="100%" stopColor="#9FA7FF" stopOpacity="0" />
+                    <stop offset="0%" stopColor="#4f6ef2" stopOpacity=".4" />
+                    <stop offset="100%" stopColor="#4f6ef2" stopOpacity="0" />
                   </linearGradient>
                 </defs>
                 <path d={chartPath.area} fill="url(#ag)" />
-                <path d={chartPath.line} fill="none" stroke="#9FA7FF" strokeWidth="2" />
+                <path d={chartPath.line} fill="none" stroke="#4f6ef2" strokeWidth="2" />
               </svg>
             </div>
           )}
@@ -1412,7 +1412,7 @@ function AnalyticsEditor({ t, lang }) {
         .chart-title { font-size: 14px; font-weight: 600; margin-bottom: var(--space-4); }
         .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: var(--space-4); }
         @media (max-width: 720px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } .twocol { grid-template-columns: 1fr; } }
-        .empty-cta { padding: 48px 24px; text-align: center; border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); background: linear-gradient(180deg, rgba(159,167,255,0.04), transparent); max-width: 560px; }
+        .empty-cta { padding: 48px 24px; text-align: center; border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); background: linear-gradient(180deg, rgba(79,110,242,0.04), transparent); max-width: 560px; }
       `}</style>
     </div>
   );
@@ -1600,10 +1600,10 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
       <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
       <style jsx>{`
         .user-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); max-width: 500px; margin-bottom: var(--space-5); }
-        .avatar-lg { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #9FA7FF, #6b73d6); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: var(--bg-primary); }
+        .avatar-lg { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #4f6ef2, #2d47a8); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #fff; }
         .user-name { font-size: 14px; font-weight: 600; }
         .user-email { font-size: 12px; color: var(--text-tertiary); }
-        .btn-primary-inline { padding: 10px 18px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(159,167,255,0.25); font-family: inherit; }
+        .btn-primary-inline { padding: 10px 18px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(79,110,242,0.25); font-family: inherit; }
         .danger-card { padding: 16px; background: rgba(255,80,80,0.05); border: 1px solid rgba(255,80,80,0.2); border-radius: var(--radius-md); max-width: 500px; }
         .danger-btn { padding: 8px 14px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border: 1px solid rgba(255,80,80,0.3); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; font-family: inherit; }
         .danger-btn:hover { background: rgba(255, 80, 80, 0.18); }
@@ -1769,7 +1769,7 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
         }
         .cm-foot { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); justify-content: flex-end; }
         .cm-cancel { padding: 8px 14px; background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; font-size: 13px; font-family: inherit; }
-        .cm-confirm { padding: 8px 16px; background: linear-gradient(180deg, #b5bcff, #9FA7FF); color: #0a0a0c; border: none; border-radius: var(--radius-md); cursor: pointer; font-weight: 600; font-size: 13px; font-family: inherit; }
+        .cm-confirm { padding: 8px 16px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border: none; border-radius: var(--radius-md); cursor: pointer; font-weight: 600; font-size: 13px; font-family: inherit; }
       `}</style>
     </div>
   );
