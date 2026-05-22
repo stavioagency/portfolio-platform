@@ -28,10 +28,10 @@ const BANNER_BGS = {
 };
 
 const THEME_PRESETS = {
-  midnight: { key: 'midnight', tokens: { accent: '#9FA7FF', bg: '#0a0a0c', surface: '#131318', text: '#ffffff', text_muted: 'rgba(255,255,255,0.45)', border: 'rgba(255,255,255,0.06)' } },
+  midnight: { key: 'midnight', tokens: { accent: '#9FA7FF', bg: '#0a0a0c', surface: '#131318', text: '#ffffff', text_muted: 'rgba(255, 255, 255, 0.45)', border: 'rgba(255, 255, 255, 0.06)' } },
   paper:    { key: 'paper',    tokens: { accent: '#5b5fc7', bg: '#faf9f6', surface: '#ffffff', text: '#1a1a22', text_muted: 'rgba(26,26,34,0.55)', border: 'rgba(0,0,0,0.08)' } },
-  forest:   { key: 'forest',   tokens: { accent: '#7dd37d', bg: '#0c1410', surface: '#142019', text: '#ffffff', text_muted: 'rgba(255,255,255,0.5)', border: 'rgba(255,255,255,0.07)' } },
-  plum:     { key: 'plum',     tokens: { accent: '#ff9fb5', bg: '#1a0e1a', surface: '#251525', text: '#ffffff', text_muted: 'rgba(255,255,255,0.5)', border: 'rgba(255,255,255,0.08)' } },
+  forest:   { key: 'forest',   tokens: { accent: '#7dd37d', bg: '#0c1410', surface: '#142019', text: '#ffffff', text_muted: 'rgba(255, 255, 255, 0.5)', border: 'rgba(255, 255, 255, 0.07)' } },
+  plum:     { key: 'plum',     tokens: { accent: '#ff9fb5', bg: '#1a0e1a', surface: '#251525', text: '#ffffff', text_muted: 'rgba(255, 255, 255, 0.5)', border: 'rgba(255, 255, 255, 0.08)' } },
 };
 
 const FONT_OPTIONS = [
@@ -60,12 +60,14 @@ export default function Admin() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lang, setLangState] = useState('ar');
+  const [theme, setThemeState] = useState('dark');
   const t = getTranslator(lang);
 
   useEffect(() => {
     const initial = readLang();
     setLangState(initial);
     applyLang(initial);
+    try { setThemeState(localStorage.getItem('admin_theme') || 'dark'); } catch (e) {}
 
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
@@ -82,6 +84,19 @@ export default function Admin() {
   function toggleLang() {
     setLang(lang === 'ar' ? 'en' : 'ar');
   }
+  function toggleTheme() {
+    setThemeState(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      try { localStorage.setItem('admin_theme', next); } catch (e) {}
+      return next;
+    });
+  }
+  useEffect(() => {
+    const c = theme === 'light' ? '#ffffff' : '#0c1530';
+    document.body.style.background = c;
+    document.documentElement.style.background = c;
+    return () => { document.body.style.background = ''; document.documentElement.style.background = ''; };
+  }, [theme]);
 
   if (loading) return <div style={{ padding: 40, color: 'var(--text-secondary)' }}>{t('loading')}</div>;
 
@@ -89,8 +104,8 @@ export default function Admin() {
     <>
       <Head><title>{t('head_title_admin')}</title></Head>
       {session
-        ? <Dashboard session={session} lang={lang} toggleLang={toggleLang} setLang={setLang} />
-        : <SignIn lang={lang} toggleLang={toggleLang} />}
+        ? <Dashboard session={session} lang={lang} toggleLang={toggleLang} setLang={setLang} theme={theme} toggleTheme={toggleTheme} />
+        : <SignIn lang={lang} toggleLang={toggleLang} theme={theme} toggleTheme={toggleTheme} />}
     </>
   );
 }
@@ -124,10 +139,38 @@ function LangToggleButton({ lang, onClick }) {
   );
 }
 
+function ThemeToggleButton({ theme, onClick }) {
+  const isDark = theme !== 'light';
+  return (
+    <button type="button" onClick={onClick} className="theme-toggle-btn" title={isDark ? 'Light mode' : 'Dark mode'}>
+      {isDark ? (
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      ) : (
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      )}
+      <style jsx>{`
+        .theme-toggle-btn {
+          padding: 6px 10px;
+          background: var(--bg-elevated);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          color: var(--text-primary);
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-family: inherit;
+        }
+        .theme-toggle-btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+      `}</style>
+    </button>
+  );
+}
+
 // =========================================================
 // Sign In
 // =========================================================
-function SignIn({ lang, toggleLang }) {
+function SignIn({ lang, toggleLang, theme, toggleTheme }) {
   const t = getTranslator(lang);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -149,11 +192,11 @@ function SignIn({ lang, toggleLang }) {
   }
 
   return (
-    <div className="signin-wrap">
+    <div className={`signin-wrap ${theme || 'dark'}`}>
       <form className="signin-card" onSubmit={handleSubmit}>
         <div className="signin-top">
           <h1>{t('sign_in_heading')}</h1>
-          <LangToggleButton lang={lang} onClick={toggleLang} />
+          <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
         </div>
         <p className="signin-hint">{t('sign_in_hint')}</p>
         <label htmlFor="signin-username">{t('username')}</label>
@@ -164,7 +207,9 @@ function SignIn({ lang, toggleLang }) {
         <button type="submit" disabled={loading}>{loading ? t('signing_in') : t('sign_in')}</button>
       </form>
       <style jsx>{`
-        .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background-color: #0c1530; --accent: #4f6ef2; --accent-hover: #6d86ff; --bg-primary: #0c1530; --bg-secondary: #14203f; --bg-elevated: #1d2c52; --bg-hover: #283a66; --text-secondary: #fff; --text-tertiary: #fff; --text-muted: #fff; }
+        .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
+        .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #0c1530; --bg-secondary: #14203f; --bg-elevated: #1d2c52; --bg-hover: #283a66; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #0c1530; }
+        .signin-wrap.light { --on-bg: 12,21,48; --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1; --text-primary: #0c1530; --text-secondary: #0c1530; --text-tertiary: #0c1530; --text-muted: #0c1530; background-color: #ffffff; }
         .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
         .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
         h1 { font-size: 22px; font-weight: 700; }
@@ -184,7 +229,7 @@ function SignIn({ lang, toggleLang }) {
 // =========================================================
 // Dashboard
 // =========================================================
-function Dashboard({ session, lang, toggleLang, setLang }) {
+function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   const [activeTab, setActiveTab] = useState('profile');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const t = getTranslator(lang);
@@ -209,7 +254,7 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
   }, [sidebarOpen]);
 
   return (
-    <div className="dashboard">
+    <div className={`dashboard ${theme || 'dark'}`}>
       {/* MOBILE TOP BAR — only visible <720px */}
       <header className="mobile-bar">
         <button className="hamburger" onClick={() => setSidebarOpen(true)} aria-label="Open menu" type="button">
@@ -220,7 +265,7 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
           </svg>
         </button>
         <span className="mobile-tab-label">{TAB_LABELS[activeTab]}</span>
-        <LangToggleButton lang={lang} onClick={toggleLang} />
+        <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
       </header>
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
@@ -230,7 +275,7 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
         <div className="sidebar-header">
           <div className="sidebar-title">⚙️ {t('sidebar_title')}</div>
           <div className="sidebar-header-right">
-            <LangToggleButton lang={lang} onClick={toggleLang} />
+            <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
             <button type="button" className="drawer-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">×</button>
           </div>
         </div>
@@ -269,7 +314,9 @@ function Dashboard({ session, lang, toggleLang, setLang }) {
       </main>
 
       <style jsx>{`
-        .dashboard { display: flex; min-height: 100vh; background-color: #0c1530; background-image: url('/pattern.png'); background-repeat: no-repeat; background-attachment: fixed; background-position: bottom -50px right -50px; background-size: 470px auto; --accent: #4f6ef2; --accent-hover: #6d86ff; --bg-primary: #0c1530; --bg-secondary: #14203f; --bg-elevated: #1d2c52; --bg-hover: #283a66; --text-secondary: #fff; --text-tertiary: #fff; --text-muted: #fff; }
+        .dashboard { display: flex; min-height: 100vh; --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
+        .dashboard.dark { --on-bg: 255,255,255; --bg-primary: #0c1530; --bg-secondary: #14203f; --bg-elevated: #1d2c52; --bg-hover: #283a66; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #0c1530; }
+        .dashboard.light { --on-bg: 12,21,48; --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1; --text-primary: #0c1530; --text-secondary: #0c1530; --text-tertiary: #0c1530; --text-muted: #0c1530; background-color: #ffffff; }
         .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
         .sidebar-logo { padding: var(--space-2) var(--space-3) 0; }
         .sidebar-logo img { height: 26px; width: auto; display: block; }
@@ -427,7 +474,7 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
       {extra}
       <style jsx>{`
         .actions { display: flex; gap: 10px; align-items: center; margin-top: var(--space-6); padding-top: var(--space-5); border-top: 1px solid var(--border); flex-wrap: wrap; }
-        .primary { padding: 10px 20px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(79,110,242,0.25), inset 0 1px 0 rgba(255,255,255,0.3); position: relative; font-family: inherit; }
+        .primary { padding: 10px 20px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(79,110,242,0.25), inset 0 1px 0 rgba(var(--on-bg),0.3); position: relative; font-family: inherit; }
         .primary:disabled { opacity: 0.5; cursor: not-allowed; }
         .unsaved-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ffb845; margin-inline-start: 6px; box-shadow: 0 0 6px #ffb845; vertical-align: middle; }
         .hint { font-size: 12px; color: var(--text-tertiary); }
@@ -564,7 +611,7 @@ function CardEditor({ t, lang }) {
   const [profile, setProfile] = useState({
     banners: [], stats: [], cta_buttons: [], brand_logo: '',
     top_ticker: { enabled: false, text: emptyBilingual(), bg_color: '#9FA7FF', text_color: '#0a0a0c', speed: 'medium' },
-    footer: { text: emptyBilingual(), color: 'rgba(255,255,255,0.3)' },
+    footer: { text: emptyBilingual(), color: 'rgba(var(--on-bg),0.3)' },
   });
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
@@ -588,7 +635,7 @@ function CardEditor({ t, lang }) {
       },
       footer: {
         text: data.footer?.text || emptyBilingual(),
-        color: data.footer?.color || 'rgba(255,255,255,0.3)',
+        color: data.footer?.color || 'rgba(var(--on-bg),0.3)',
       },
     });
   }
@@ -1065,9 +1112,9 @@ function LinksEditor({ t, lang }) {
       <style jsx>{`
         .link-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; max-width: 720px; flex-wrap: wrap; }
         .link-actions { display: flex; flex-direction: column; gap: 2px; }
-        .brand { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07); cursor: pointer; flex-shrink: 0; }
+        .brand { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: rgba(var(--on-bg),0.92); background: rgba(var(--on-bg),0.05); border: 1px solid rgba(var(--on-bg),0.07); cursor: pointer; flex-shrink: 0; }
         .brand svg { width: 17px; height: 17px; fill: currentColor; }
-        .brand:hover { background: rgba(255,255,255,0.08); }
+        .brand:hover { background: rgba(var(--on-bg),0.08); }
         .input-sm { padding: 9px 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 13px; font-family: inherit; min-width: 0; }
         @media (max-width: 720px) {
           .link-row { gap: 6px; }
@@ -1110,12 +1157,12 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
         .picker { width: 100%; max-width: 520px; max-height: 80vh; background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         .picker-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
-        .picker-head h3 { font-size: 15px; font-weight: 600; color: #fff; }
+        .picker-head h3 { font-size: 15px; font-weight: 600; color: var(--text-primary); }
         .picker-close { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); font-size: 18px; cursor: pointer; }
         .picker-search { width: calc(100% - 40px); margin: 16px 20px 0; padding: 10px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); font-size: 14px; font-family: inherit; }
         .picker-search:focus { outline: none; border-color: var(--accent); }
         .picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; padding: 16px 20px; overflow-y: auto; }
-        .picker-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 6px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; color: rgba(255,255,255,0.92); transition: var(--transition); font-family: inherit; }
+        .picker-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 6px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; color: rgba(var(--on-bg),0.92); transition: var(--transition); font-family: inherit; }
         .picker-cell:hover { border-color: var(--border-strong); background: var(--bg-hover); }
         .picker-cell.sel { border-color: var(--accent); background: rgba(79,110,242,0.1); }
         .picker-cell svg { width: 20px; height: 20px; fill: currentColor; }
@@ -1425,7 +1472,7 @@ function StatCard({ label, value }) {
       <div className="stat-value">{value.toLocaleString()}</div>
       <style jsx>{`
         .stat-card { background: linear-gradient(180deg, var(--bg-secondary), rgba(19,19,24,0.6)); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); position: relative; overflow: hidden; }
-        .stat-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent); }
+        .stat-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(var(--on-bg),0.08), transparent); }
         .stat-label { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
         .stat-value { font-size: 26px; font-weight: 700; letter-spacing: -.02em; color: var(--text-primary); }
       `}</style>
@@ -1861,10 +1908,10 @@ function CardEditorStyles() {
       }
       .banner-preview { margin-top: var(--space-3); border-radius: var(--radius-md); padding: 28px 20px; text-align: center; min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
       .banner-text { font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif; font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 4px; line-height: 1.2; }
-      .banner-sub { font-size: 13px; color: rgba(255,255,255,0.85); }
-      .brand-mini { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.92); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07); border-radius: 7px; cursor: pointer; font-family: inherit; }
+      .banner-sub { font-size: 13px; color: rgba(var(--on-bg),0.85); }
+      .brand-mini { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: rgba(var(--on-bg),0.92); background: rgba(var(--on-bg),0.05); border: 1px solid rgba(var(--on-bg),0.07); border-radius: 7px; cursor: pointer; font-family: inherit; }
       .brand-mini svg { width: 15px; height: 15px; fill: currentColor; }
-      .brand-mini:hover { background: rgba(255,255,255,0.08); }
+      .brand-mini:hover { background: rgba(var(--on-bg),0.08); }
       .btn-add { padding: 8px 14px; background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; font-family: inherit; }
       .btn-add:hover { border-color: var(--border-strong); }
     `}</style>
