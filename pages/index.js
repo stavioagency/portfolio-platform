@@ -104,6 +104,18 @@ export default function Home() {
     if (a.radius  && RADIUS_VALUES[a.radius])   root.style.setProperty('--card-radius', `${RADIUS_VALUES[a.radius]}px`);
   }, [profile]);
 
+  // Apply custom favicon (uploaded via the admin) to the browser tab
+  useEffect(() => {
+    if (!profile?.favicon_url) return;
+    let link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = profile.favicon_url;
+  }, [profile]);
+
   // Log page_view once per mount
   useEffect(() => {
     if (typeof window === 'undefined') return;

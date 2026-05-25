@@ -610,3 +610,9 @@ ALTER TABLE profile
 --   "text":  { "en": "© ...", "ar": "..." },   // user's custom footer line (line 1)
 --   "color": "rgba(255,255,255,0.3)"           // color for both the user line and the designakum credit
 -- }
+
+
+-- ---------- favicon support (added) ----------
+
+ALTER TABLE profile
+  ADD COLUMN IF NOT EXISTS favicon_url TEXT;

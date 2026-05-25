@@ -270,7 +270,8 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
-          <img src={theme === 'light' ? '/logo-light.png' : '/logo.png'} alt="ديزاينكم" />
+          <img className={theme !== 'light' ? 'on' : ''} src="/logo.png" alt="ديزاينكم" />
+          <img className={theme === 'light' ? 'on' : ''} src="/logo-light.png" alt="" aria-hidden="true" />
         </div>
         <div className="sidebar-header">
           <div className="sidebar-title">⚙️ {t('sidebar_title')}</div>
@@ -318,8 +319,9 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         .dashboard.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
         .dashboard.light { --on-bg: 12,21,48; --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1; --text-primary: #0c1530; --text-secondary: #0c1530; --text-tertiary: #0c1530; --text-muted: #0c1530; background-color: #ffffff; }
         .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
-        .sidebar-logo { padding: var(--space-2) var(--space-3) 0; }
-        .sidebar-logo img { height: 26px; width: auto; display: block; }
+        .sidebar-logo { padding: var(--space-2) var(--space-3) 0; display: grid; justify-items: start; }
+        .sidebar-logo img { grid-area: 1 / 1; height: 26px; width: auto; display: block; opacity: 0; transition: opacity 0.25s ease; }
+        .sidebar-logo img.on { opacity: 1; }
         .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-3) var(--space-5); gap: 8px; }
         .sidebar-header-right { display: flex; align-items: center; gap: 6px; }
         .sidebar-title { font-size: 14px; font-weight: 700; }
@@ -609,7 +611,7 @@ function ProfileEditor({ t, lang }) {
 // =========================================================
 function CardEditor({ t, lang }) {
   const [profile, setProfile] = useState({
-    banners: [], stats: [], cta_buttons: [], brand_logo: '',
+    banners: [], stats: [], cta_buttons: [], brand_logo: '', favicon_url: '',
     top_ticker: { enabled: false, text: emptyBilingual(), bg_color: '#9FA7FF', text_color: '#0a0a0c', speed: 'medium' },
     footer: { text: emptyBilingual(), color: 'rgba(var(--on-bg),0.3)' },
   });
@@ -620,12 +622,13 @@ function CardEditor({ t, lang }) {
   useEffect(() => { load(); }, []);
 
   async function load() {
-    const { data } = await supabase.from('profile').select('banners, stats, cta_buttons, brand_logo, top_ticker, footer').eq('id', 1).maybeSingle();
+    const { data } = await supabase.from('profile').select('*').eq('id', 1).maybeSingle();
     if (data) setProfile({
       banners: data.banners || [],
       stats: data.stats || [],
       cta_buttons: data.cta_buttons || [],
       brand_logo: data.brand_logo || '',
+      favicon_url: data.favicon_url || '',
       top_ticker: {
         enabled: data.top_ticker?.enabled || false,
         text: data.top_ticker?.text || emptyBilingual(),
@@ -657,6 +660,7 @@ function CardEditor({ t, lang }) {
     return data.publicUrl;
   }
   async function uploadBrandLogo(file) { const url = await uploadAsset('brand-logo', file); if (url) patch({ brand_logo: url }); }
+  async function uploadFavicon(file)   { const url = await uploadAsset('favicon',    file); if (url) patch({ favicon_url: url }); }
 
   function addBanner() { if ((profile.banners?.length || 0) >= 5) return; patch({ banners: [...(profile.banners || []), { id: newId(), type: 'text', text: emptyBilingual(), subtitle: emptyBilingual(), bg: 'purple', image_url: '' }] }); }
   function updateBanner(id, u) { patch({ banners: profile.banners.map(b => b.id === id ? { ...b, ...u } : b) }); }
@@ -682,6 +686,10 @@ function CardEditor({ t, lang }) {
       <h2>{t('brand_logo')}</h2>
       <p className="hint">{t('brand_logo_hint')}</p>
       <ImageUpload value={profile.brand_logo} onUpload={uploadBrandLogo} onClear={() => patch({ brand_logo: '' })} aspect={1} hint={t('img_hint_brand_logo')} t={t} />
+
+      <h2>{t('favicon_title')}</h2>
+      <p className="hint">{t('favicon_hint')}</p>
+      <ImageUpload value={profile.favicon_url} onUpload={uploadFavicon} onClear={() => patch({ favicon_url: '' })} aspect={1} hint={t('img_hint_favicon')} t={t} />
 
       <h2>{t('ticker_title')} <span className="meta">· {t('ticker_sub')}</span></h2>
       <div className="card-row" style={{ maxWidth: 640 }}>
