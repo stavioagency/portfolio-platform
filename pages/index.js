@@ -698,16 +698,22 @@ export default function Home() {
 
 function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
   const [expanded, setExpanded] = useState(null);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
 
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        if (lightboxSrc) setLightboxSrc(null);
+        else onClose();
+      }
+    }
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [onClose]);
+  }, [onClose, lightboxSrc]);
 
   function toggleProject(id) {
     if (expanded !== id) onOpenProject?.(id);
@@ -754,7 +760,7 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
                         {full && <p className="pcard-full">{full}</p>}
                         {p.images && p.images.length > 0 && (
                           <div className="pcard-gallery">
-                            {p.images.map((img, i) => <img key={i} src={img} alt="" loading="lazy" />)}
+                            {p.images.map((img, i) => <img key={i} src={img} alt="" loading="lazy" onClick={() => setLightboxSrc(img)} />)}
                           </div>
                         )}
                         {p.external_url && (
@@ -769,6 +775,12 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
           )}
         </div>
       </div>
+      {lightboxSrc && (
+        <div className="lightbox" onClick={(e) => { e.stopPropagation(); setLightboxSrc(null); }}>
+          <button className="lightbox-close" onClick={(e) => { e.stopPropagation(); setLightboxSrc(null); }} aria-label="Close">×</button>
+          <img src={lightboxSrc} alt="" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
       <style jsx>{`
         .modal-bg {
           position: fixed; inset: 0;
@@ -823,7 +835,12 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
         .pcard-meta-grid strong { font-size: 13px; color: var(--text-primary); font-weight: 600; }
         .pcard-full { font-size: 14px; color: var(--text-secondary); line-height: 1.7; padding-top: 12px; border-top: 1px solid var(--border); margin-bottom: 16px; }
         .pcard-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 16px; }
-        .pcard-gallery img { width: 100%; border-radius: 8px; }
+        .pcard-gallery img { width: 100%; border-radius: 8px; cursor: zoom-in; transition: opacity 0.2s ease; }
+        .pcard-gallery img:hover { opacity: 0.85; }
+        .lightbox { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.92); display: flex; align-items: center; justify-content: center; padding: 20px; cursor: zoom-out; animation: fadeIn 0.18s ease; }
+        .lightbox img { max-width: 96vw; max-height: 92vh; object-fit: contain; border-radius: 6px; cursor: default; box-shadow: 0 12px 60px rgba(0,0,0,0.6); }
+        .lightbox-close { position: fixed; top: 16px; inset-inline-end: 16px; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.12); color: #fff; border: none; cursor: pointer; font-size: 22px; line-height: 1; font-family: inherit; display: flex; align-items: center; justify-content: center; z-index: 201; }
+        .lightbox-close:hover { background: rgba(255,255,255,0.22); }
         .pcard-link { display: inline-block; padding: 8px 16px; background: var(--accent); color: var(--bg-primary); border-radius: 10px; font-size: 13px; font-weight: 600; }
         @media (min-width: 640px) { .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } }
       `}</style>
