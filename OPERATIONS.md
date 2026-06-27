@@ -12,20 +12,17 @@
 
 ## 0. ⚠️ READ THIS FIRST — Things that WILL confuse you in 6 months
 
-1. **✅ There are TWO copies of the app inside the repo.** The **real** code is in `pages/`, `lib/`,
-   `styles/`. There are also **stale duplicate files at the repo root** (`admin.js`, `index.js`,
-   `_app.js`, `_document.js`, `translations.js`, `supabase.js`, `globals.css`) that are **older and
-   smaller** and **not used by Next.js**. Proof: root `admin.js` = 877 lines vs `pages/admin.js` =
-   1962 lines; root `index.js` has **zero** lightbox code while `pages/index.js` has it. **If you edit
-   the root files, nothing will happen to the live site.** Always edit `pages/…`, `lib/…`, `styles/…`.
+1. **✅ The real app code lives ONLY in `pages/`, `lib/`, `styles/`.** (Historical note: stale
+   duplicate copies of these files used to sit at the repo root and were a major confusion trap;
+   they were removed in commit `0ce6b16`. There is now one obvious place to edit.)
 2. **✅ There is a second, STALE working folder on this Mac:**
    `/Users/feras/Downloads/portfolio-platform-main` — **not** a git repo, not connected to anything.
    The live, git-connected folder is `/Users/feras/Documents/GitHub/portfolio-platform-new/Portfolio Project`.
    Editing the Downloads one is a dead end.
 3. **❌ The live Supabase project ref is NOT in the repo.** It was given in conversation
    (`fzjojgknisasomihduul`) but cannot be confirmed from any file. Verify in Supabase + Vercel env vars.
-4. **✅ Two SQL files exist** (`supabase-setup.sql` = old 66-line base, `supabase-complete.sql` =
-   618-line full setup). Only run **`supabase-complete.sql`** for new clients.
+4. **✅ The database setup file is `supabase-complete.sql`** — run this one file for new clients.
+   (The old 66-line base `supabase-setup.sql` is superseded and now lives in `/archive`.)
 
 ---
 
@@ -126,8 +123,7 @@ Schema facts below are ✅ VERIFIED from `supabase-complete.sql`. The *project i
 ⚠️ The exact mechanism is host-dependent and not provable from repo. Assuming the intended
 GitHub-Desktop → GitHub → host-auto-deploy flow (❌ ASSUMPTION):
 
-1. Edit files in the canonical clone (`pages/`, `lib/`, `styles/`, `public/` — **never the root
-   dupes**).
+1. Edit files in the canonical clone (`pages/`, `lib/`, `styles/`, `public/`).
 2. GitHub Desktop → review diff → Commit to `main` → **Push origin**.
 3. Host detects the push and rebuilds automatically.
 4. Verify the new build is live; hard-refresh (Cmd+Shift+R) / private window for cache.
@@ -140,7 +136,6 @@ SQL manually (e.g. `ALTER TABLE profile ADD COLUMN IF NOT EXISTS …`). New clie
 **or** `git revert <bad-commit>` → push. No rollback tooling exists in-repo.
 
 **Common deployment mistakes (✅ grounded in this repo's real traps):**
-- Editing the **root duplicate files** instead of `pages/…` → no effect on the live site.
 - Editing the **stale Downloads folder** → never reaches git.
 - Hand-uploading files via github.com web UI → caused branch divergence before (visible as the merge
   commit `c9798cd` in history). Use GitHub Desktop only.
@@ -172,32 +167,28 @@ SQL manually (e.g. `ALTER TABLE profile ADD COLUMN IF NOT EXISTS …`). New clie
 ```
 Portfolio Project/
 ├── pages/            ← REAL app (Next.js runs only this)
-│   ├── index.js      public site (✅ contains lightbox, 849 lines)
-│   ├── admin.js      admin dashboard (✅ 1962 lines)
+│   ├── index.js      public site (✅ contains lightbox)
+│   ├── admin.js      admin dashboard
 │   ├── _app.js  _document.js
 ├── lib/
 │   ├── supabase.js   client (env-driven)
-│   ├── translations.js (522 lines, EN+AR)
+│   ├── translations.js (EN+AR)
 │   ├── i18n.js  brand-icons.js
 ├── styles/globals.css
-├── public/  logo.png  logo-light.png  favicon.png  pattern.png
-├── supabase-complete.sql   (618 lines — the one to run)
-├── supabase-setup.sql      (66 lines — legacy base)
-├── CLIENT-SETUP.md  README.md  next.config.js  package.json
-│
-└── ── DUPLICATE / LEGACY (tracked in git, NOT used by Next.js) ──
-    admin.js  index.js  _app.js  _document.js   ← stale, smaller, root-level
-    translations.js  supabase.js  globals.css   ← stale root copies
+├── public/  logo.png  logo-light.png  favicon.png
+├── archive/  supabase-setup.sql  pattern.png   ← retired files, kept for history
+├── supabase-complete.sql   (the one to run for a new client DB)
+├── .gitignore  package-lock.json
+├── CLIENT-SETUP.md  README.md  OPERATIONS.md  next.config.js  package.json
 ```
 
 - **Important dirs:** ✅ `pages/`, `lib/`, `styles/`, `public/`.
-- **Dead/duplicate files:** ✅ the 7 root-level copies above. Confirmed older (e.g. root `admin.js`
-  877L vs `pages/admin.js` 1962L; root `index.js` has no lightbox).
-- **Legacy files:** ✅ `supabase-setup.sql` (superseded by `supabase-complete.sql`); ⚠️
-  `public/pattern.png` (the admin pattern was removed in conversation — file appears unused, but
-  "unused" is ❌ until grep-confirmed across the live code: a quick check shows no `pattern.png`
-  reference in `pages/`).
-- **Missing:** ✅ no `.gitignore`, no `vercel.json`, no `.github/workflows`, no test dir.
+- **Dead/duplicate files:** ✅ none. (The 7 stale root-level duplicates were removed in `0ce6b16`.)
+- **Retired files:** ✅ `archive/supabase-setup.sql` (superseded by `supabase-complete.sql`) and
+  `archive/pattern.png` (unused asset — the admin pattern was removed). Kept in `/archive` for history,
+  not used by the app.
+- **Missing:** ✅ no `vercel.json`, no `.github/workflows`, no test dir. (`.gitignore` and
+  `package-lock.json` now exist.)
 
 ---
 
@@ -222,10 +213,9 @@ Portfolio Project/
 ## 10. Known Issues
 
 **✅ Confirmed from the repo:**
-- 7 stale duplicate root files (editing-the-wrong-file trap).
-- Two SQL files; `supabase-complete.sql` carries layered/historical RLS policies (permissive set then
+- `supabase-complete.sql` carries layered/historical RLS policies (permissive set then
   admin-tightened set).
-- No `.gitignore`, no `vercel.json`, no CI, no tests.
+- No `vercel.json`, no CI, no tests.
 - `media` storage bucket is created **manually** (not by SQL) per client — a step easy to forget.
 
 **❌ Reported in conversation, NOT verifiable from repo (treat as unconfirmed):**
@@ -237,37 +227,31 @@ Portfolio Project/
 
 ## 11. Technical Debt
 
-- **✅ Duplicate code system:** root-level app files vs `pages/`/`lib/`/`styles/`. Two of everything.
 - **✅ Layered RLS in one SQL file:** old "Authed can write" policies plus newer "Admins can write"
   drop/recreate blocks — works, but the file reads like an archaeology dig.
-- **✅ Legacy SQL:** `supabase-setup.sql` no longer the path to use.
+- **✅ Retired SQL kept for history:** `archive/supabase-setup.sql` is superseded by
+  `supabase-complete.sql`.
 - **❌/⚠️ Architecture debt (from conversation, not files):** single-tenant (one Supabase + one host
   project per client); no staging; CSR public site. Real, but not provable from the repo.
-- **✅ No dependency/version pinning** beyond caret ranges; no lockfile is committed (none in
-  `git ls-files`), so installs aren't reproducible.
+- *(Resolved: duplicate root-file code system removed in `0ce6b16`; `package-lock.json` now committed
+  for reproducible installs.)*
 
 ---
 
 ## 12. Cleanup Opportunities
 
-**Safe to delete (✅ no runtime impact — Next.js ignores them):**
-- Root `admin.js`, `index.js`, `_app.js`, `_document.js`, `translations.js`, `supabase.js`,
-  `globals.css`.
-- ⚠️ `public/pattern.png` — safe **after** confirming no reference remains (quick grep shows none in
-  `pages/`).
+**✅ Done (this cleanup round):**
+- Removed the 7 stale root duplicate files (`0ce6b16`).
+- Added `.gitignore` and committed `package-lock.json` (`0ce6b16`).
+- Moved retired files to `/archive`: `supabase-setup.sql`, `pattern.png`.
 
-**Needs care first:**
-- `supabase-setup.sql` — keep only if you want the history; otherwise delete and rely on
-  `supabase-complete.sql`. Mark "legacy / do not run" if kept.
-
-**Should ADD (not delete):**
-- `.gitignore` (`node_modules/`, `.next/`, `.env*`, `.DS_Store`).
-- A committed lockfile (`package-lock.json`) for reproducible installs.
+**Still open (optional):**
 - `vercel.json` so hosting is provable in-repo.
 
 **High-risk removals (do NOT touch without a migration plan):**
 - Any table, function, or RLS policy in `supabase-complete.sql`.
 - The `media` bucket or its policies.
+- Anything in `/archive` — leave as historical record unless you deliberately prune it.
 
 ---
 
@@ -326,8 +310,7 @@ env vars, DNS records. The **code** is fully recoverable from GitHub alone.
 1. **✅ Mixed history of web-uploads.** Several commits are github.com web-editor edits ("Update
    admin.js") and a merge commit (`c9798cd`) from a divergence. → Going forward, **only** commit via
    GitHub Desktop; never edit files on github.com.
-2. **✅ Duplicate root files** from those early uploads. → Delete them (§12) so there's one obvious
-   place to edit.
+2. *(Resolved)* **Duplicate root files** from those early uploads were removed in `0ce6b16`.
 3. **✅ Two local folders** (Downloads stale vs Documents canonical). → Delete/rename the Downloads
    copy so you can't open the wrong one.
 4. **✅ Hosting not represented in-repo.** → Add `vercel.json` so the host is self-documenting.
@@ -343,4 +326,5 @@ platform change) — and that's a product decision, not an operations one.
 
 ### Confidence legend recap
 ✅ verified from files/git · ⚠️ needs dashboard verification · ❌ from conversation, unconfirmed in repo.
-**The biggest operational risk is not code — it's the duplicate files and folders. Resolve §0 first.**
+**The in-repo duplicate-file traps are now resolved. The remaining operational risk lives outside the
+repo — the stale Downloads folder and the dashboard-only facts (Vercel/Supabase) that §0 flags.**
