@@ -616,3 +616,9 @@ ALTER TABLE profile
 
 ALTER TABLE profile
   ADD COLUMN IF NOT EXISTS favicon_url TEXT;
+
+
+-- ---------- SEO support (added) ----------
+-- Shape: { "title": {en,ar}, "description": {en,ar}, "og_image": "https://..." }
+ALTER TABLE profile
+  ADD COLUMN IF NOT EXISTS seo JSONB DEFAULT '{}'::jsonb;

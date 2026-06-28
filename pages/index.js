@@ -190,6 +190,11 @@ export default function Home() {
   const showLinks = sections.links !== false; // honor toggle
   const langSwitcherOn = sections.lang_switcher !== false;
   const avatarSrc = profile.brand_logo || profile.profile_image || null;
+  // SEO overrides (admin → Profile → SEO), falling back to auto-derived values
+  const seo = profile.seo || {};
+  const seoTitle = pick(seo.title, lang) || `${name}${tagline ? ` | ${tagline}` : ''}`;
+  const seoDesc = pick(seo.description, lang) || bio || tagline;
+  const shareImage = seo.og_image || avatarSrc;
 
   // Top social icons (first 3 with icon + href), only if section enabled
   const socialIcons = showLinks
@@ -226,18 +231,18 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>{name}{tagline ? ` | ${tagline}` : ''}</title>
-        <meta name="description" content={bio || tagline} />
+        <title>{seoTitle}</title>
+        <meta name="description" content={seoDesc} />
         {/* Open Graph (link previews on iMessage / WhatsApp / Slack / Discord) */}
-        <meta property="og:title" content={`${name}${tagline ? ` | ${tagline}` : ''}`} />
-        <meta property="og:description" content={bio || tagline} />
+        <meta property="og:title" content={seoTitle} />
+        <meta property="og:description" content={seoDesc} />
         <meta property="og:type" content="profile" />
-        {avatarSrc && <meta property="og:image" content={avatarSrc} />}
+        {shareImage && <meta property="og:image" content={shareImage} />}
         {/* Twitter / X */}
-        <meta name="twitter:card" content={avatarSrc ? 'summary_large_image' : 'summary'} />
-        <meta name="twitter:title" content={name} />
-        <meta name="twitter:description" content={bio || tagline} />
-        {avatarSrc && <meta name="twitter:image" content={avatarSrc} />}
+        <meta name="twitter:card" content={shareImage ? 'summary_large_image' : 'summary'} />
+        <meta name="twitter:title" content={seoTitle} />
+        <meta name="twitter:description" content={seoDesc} />
+        {shareImage && <meta name="twitter:image" content={shareImage} />}
       </Head>
 
       <main className={`page ${showTicker ? 'has-ticker' : ''}`} dir={dir}>

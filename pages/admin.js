@@ -490,7 +490,7 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
 // Profile Editor — single-lang inputs (uses chrome lang)
 // =========================================================
 function ProfileEditor({ t, lang }) {
-  const [profile, setProfile] = useState({ name: emptyBilingual(), tagline: emptyBilingual(), bio: emptyBilingual(), profile_image: '', default_lang: 'ar', custom_fields: [], sections: { bio: true, custom_fields: true, projects: true, links: true, lang_switcher: true } });
+  const [profile, setProfile] = useState({ name: emptyBilingual(), tagline: emptyBilingual(), bio: emptyBilingual(), profile_image: '', default_lang: 'ar', custom_fields: [], sections: { bio: true, custom_fields: true, projects: true, links: true, lang_switcher: true }, seo: { title: emptyBilingual(), description: emptyBilingual(), og_image: '' } });
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
@@ -508,6 +508,11 @@ function ProfileEditor({ t, lang }) {
         default_lang: data.default_lang || 'ar',
         custom_fields: data.custom_fields || [],
         sections: data.sections || { bio: true, custom_fields: true, projects: true, links: true, lang_switcher: true },
+        seo: {
+          title: data.seo?.title || emptyBilingual(),
+          description: data.seo?.description || emptyBilingual(),
+          og_image: data.seo?.og_image || '',
+        },
       });
     }
   }
@@ -528,6 +533,14 @@ function ProfileEditor({ t, lang }) {
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     patch({ profile_image: data.publicUrl });
   }
+  async function uploadOgImage(file) {
+    const path = `og-${Date.now()}.${file.name.split('.').pop()}`;
+    const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
+    if (error) { alert(error.message); return; }
+    const { data } = supabase.storage.from('media').getPublicUrl(path);
+    patch({ seo: { ...profile.seo, og_image: data.publicUrl } });
+  }
+  function patchSeo(key, val) { patch({ seo: { ...profile.seo, [key]: setLangValue(profile.seo?.[key], lang, val) } }); }
 
   function addCustomField() { patch({ custom_fields: [...(profile.custom_fields || []), { id: newId(), label: emptyBilingual(), value: emptyBilingual() }] }); }
   function updateCustomField(id, updates) { patch({ custom_fields: profile.custom_fields.map(f => f.id === id ? { ...f, ...updates } : f) }); }
@@ -555,6 +568,18 @@ function ProfileEditor({ t, lang }) {
       </Field>
       <Field id="profile-image" label={t('profile_image')}>
         <ImageUpload value={profile.profile_image} onUpload={uploadImage} onClear={() => patch({ profile_image: '' })} aspect={1} hint={t('img_hint_profile')} t={t} />
+      </Field>
+
+      <h2>{t('seo_title')}</h2>
+      <p className="hint">{t('seo_sub')}</p>
+      <Field id="seo-title" label={t('seo_meta_title')}>
+        <input id="seo-title" value={pick(profile.seo?.title, lang)} onChange={(e) => patchSeo('title', e.target.value)} placeholder={pick(profile.name, lang)} maxLength={60} />
+      </Field>
+      <Field id="seo-desc" label={t('seo_meta_desc')}>
+        <textarea id="seo-desc" rows={2} value={pick(profile.seo?.description, lang)} onChange={(e) => patchSeo('description', e.target.value)} placeholder={pick(profile.bio, lang)} maxLength={160} />
+      </Field>
+      <Field id="seo-og" label={t('seo_share_image')}>
+        <ImageUpload value={profile.seo?.og_image} onUpload={uploadOgImage} onClear={() => patch({ seo: { ...profile.seo, og_image: '' } })} aspect={1.91} hint={t('seo_share_hint')} t={t} />
       </Field>
 
       <h2>{t('custom_fields_title')}</h2>
