@@ -132,9 +132,9 @@ export default function Terms() {
         <meta name="robots" content="noindex" />
       </Head>
       <main className="legal-page" dir={dir}>
+        <Link href="/" className="back-corner">{c.backHome}</Link>
         <div className="legal-card">
           <div className="legal-top">
-            <Link href="/" className="back-link">{c.backHome}</Link>
             <button className="lang-pill" onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} title={lang === 'ar' ? 'Switch to English' : 'التحويل إلى العربية'}>
               {lang === 'ar' ? 'EN' : 'ع'}
             </button>
@@ -155,8 +155,9 @@ export default function Terms() {
             min-height: 100vh;
             display: flex;
             justify-content: center;
-            padding: 48px 20px;
+            padding: 88px 20px 48px;
             background: var(--bg-primary);
+            position: relative;
           }
           .legal-card {
             width: 100%;
@@ -168,11 +169,14 @@ export default function Terms() {
           }
           .legal-top {
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
             margin-bottom: 24px;
           }
-          .back-link {
+          .back-corner {
+            position: absolute;
+            top: 24px;
+            inset-inline-start: 20px;
             display: inline-flex;
             align-items: center;
             gap: 6px;
@@ -184,8 +188,9 @@ export default function Terms() {
             font-weight: 600;
             color: var(--text-primary);
             transition: var(--transition);
+            z-index: 2;
           }
-          .back-link:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+          .back-corner:hover { background: var(--bg-hover); border-color: var(--border-strong); }
           .lang-pill {
             padding: 6px 12px;
             background: rgba(255,255,255,0.06);
