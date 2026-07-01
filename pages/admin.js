@@ -61,6 +61,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [lang, setLangState] = useState('ar');
   const [theme, setThemeState] = useState('dark');
+  const [recoveryMode, setRecoveryMode] = useState(false);
   const t = getTranslator(lang);
 
   useEffect(() => {
@@ -73,7 +74,10 @@ export default function Admin() {
       setSession(data.session);
       setLoading(false);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
+      setSession(s);
+    });
     return () => listener.subscription.unsubscribe();
   }, []);
 
@@ -103,9 +107,11 @@ export default function Admin() {
   return (
     <>
       <Head><title>{t('head_title_admin')}</title></Head>
-      {session
-        ? <Dashboard session={session} lang={lang} toggleLang={toggleLang} setLang={setLang} theme={theme} toggleTheme={toggleTheme} />
-        : <SignIn lang={lang} toggleLang={toggleLang} theme={theme} toggleTheme={toggleTheme} />}
+      {recoveryMode
+        ? <SetNewPassword lang={lang} toggleLang={toggleLang} theme={theme} toggleTheme={toggleTheme} onDone={() => setRecoveryMode(false)} />
+        : session
+          ? <Dashboard session={session} lang={lang} toggleLang={toggleLang} setLang={setLang} theme={theme} toggleTheme={toggleTheme} />
+          : <SignIn lang={lang} toggleLang={toggleLang} theme={theme} toggleTheme={toggleTheme} />}
     </>
   );
 }
@@ -177,6 +183,11 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const [mode, setMode] = useState('signin'); // 'signin' | 'forgot'
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotDone, setForgotDone] = useState(false);
+
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true); setError('');
@@ -191,20 +202,136 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
     setLoading(false);
   }
 
+  async function handleForgotSubmit(e) {
+    e.preventDefault();
+    setForgotLoading(true);
+    const raw = forgotIdentifier.trim();
+    // Accept a typed email directly; otherwise resolve a username to its email
+    // via the same RPC the sign-in form uses. Either way we show the same
+    // generic message afterward so we never reveal whether an account exists.
+    let email = raw.includes('@') ? raw : null;
+    if (!email) {
+      const { data } = await supabase.rpc('get_email_for_username', { p_username: raw.toLowerCase() });
+      email = data || null;
+    }
+    if (email) {
+      await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/admin` });
+    }
+    setForgotLoading(false);
+    setForgotDone(true);
+  }
+
+  function backToSignIn() {
+    setMode('signin');
+    setForgotDone(false);
+    setForgotIdentifier('');
+  }
+
+  const isForgot = mode === 'forgot';
+
+  return (
+    <div className={`signin-wrap ${theme || 'dark'}`}>
+      <form className="signin-card" onSubmit={isForgot ? handleForgotSubmit : handleSubmit}>
+        <div className="signin-top">
+          <h1>{isForgot ? t('forgot_password_heading') : t('sign_in_heading')}</h1>
+          <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
+        </div>
+
+        {isForgot ? (
+          forgotDone ? (
+            <>
+              <p className="signin-hint">{t('forgot_password_sent')}</p>
+              <button type="button" className="link-btn" onClick={backToSignIn}>{t('back_to_sign_in')}</button>
+            </>
+          ) : (
+            <>
+              <p className="signin-hint">{t('forgot_password_hint')}</p>
+              <label htmlFor="forgot-identifier">{t('username_or_email')}</label>
+              <input id="forgot-identifier" name="forgot-identifier" type="text" dir="ltr" value={forgotIdentifier} onChange={(e) => setForgotIdentifier(e.target.value)} required autoFocus autoComplete="username" spellCheck="false" autoCapitalize="off" />
+              <button type="submit" disabled={forgotLoading || !forgotIdentifier.trim()}>{forgotLoading ? t('sending') : t('send_reset_link')}</button>
+              <button type="button" className="link-btn" onClick={backToSignIn}>{t('back_to_sign_in')}</button>
+            </>
+          )
+        ) : (
+          <>
+            <p className="signin-hint">{t('sign_in_hint')}</p>
+            <label htmlFor="signin-username">{t('username')}</label>
+            <input id="signin-username" name="username" type="text" dir="ltr" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus autoComplete="username" spellCheck="false" autoCapitalize="off" />
+            <label htmlFor="signin-password">{t('password')}</label>
+            <input id="signin-password" name="password" type="password" dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+            {error && <div className="error">{error}</div>}
+            <button type="submit" disabled={loading}>{loading ? t('signing_in') : t('sign_in')}</button>
+            <button type="button" className="link-btn" onClick={() => setMode('forgot')}>{t('forgot_password_link')}</button>
+          </>
+        )}
+      </form>
+      <style jsx>{`
+        .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
+        .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
+        .signin-wrap.light { --on-bg: 12,21,48; --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1; --text-primary: #0c1530; --text-secondary: #0c1530; --text-tertiary: #0c1530; --text-muted: #0c1530; background-color: #ffffff; }
+        .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
+        .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
+        h1 { font-size: 22px; font-weight: 700; }
+        .signin-hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-5); }
+        label { display: block; font-size: 12px; font-weight: 500; color: var(--text-tertiary); margin: var(--space-4) 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+        input { width: 100%; padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; transition: var(--transition); font-family: inherit; }
+        input:focus { outline: none; border-color: var(--accent); }
+        button[type="submit"] { width: 100%; padding: 12px; background: var(--accent); color: #fff; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; margin-top: var(--space-5); transition: var(--transition); border: none; cursor: pointer; }
+        button[type="submit"]:hover:not(:disabled) { background: var(--accent-hover); }
+        button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+        .link-btn { width: 100%; background: none; border: none; padding: 0; margin-top: 12px; font-size: 12px; color: var(--text-tertiary); cursor: pointer; font-family: inherit; text-align: center; text-decoration: underline; }
+        .link-btn:hover { color: var(--text-primary); }
+        .error { margin-top: var(--space-4); padding: 10px 12px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 13px; }
+      `}</style>
+    </div>
+  );
+}
+
+// =========================================================
+// Set New Password — shown when Supabase signals PASSWORD_RECOVERY
+// (i.e. the admin opened a password-reset email link)
+// =========================================================
+function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
+  const t = getTranslator(lang);
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    if (newPwd.length < 8) { setError(t('password_too_short')); return; }
+    if (newPwd !== confirmPwd) { setError(t('password_mismatch')); return; }
+    setLoading(true);
+    const { error: updateErr } = await supabase.auth.updateUser({ password: newPwd });
+    setLoading(false);
+    if (updateErr) { setError(updateErr.message); return; }
+    setDone(true);
+    setTimeout(() => onDone && onDone(), 1200);
+  }
+
   return (
     <div className={`signin-wrap ${theme || 'dark'}`}>
       <form className="signin-card" onSubmit={handleSubmit}>
         <div className="signin-top">
-          <h1>{t('sign_in_heading')}</h1>
+          <h1>{t('set_new_password_heading')}</h1>
           <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
         </div>
-        <p className="signin-hint">{t('sign_in_hint')}</p>
-        <label htmlFor="signin-username">{t('username')}</label>
-        <input id="signin-username" name="username" type="text" dir="ltr" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus autoComplete="username" spellCheck="false" autoCapitalize="off" />
-        <label htmlFor="signin-password">{t('password')}</label>
-        <input id="signin-password" name="password" type="password" dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
-        {error && <div className="error">{error}</div>}
-        <button type="submit" disabled={loading}>{loading ? t('signing_in') : t('sign_in')}</button>
+        {done ? (
+          <p className="signin-hint">{t('password_updated')}</p>
+        ) : (
+          <>
+            <p className="signin-hint">{t('set_new_password_hint')}</p>
+            <label htmlFor="new-pwd">{t('new_password')}</label>
+            <input id="new-pwd" name="new-pwd" type="password" dir="ltr" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} required autoFocus autoComplete="new-password" />
+            <label htmlFor="confirm-pwd">{t('confirm_new_password')}</label>
+            <input id="confirm-pwd" name="confirm-pwd" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} required autoComplete="new-password" />
+            {error && <div className="error">{error}</div>}
+            <button type="submit" disabled={loading}>{loading ? t('saving') : t('set_new_password_button')}</button>
+          </>
+        )}
       </form>
       <style jsx>{`
         .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
