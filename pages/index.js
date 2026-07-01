@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
 import { pick } from '../lib/i18n';
@@ -407,9 +408,14 @@ export default function Home() {
           )}
         </div>
 
-        {/* FOOTER — custom user line only */}
+        {/* FOOTER — custom user line + legal links */}
         <footer className="footer" style={{ color: footerColor }}>
           <span>{customFooterText || `© ${name} ${new Date().getFullYear()}`}</span>
+          <div className="footer-credit">
+            <Link href="/privacy">{lang === 'ar' ? 'الخصوصية' : 'Privacy'}</Link>
+            {' · '}
+            <Link href="/terms">{lang === 'ar' ? 'الشروط' : 'Terms'}</Link>
+          </div>
         </footer>
 
         {/* PROJECTS MODAL */}
