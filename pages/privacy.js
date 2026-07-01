@@ -100,7 +100,7 @@ export default function Privacy() {
         <meta name="robots" content="noindex" />
       </Head>
       <main className="legal-page" dir={dir}>
-        <Link href="/" className="back-corner">{c.backHome}</Link>
+        <Link href="/" className="back-corner" style={{ [dir === 'rtl' ? 'right' : 'left']: '20px' }} aria-label={c.backHome} title={c.backHome}>×</Link>
         <div className="legal-card">
           <div className="legal-top">
             <button className="lang-pill" onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} title={lang === 'ar' ? 'Switch to English' : 'التحويل إلى العربية'}>
@@ -144,16 +144,16 @@ export default function Privacy() {
           .back-corner {
             position: absolute;
             top: 24px;
-            inset-inline-start: 20px;
-            display: inline-flex;
+            width: 40px;
+            height: 40px;
+            display: flex;
             align-items: center;
-            gap: 6px;
-            padding: 8px 14px;
+            justify-content: center;
             background: var(--bg-elevated);
             border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            font-size: 13px;
-            font-weight: 600;
+            border-radius: 50%;
+            font-size: 22px;
+            line-height: 1;
             color: var(--text-primary);
             transition: var(--transition);
             z-index: 2;
