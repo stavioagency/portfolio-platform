@@ -50,7 +50,7 @@ const content = {
       },
     ],
     note: 'ملاحظة: هذه الشروط مؤقتة ومناسبة لمرحلة مبكرة من المنتج، وسيتم تحديثها ومراجعتها قانونيًا لاحقًا.',
-    backHome: 'العودة إلى البورتفوليو',
+    closeLabel: 'إغلاق الصفحة القانونية',
   },
   en: {
     title: 'Terms & Conditions',
@@ -99,7 +99,7 @@ const content = {
       },
     ],
     note: 'Note: these terms are a temporary, early-stage placeholder and will be updated and legally reviewed later.',
-    backHome: 'Back to Portfolio',
+    closeLabel: 'Close legal page',
   },
 };
 
@@ -132,7 +132,7 @@ export default function Terms() {
         <meta name="robots" content="noindex" />
       </Head>
       <main className="legal-page" dir={dir}>
-        <Link href="/" className="back-corner" style={{ [dir === 'rtl' ? 'right' : 'left']: '20px' }} aria-label={c.backHome} title={c.backHome}>×</Link>
+        <Link href="/" className="back-corner" style={{ [dir === 'rtl' ? 'right' : 'left']: '20px' }} aria-label={c.closeLabel} title={c.closeLabel}>×</Link>
         <div className="legal-card">
           <div className="legal-top">
             <button className="lang-pill" onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} title={lang === 'ar' ? 'Switch to English' : 'التحويل إلى العربية'}>
@@ -175,22 +175,25 @@ export default function Terms() {
           }
           .back-corner {
             position: absolute;
-            top: 24px;
-            width: 40px;
-            height: 40px;
+            top: 20px;
+            width: 56px;
+            height: 56px;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
+            background: #f5efe0;
+            color: #14203f;
+            border: 1px solid rgba(0,0,0,0.12);
             border-radius: 50%;
-            font-size: 22px;
+            font-size: 34px;
             line-height: 1;
-            color: var(--text-primary);
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.35);
             transition: var(--transition);
             z-index: 2;
           }
-          .back-corner:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+          .back-corner:hover { background: #ffffff; transform: scale(1.06); box-shadow: 0 8px 26px rgba(0,0,0,0.45); }
+          .back-corner:focus-visible { outline: 3px solid #14203f; outline-offset: 3px; }
           .lang-pill {
             padding: 6px 12px;
             background: rgba(255,255,255,0.06);
