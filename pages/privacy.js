@@ -1,75 +1,8 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { privacyContent as content } from '../lib/legal-content';
 
-const content = {
-  ar: {
-    title: 'سياسة الخصوصية',
-    updated: 'آخر تحديث: 2026',
-    intro: 'توضح هذه الصفحة كيف تتعامل ديزاينكم مع بياناتك عند استخدام منصة بناء المواقع الشخصية. هذه الصفحة مبدئية وعملية لمرحلة مبكرة من المشروع، وليست استشارة قانونية نهائية — ويجب مراجعتها من جهة قانونية مختصة قبل التوسع أو استقبال عدد كبير من العملاء.',
-    sections: [
-      {
-        h: 'البيانات التي نجمعها',
-        p: 'محتوى موقعك الشخصي (الاسم، النبذة، الصور، الروابط، المشاريع)، بيانات حساب لوحة التحكم (اسم المستخدم والبريد الإلكتروني)، وبيانات تصفح مجهولة (عدد الزيارات، الصفحة المُحيلة، الدولة) لغرض الإحصائيات.',
-      },
-      {
-        h: 'كيف نستخدم هذه البيانات',
-        p: 'لعرض موقعك الشخصي للزوار، ولتزويدك بإحصائيات الزيارات داخل لوحة التحكم، ولتشغيل خدمة تسجيل الدخول والاستعادة الآمنة لحسابك.',
-      },
-      {
-        h: 'الجهات الخارجية المستخدمة',
-        p: 'نستخدم Supabase لتخزين البيانات والصور وإدارة الحسابات، ونستخدم Vercel لاستضافة الموقع. لا تُشارك بياناتك مع أي جهة تسويقية أو إعلانية.',
-      },
-      {
-        h: 'ملفات تعريف الارتباط والتخزين المحلي',
-        p: 'نستخدم التخزين المحلي في متصفحك فقط لأغراض وظيفية: حفظ لغة العرض المفضلة، وتفضيل الوضع الداكن/الفاتح في لوحة التحكم، ومعرّف زائر مجهول للإحصائيات. لا نستخدم أي تتبع إعلاني.',
-      },
-      {
-        h: 'التحكم في بياناتك',
-        p: 'يمكنك تعديل أو حذف محتوى موقعك في أي وقت من لوحة التحكم. لطلب حذف حسابك بالكامل، تواصل معنا عبر البريد أدناه.',
-      },
-      {
-        h: 'التواصل',
-        p: 'يمكنك التواصل معنا عبر قناة التواصل الرسمية الخاصة بـ Designakum.',
-      },
-    ],
-    note: 'ملاحظة: هذه السياسة مؤقتة ومناسبة لمرحلة مبكرة من المنتج، وسيتم تحديثها ومراجعتها قانونيًا لاحقًا.',
-    closeLabel: 'إغلاق الصفحة القانونية',
-  },
-  en: {
-    title: 'Privacy Policy',
-    updated: 'Last updated: 2026',
-    intro: "This page explains how designakum handles your data when you use our portfolio-building platform. This is an early-stage, practical placeholder — not final legal advice — and should be reviewed by a qualified legal professional before scaling or taking on significant customer volume.",
-    sections: [
-      {
-        h: 'Data we collect',
-        p: 'Your portfolio content (name, bio, images, links, projects), admin account data (username and email), and anonymous visitor analytics (visit counts, referrer, country) for statistics purposes.',
-      },
-      {
-        h: 'How we use this data',
-        p: "To display your portfolio to visitors, to give you visitor analytics inside your admin dashboard, and to run secure sign-in and account recovery.",
-      },
-      {
-        h: 'Third parties involved',
-        p: 'We use Supabase for data, image storage, and account management, and Vercel for hosting. Your data is never shared with advertising or marketing third parties.',
-      },
-      {
-        h: 'Cookies & local storage',
-        p: "We use your browser's local storage only for functional purposes: remembering your preferred display language, your admin dark/light preference, and an anonymous visitor id for analytics. We do not use advertising trackers.",
-      },
-      {
-        h: 'Your control over your data',
-        p: 'You can edit or delete your portfolio content at any time from the admin dashboard. To request full account deletion, contact us at the email below.',
-      },
-      {
-        h: 'Contact',
-        p: 'Contact us through the official Designakum contact channel.',
-      },
-    ],
-    note: 'Note: this policy is a temporary, early-stage placeholder and will be updated and legally reviewed later.',
-    closeLabel: 'Close legal page',
-  },
-};
 
 function readLang() {
   if (typeof window === 'undefined') return null;

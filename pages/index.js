@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
-import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
 import { pick } from '../lib/i18n';
+import { privacyContent, termsContent } from '../lib/legal-content';
 import { BRAND_ICONS, normalizeIcon } from '../lib/brand-icons';
 
 const BANNER_BGS = {
@@ -44,6 +44,7 @@ export default function Home() {
   const [lang, setLang] = useState('ar');
   const [bannerIdx, setBannerIdx] = useState(0);
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [legalModal, setLegalModal] = useState(null); // 'privacy' | 'terms' | null
   const [aboutOpen, setAboutOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -412,9 +413,9 @@ export default function Home() {
         <footer className="footer" style={{ color: footerColor }}>
           <span>{customFooterText || `© ${name} ${new Date().getFullYear()}`}</span>
           <div className="footer-credit">
-            <Link href="/privacy">{lang === 'ar' ? 'الخصوصية' : 'Privacy'}</Link>
+            <button type="button" className="footer-legal-link" onClick={() => setLegalModal('privacy')}>{lang === 'ar' ? 'الخصوصية' : 'Privacy'}</button>
             {' · '}
-            <Link href="/terms">{lang === 'ar' ? 'الشروط' : 'Terms'}</Link>
+            <button type="button" className="footer-legal-link" onClick={() => setLegalModal('terms')}>{lang === 'ar' ? 'الشروط' : 'Terms'}</button>
           </div>
         </footer>
 
@@ -426,6 +427,15 @@ export default function Home() {
             lang={lang}
             onClose={() => setProjectsOpen(false)}
             onOpenProject={onProjectOpen}
+          />
+        )}
+
+        {/* LEGAL MODAL (footer Privacy / Terms) */}
+        {legalModal && (
+          <LegalModal
+            content={legalModal === 'privacy' ? privacyContent : termsContent}
+            lang={lang}
+            onClose={() => setLegalModal(null)}
           />
         )}
       </main>
@@ -693,6 +703,8 @@ export default function Home() {
         }
         .footer-credit a { color: rgba(255,255,255,0.55); }
         .footer-credit a:hover { color: #fff; }
+        .footer-legal-link { color: rgba(255,255,255,0.55); font: inherit; background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+        .footer-legal-link:hover { color: #fff; }
 
         /* Mobile spacing tightens */
         @media (max-width: 480px) {
@@ -853,6 +865,100 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
         .lightbox-close:hover { background: rgba(255,255,255,0.22); }
         .pcard-link { display: inline-block; padding: 8px 16px; background: var(--accent); color: var(--bg-primary); border-radius: 10px; font-size: 13px; font-weight: 600; }
         @media (min-width: 640px) { .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } }
+      `}</style>
+    </div>
+  );
+}
+
+// =========================================================
+// Legal Modal — footer Privacy / Terms popup (content from lib/legal-content.js)
+// =========================================================
+function LegalModal({ content, lang, onClose }) {
+  const c = content[lang] || content.en;
+  const dir = lang === 'ar' ? 'rtl' : 'ltr';
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
+
+  return (
+    <div className="legal-bg" onClick={onClose}>
+      <div className="legal-modal" dir={dir} onClick={(e) => e.stopPropagation()}>
+        <div className="legal-modal-top">
+          <h2>{c.title}</h2>
+          <button className="legal-close" onClick={onClose} aria-label={c.closeLabel} title={c.closeLabel}>×</button>
+        </div>
+        <div className="legal-modal-body">
+          <p className="lm-updated">{c.updated}</p>
+          <p className="lm-intro">{c.intro}</p>
+          {c.sections.map((s, i) => (
+            <section key={i}>
+              <h3>{s.h}</h3>
+              <p>{s.p}</p>
+            </section>
+          ))}
+          <p className="lm-note">{c.note}</p>
+        </div>
+      </div>
+      <style jsx>{`
+        .legal-bg {
+          position: fixed; inset: 0; z-index: 150;
+          background: rgba(0,0,0,0.7);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          display: flex; align-items: center; justify-content: center;
+          padding: 24px 16px;
+          animation: fadeIn 0.2s ease;
+        }
+        .legal-modal {
+          width: 100%; max-width: 640px; max-height: 85vh;
+          display: flex; flex-direction: column;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-strong);
+          border-radius: var(--radius-lg);
+          box-shadow: 0 24px 70px rgba(0,0,0,0.5);
+          animation: slideUp 0.25s ease;
+          overflow: hidden;
+        }
+        .legal-modal-top {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 12px; padding: 20px 24px;
+          border-bottom: 1px solid var(--border);
+          flex-shrink: 0;
+        }
+        .legal-modal-top h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+        .legal-close {
+          display: flex; align-items: center; justify-content: center;
+          width: 36px; height: 36px; flex-shrink: 0;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid var(--border);
+          border-radius: 50%;
+          color: var(--text-secondary);
+          font-size: 24px; line-height: 1;
+          cursor: pointer; font-family: inherit;
+          transition: var(--transition);
+        }
+        .legal-close:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
+        .legal-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .legal-modal-body { padding: 24px; overflow-y: auto; }
+        .lm-updated { font-size: 12px; color: var(--text-muted); margin-bottom: 18px; }
+        .lm-intro { font-size: 14px; line-height: 1.7; color: var(--text-secondary); margin-bottom: 26px; }
+        .legal-modal-body section { margin-bottom: 20px; }
+        .legal-modal-body h3 { font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+        .legal-modal-body section p { font-size: 14px; line-height: 1.7; color: var(--text-secondary); }
+        .lm-note { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); font-style: italic; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @media (max-width: 480px) {
+          .legal-modal-top { padding: 16px 18px; }
+          .legal-modal-body { padding: 18px; }
+        }
       `}</style>
     </div>
   );
