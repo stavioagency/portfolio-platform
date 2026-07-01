@@ -1336,7 +1336,7 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
 // Appearance Editor
 // =========================================================
 function AppearanceEditor({ t, lang }) {
-  const [appearance, setAppearance] = useState({ theme: 'midnight', tokens: { ...THEME_PRESETS.midnight.tokens }, font_heading: 'manrope', font_body: 'manrope', density: 'comfortable', radius: 'soft' });
+  const [appearance, setAppearance] = useState({ theme: 'midnight', tokens: { ...THEME_PRESETS.midnight.tokens }, font_body: 'manrope', density: 'comfortable', radius: 'soft' });
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
@@ -1349,7 +1349,6 @@ function AppearanceEditor({ t, lang }) {
       setAppearance({
         theme: data.appearance.theme || 'midnight',
         tokens: { ...(THEME_PRESETS.midnight.tokens), ...(data.appearance.tokens || {}) },
-        font_heading: data.appearance.font_heading || 'manrope',
         font_body: data.appearance.font_body || 'manrope',
         density: data.appearance.density || 'comfortable',
         radius: data.appearance.radius || 'soft',
@@ -1394,11 +1393,6 @@ function AppearanceEditor({ t, lang }) {
       </div>
 
       <h2>{t('typography')}</h2>
-      <Field id="font-h" label={t('font_heading')}>
-        <select id="font-h" value={appearance.font_heading} onChange={(e) => patch({ font_heading: e.target.value })}>
-          {FONT_OPTIONS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-        </select>
-      </Field>
       <Field id="font-b" label={t('font_body')}>
         <select id="font-b" value={appearance.font_body} onChange={(e) => patch({ font_body: e.target.value })}>
           {FONT_OPTIONS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}

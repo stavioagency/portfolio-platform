@@ -96,7 +96,6 @@ export default function Home() {
       if (tk.text_muted) root.style.setProperty('--text-tertiary', tk.text_muted);
       if (tk.border)     root.style.setProperty('--border', tk.border);
     }
-    if (a.font_heading && FONT_STACKS[a.font_heading]) root.style.setProperty('--font-heading', FONT_STACKS[a.font_heading]);
     if (a.font_body && FONT_STACKS[a.font_body]) {
       root.style.setProperty('--font-body', FONT_STACKS[a.font_body]);
       root.style.setProperty('--font-sans', FONT_STACKS[a.font_body]);
