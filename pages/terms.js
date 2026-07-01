@@ -132,12 +132,12 @@ export default function Terms() {
         <meta name="robots" content="noindex" />
       </Head>
       <main className="legal-page" dir={dir}>
-        <Link href="/" className="back-corner" style={{ [dir === 'rtl' ? 'right' : 'left']: '20px' }} aria-label={c.closeLabel} title={c.closeLabel}>×</Link>
         <div className="legal-card">
           <div className="legal-top">
             <button className="lang-pill" onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} title={lang === 'ar' ? 'Switch to English' : 'التحويل إلى العربية'}>
               {lang === 'ar' ? 'EN' : 'ع'}
             </button>
+            <Link href="/" className="close-x" aria-label={c.closeLabel} title={c.closeLabel}>×</Link>
           </div>
           <h1>{c.title}</h1>
           <p className="updated">{c.updated}</p>
@@ -155,9 +155,8 @@ export default function Terms() {
             min-height: 100vh;
             display: flex;
             justify-content: center;
-            padding: 88px 20px 48px;
+            padding: 48px 20px;
             background: var(--bg-primary);
-            position: relative;
           }
           .legal-card {
             width: 100%;
@@ -169,31 +168,27 @@ export default function Terms() {
           }
           .legal-top {
             display: flex;
-            justify-content: flex-end;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 24px;
           }
-          .back-corner {
-            position: absolute;
-            top: 20px;
-            width: 56px;
-            height: 56px;
+          .close-x {
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #f5efe0;
-            color: #14203f;
-            border: 1px solid rgba(0,0,0,0.12);
+            width: 34px;
+            height: 34px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid var(--border);
             border-radius: 50%;
-            font-size: 34px;
+            color: var(--text-secondary);
+            font-size: 22px;
             line-height: 1;
-            cursor: pointer;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+            font-family: inherit;
             transition: var(--transition);
-            z-index: 2;
           }
-          .back-corner:hover { background: #ffffff; transform: scale(1.06); box-shadow: 0 8px 26px rgba(0,0,0,0.45); }
-          .back-corner:focus-visible { outline: 3px solid #14203f; outline-offset: 3px; }
+          .close-x:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+          .close-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
           .lang-pill {
             padding: 6px 12px;
             background: rgba(255,255,255,0.06);
