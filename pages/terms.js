@@ -50,7 +50,7 @@ const content = {
       },
     ],
     note: 'ملاحظة: هذه الشروط مؤقتة ومناسبة لمرحلة مبكرة من المنتج، وسيتم تحديثها ومراجعتها قانونيًا لاحقًا.',
-    backHome: 'العودة للرئيسية',
+    backHome: 'العودة إلى البورتفوليو',
   },
   en: {
     title: 'Terms & Conditions',
@@ -99,7 +99,7 @@ const content = {
       },
     ],
     note: 'Note: these terms are a temporary, early-stage placeholder and will be updated and legally reviewed later.',
-    backHome: 'Back to homepage',
+    backHome: 'Back to Portfolio',
   },
 };
 
@@ -173,11 +173,19 @@ export default function Terms() {
             margin-bottom: 24px;
           }
           .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
             font-size: 13px;
-            color: var(--text-tertiary);
-            text-decoration: underline;
+            font-weight: 600;
+            color: var(--text-primary);
+            transition: var(--transition);
           }
-          .back-link:hover { color: var(--text-primary); }
+          .back-link:hover { background: var(--bg-hover); border-color: var(--border-strong); }
           .lang-pill {
             padding: 6px 12px;
             background: rgba(255,255,255,0.06);
