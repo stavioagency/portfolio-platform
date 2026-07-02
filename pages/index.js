@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
@@ -47,9 +47,15 @@ export default function Home() {
   const [legalModal, setLegalModal] = useState(null); // 'privacy' | 'terms' | null
   const [aboutOpen, setAboutOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [pageUrl, setPageUrl] = useState('');
 
   const t = getTranslator(lang);
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
+
+  // Canonical / og:url — resolved client-side from the current location
+  useEffect(() => {
+    if (typeof window !== 'undefined') setPageUrl(window.location.origin + window.location.pathname);
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -234,10 +240,12 @@ export default function Home() {
       <Head>
         <title>{seoTitle}</title>
         <meta name="description" content={seoDesc} />
+        {pageUrl && <link rel="canonical" href={pageUrl} />}
         {/* Open Graph (link previews on iMessage / WhatsApp / Slack / Discord) */}
         <meta property="og:title" content={seoTitle} />
         <meta property="og:description" content={seoDesc} />
         <meta property="og:type" content="profile" />
+        {pageUrl && <meta property="og:url" content={pageUrl} />}
         {shareImage && <meta property="og:image" content={shareImage} />}
         {/* Twitter / X */}
         <meta name="twitter:card" content={shareImage ? 'summary_large_image' : 'summary'} />
@@ -414,7 +422,7 @@ export default function Home() {
           <span>{customFooterText || `© ${name} ${new Date().getFullYear()}`}</span>
           <div className="footer-credit">
             <button type="button" className="footer-legal-link" onClick={() => setLegalModal('privacy')}>{lang === 'ar' ? 'الخصوصية' : 'Privacy'}</button>
-            {' · '}
+            <span className="footer-sep" aria-hidden="true">·</span>
             <button type="button" className="footer-legal-link" onClick={() => setLegalModal('terms')}>{lang === 'ar' ? 'الشروط' : 'Terms'}</button>
           </div>
         </footer>
@@ -704,8 +712,10 @@ export default function Home() {
         }
         .footer-credit a { color: rgba(255,255,255,0.55); }
         .footer-credit a:hover { color: #fff; }
+        .footer-credit { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
         .footer-legal-link { color: rgba(255,255,255,0.55); font: inherit; background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
         .footer-legal-link:hover { color: #fff; }
+        .footer-sep { color: rgba(255,255,255,0.35); user-select: none; }
 
         /* Mobile spacing tightens */
         @media (max-width: 480px) {
@@ -878,11 +888,13 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
 function LegalModal({ content, lang, onClose }) {
   const c = content[lang] || content.en;
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
+  const closeRef = useRef(null);
 
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
+    closeRef.current?.focus(); // move focus into the modal for keyboard users
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
@@ -894,7 +906,7 @@ function LegalModal({ content, lang, onClose }) {
       <div className="legal-modal" dir={dir} onClick={(e) => e.stopPropagation()}>
         <div className="legal-modal-top">
           <h2>{c.title}</h2>
-          <button className="legal-close" onClick={onClose} aria-label={c.closeLabel} title={c.closeLabel}>×</button>
+          <button ref={closeRef} className="legal-close" onClick={onClose} aria-label={c.closeLabel} title={c.closeLabel}>×</button>
         </div>
         <div className="legal-modal-body">
           <p className="lm-updated">{c.updated}</p>
