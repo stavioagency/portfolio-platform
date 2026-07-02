@@ -43,6 +43,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [lang, setLang] = useState('ar');
   const [bannerIdx, setBannerIdx] = useState(0);
+  const [bannerPaused, setBannerPaused] = useState(false);
+  const [loadedBanners, setLoadedBanners] = useState(() => new Set([0, 1])); // only active+next load initially
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [legalModal, setLegalModal] = useState(null); // 'privacy' | 'terms' | null
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -136,13 +138,27 @@ export default function Home() {
     }).then(() => {}).catch(() => {});
   }, []);
 
-  // Auto-advance banner every 5s
+  // Auto-advance banner every 5s — paused on hover/focus and when reduced-motion is requested
   useEffect(() => {
     const count = profile?.banners?.length || 0;
-    if (count < 2) return;
+    if (count < 2 || bannerPaused) return;
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return;
     const id = setInterval(() => setBannerIdx(i => (i + 1) % count), 5000);
     return () => clearInterval(id);
-  }, [profile?.banners?.length]);
+  }, [profile?.banners?.length, bannerPaused]);
+
+  // Preload only the active + next banner image (avoids eager-loading all banners at once)
+  useEffect(() => {
+    const count = profile?.banners?.length || 0;
+    if (!count) return;
+    setLoadedBanners(prev => {
+      const n = new Set(prev);
+      n.add(bannerIdx);
+      n.add((bannerIdx + 1) % count);
+      return n;
+    });
+  }, [bannerIdx, profile?.banners?.length]);
 
   if (loading) {
     return (
@@ -348,12 +364,16 @@ export default function Home() {
 
           {/* BANNER SLIDER (3:2 aspect, more dominant) */}
           {banners.length > 0 && (
-            <div className="banner-frame">
+            <div className="banner-frame"
+              onMouseEnter={() => setBannerPaused(true)}
+              onMouseLeave={() => setBannerPaused(false)}
+              onFocusCapture={() => setBannerPaused(true)}
+              onBlurCapture={() => setBannerPaused(false)}>
               {banners.map((b, i) => (
                 <div key={b.id || i}
                   className={`banner ${i === bannerIdx ? 'active' : ''}`}
                   style={b.type === 'image'
-                    ? { backgroundImage: `url(${b.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                    ? { backgroundImage: loadedBanners.has(i) ? `url(${b.image_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }
                     : { background: BANNER_BGS[b.bg || 'purple'] }}>
                   {b.type === 'text' && (
                     <div className="banner-content">
@@ -869,7 +889,7 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
         .pcard-meta-grid strong { font-size: 13px; color: var(--text-primary); font-weight: 600; }
         .pcard-full { font-size: 14px; color: var(--text-secondary); line-height: 1.7; padding-top: 12px; border-top: 1px solid var(--border); margin-bottom: 16px; }
         .pcard-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 16px; }
-        .pcard-gallery img { width: 100%; border-radius: 8px; cursor: zoom-in; transition: opacity 0.2s ease; }
+        .pcard-gallery img { width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--bg-primary); border-radius: 8px; cursor: zoom-in; transition: opacity 0.2s ease; }
         .pcard-gallery img:hover { opacity: 0.85; }
         .lightbox { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.92); display: flex; align-items: center; justify-content: center; padding: 20px; cursor: zoom-out; animation: fadeIn 0.18s ease; }
         .lightbox img { max-width: 96vw; max-height: 92vh; object-fit: contain; border-radius: 6px; cursor: default; box-shadow: 0 12px 60px rgba(0,0,0,0.6); }
