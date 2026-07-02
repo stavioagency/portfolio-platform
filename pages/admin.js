@@ -653,19 +653,19 @@ function ProfileEditor({ t, lang }) {
     const { error } = await supabase.from('profile').upsert({ id: 1, ...profile });
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); setTimeout(() => setSavedMsg(''), 2000); }
-    else alert(error.message);
+    else { console.error(error); alert(t('save_failed')); }
   }
   async function uploadImage(file) {
     const path = `profile-${Date.now()}.${file.name.split('.').pop()}`;
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
-    if (error) { alert(error.message); return; }
+    if (error) { console.error(error); alert(t('upload_failed')); return; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     patch({ profile_image: data.publicUrl });
   }
   async function uploadOgImage(file) {
     const path = `og-${Date.now()}.${file.name.split('.').pop()}`;
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
-    if (error) { alert(error.message); return; }
+    if (error) { console.error(error); alert(t('upload_failed')); return; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     patch({ seo: { ...profile.seo, og_image: data.publicUrl } });
   }
@@ -804,12 +804,12 @@ function CardEditor({ t, lang }) {
     const { error } = await supabase.from('profile').upsert({ id: 1, ...profile });
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); setTimeout(() => setSavedMsg(''), 2000); }
-    else alert(error.message);
+    else { console.error(error); alert(t('save_failed')); }
   }
   async function uploadAsset(prefix, file) {
     const path = `${prefix}-${Date.now()}.${file.name.split('.').pop()}`;
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
-    if (error) { alert(error.message); return null; }
+    if (error) { console.error(error); alert(t('upload_failed')); return null; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     return data.publicUrl;
   }
@@ -1035,7 +1035,7 @@ function ProjectsEditor({ t, lang }) {
     const defaultTitle = { en: 'New Project', ar: 'مشروع جديد' };
     const { data, error } = await supabase.from('projects').insert({ title: defaultTitle, display_order: nextOrder, images: [] }).select().single();
     if (data) { setProjects([...projects, data]); setEditing(data); }
-    if (error) alert(error.message);
+    if (error) { console.error(error); alert(t('save_failed')); }
   }
   async function updateProject(updated) {
     await supabase.from('projects').update(updated).eq('id', updated.id);
@@ -1141,14 +1141,14 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
   async function uploadCover(file) {
     const path = `project-${data.id}-cover-${Date.now()}.${file.name.split('.').pop()}`;
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
-    if (error) return alert(error.message);
+    if (error) { console.error(error); return alert(t('upload_failed')); }
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
     patch({ cover_image: urlData.publicUrl });
   }
   async function uploadGalleryImage(file) {
     const path = `project-${data.id}-${Date.now()}.${file.name.split('.').pop()}`;
     const { error } = await supabase.storage.from('media').upload(path, file);
-    if (error) return alert(error.message);
+    if (error) { console.error(error); return alert(t('upload_failed')); }
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
     patch({ images: [...(data.images || []), urlData.publicUrl] });
   }
@@ -1236,7 +1236,7 @@ function LinksEditor({ t, lang }) {
     const { error } = await supabase.from('profile').upsert({ id: 1, custom_links: links });
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); setTimeout(() => setSavedMsg(''), 2000); }
-    else alert(error.message);
+    else { console.error(error); alert(t('save_failed')); }
   }
   function add() { patch([...links, { id: newId(), icon: 'website', label: emptyBilingual(), href: '' }]); }
   function update(id, u) { patch(links.map(l => l.id === id ? { ...l, ...u } : l)); }
@@ -1365,7 +1365,7 @@ function AppearanceEditor({ t, lang }) {
     const { error } = await supabase.from('profile').upsert({ id: 1, appearance });
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); setTimeout(() => setSavedMsg(''), 2000); }
-    else alert(error.message);
+    else { console.error(error); alert(t('save_failed')); }
   }
 
   const deviceWidth = device === 'mobile' ? 360 : device === 'tablet' ? 640 : '100%';
