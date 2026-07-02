@@ -274,6 +274,7 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
         h1 { font-size: 22px; font-weight: 700; }
         .signin-hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-5); }
         label { display: block; font-size: 12px; font-weight: 500; color: var(--text-tertiary); margin: var(--space-4) 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+        :global(html[dir="rtl"]) label { text-transform: none; letter-spacing: normal; }
         input { width: 100%; padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; transition: var(--transition); font-family: inherit; }
         input:focus { outline: none; border-color: var(--accent); }
         button[type="submit"] { width: 100%; padding: 12px; background: var(--accent); color: #fff; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; margin-top: var(--space-5); transition: var(--transition); border: none; cursor: pointer; }
@@ -342,6 +343,7 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
         h1 { font-size: 22px; font-weight: 700; }
         .signin-hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-5); }
         label { display: block; font-size: 12px; font-weight: 500; color: var(--text-tertiary); margin: var(--space-4) 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+        :global(html[dir="rtl"]) label { text-transform: none; letter-spacing: normal; }
         input { width: 100%; padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; transition: var(--transition); font-family: inherit; }
         input:focus { outline: none; border-color: var(--accent); }
         button[type="submit"] { width: 100%; padding: 12px; background: var(--accent); color: #fff; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; margin-top: var(--space-5); transition: var(--transition); border: none; cursor: pointer; }
@@ -1646,6 +1648,7 @@ function StatCard({ label, value }) {
         .stat-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); position: relative; overflow: hidden; }
         .stat-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(var(--on-bg),0.08), transparent); }
         .stat-label { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+        :global(html[dir="rtl"]) .stat-label { text-transform: none; letter-spacing: normal; }
         .stat-value { font-size: 26px; font-weight: 700; letter-spacing: -.02em; color: var(--text-primary); }
       `}</style>
     </div>
@@ -1694,6 +1697,7 @@ function TableCard({ title, headLabel, headValue, rows }) {
         .tcc-title { font-size: 14px; font-weight: 600; margin-bottom: var(--space-4); }
         .tcc table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .tcc th { text-align: start; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-tertiary); font-weight: 500; padding: 8px 0; border-bottom: 1px solid var(--border); }
+        :global(html[dir="rtl"]) .tcc th { text-transform: none; letter-spacing: normal; }
         .tcc td { padding: 10px 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
         .tcc td.num { text-align: end; font-variant-numeric: tabular-nums; color: var(--text-primary); }
         .tcc tr:last-child td { border-bottom: none; }
@@ -1844,6 +1848,7 @@ function Field({ id, label, children }) {
       <style jsx>{`
         .field { margin-bottom: var(--space-4); }
         label { display: block; font-size: 12px; font-weight: 500; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+        :global(html[dir="rtl"]) label { text-transform: none; letter-spacing: normal; }
       `}</style>
     </div>
   );
@@ -2064,9 +2069,11 @@ function CardEditorStyles() {
       .editor .hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-4); max-width: 560px; line-height: 1.5; }
       .editor .meta { font-size: 11px; color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-inline-start: 6px; }
       .editor h2 { margin-top: var(--space-6); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: var(--space-3); }
+      html[dir="rtl"] .editor h2 { text-transform: none; letter-spacing: normal; }
       .card-row { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-3); max-width: 640px; }
       .card-row .row-head { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-3); }
       .card-row .row-tag { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; }
+      html[dir="rtl"] .card-row .row-tag { text-transform: none; letter-spacing: normal; }
       .card-row .row-tabs { direction: ltr; display: inline-flex; gap: 2px; background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 3px; }
       .card-row .row-tabs button { padding: 4px 12px; font-size: 12px; color: var(--text-tertiary); border: none; background: none; border-radius: 5px; cursor: pointer; font-family: inherit; }
       .card-row .row-tabs button.active { background: var(--bg-hover); color: var(--text-primary); }

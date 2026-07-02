@@ -564,6 +564,7 @@ export default function Home() {
           letter-spacing: -0.01em;
           margin-bottom: 4px;
         }
+        :global(html[dir="rtl"]) .name-block h1 { letter-spacing: normal; }
         .name-block p { font-size: 13px; color: rgba(255,255,255,0.5); margin-bottom: 8px; }
         .about-toggle {
           padding: 4px 12px;
@@ -854,6 +855,7 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
         .pcard-meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); margin-bottom: 8px; }
         .pcard-meta-grid > div { display: flex; flex-direction: column; gap: 2px; }
         .pcard-meta-grid span { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        :global(html[dir="rtl"]) .pcard-meta-grid span { text-transform: none; letter-spacing: normal; }
         .pcard-meta-grid strong { font-size: 13px; color: var(--text-primary); font-weight: 600; }
         .pcard-full { font-size: 14px; color: var(--text-secondary); line-height: 1.7; padding-top: 12px; border-top: 1px solid var(--border); margin-bottom: 16px; }
         .pcard-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 16px; }
