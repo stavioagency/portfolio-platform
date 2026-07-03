@@ -615,7 +615,7 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
     return () => { dirtyRef.current = false; };
   }, [dirty, dirtyRef]);
   return (
-    <div className="actions">
+    <div className={`actions ${dirty ? 'sticky-save' : ''}`}>
       <button className="primary" onClick={onSave} disabled={saving}>
         {saving ? t('saving') : t('save')}
         {dirty && <span className="unsaved-dot" />}
@@ -630,6 +630,18 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
         .unsaved-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ffb845; margin-inline-start: 6px; box-shadow: 0 0 6px #ffb845; vertical-align: middle; }
         .hint { font-size: 12px; color: var(--text-tertiary); }
         .saved-indicator { font-size: 13px; color: var(--accent); }
+        /* On phones, pin the save row to the bottom while there are unsaved changes so it's always reachable */
+        @media (max-width: 720px) {
+          .actions.sticky-save {
+            position: sticky;
+            bottom: 0;
+            margin-top: var(--space-5);
+            padding-bottom: 12px;
+            background: var(--bg-primary);
+            box-shadow: 0 -6px 16px rgba(0,0,0,0.28);
+            z-index: 20;
+          }
+        }
       `}</style>
     </div>
   );
