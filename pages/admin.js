@@ -710,6 +710,7 @@ function ProfileEditor({ t, lang }) {
       )}
 
       <h2>{t('basics')}</h2>
+      <p className="hint">{t('lang_note')}</p>
       <Field id="profile-name" label={t('name')}>
         <input id="profile-name" value={pick(profile.name, lang)} onChange={(e) => bilingualPatch('name', e.target.value)} />
       </Field>
@@ -723,8 +724,9 @@ function ProfileEditor({ t, lang }) {
         <ImageUpload value={profile.profile_image} onUpload={uploadImage} onClear={() => patch({ profile_image: '' })} aspect={1} hint={t('img_hint_profile')} t={t} />
       </Field>
 
-      <h2>{t('seo_title')}</h2>
+      <h2>{t('seo_title')} <span className="meta">· {t('optional')}</span></h2>
       <p className="hint">{t('seo_sub')}</p>
+      <p className="hint">{t('seo_optional')}</p>
       <Field id="seo-title" label={t('seo_meta_title')}>
         <input id="seo-title" value={pick(profile.seo?.title, lang)} onChange={(e) => patchSeo('title', e.target.value)} placeholder={pick(profile.name, lang)} maxLength={60} />
       </Field>
@@ -860,16 +862,17 @@ function CardEditor({ t, lang }) {
     <div className="editor">
       <h1>{t('card_title')}</h1>
       <p className="hint">{t('card_sub')}</p>
+      <p className="hint">{t('lang_note')}</p>
 
       <h2>{t('brand_logo')}</h2>
       <p className="hint">{t('brand_logo_hint')}</p>
       <ImageUpload value={profile.brand_logo} onUpload={uploadBrandLogo} onClear={() => patch({ brand_logo: '' })} aspect={1} hint={t('img_hint_brand_logo')} t={t} />
 
-      <h2>{t('favicon_title')}</h2>
+      <h2>{t('favicon_title')} <span className="meta">· {t('optional')}</span></h2>
       <p className="hint">{t('favicon_hint')}</p>
       <ImageUpload value={profile.favicon_url} onUpload={uploadFavicon} onClear={() => patch({ favicon_url: '' })} aspect={1} hint={t('img_hint_favicon')} t={t} />
 
-      <h2>{t('ticker_title')} <span className="meta">· {t('ticker_sub')}</span></h2>
+      <h2>{t('ticker_title')} <span className="meta">· {t('ticker_sub')} · {t('optional')}</span></h2>
       <div className="card-row" style={{ maxWidth: 640 }}>
         <div className="toggle-row" style={{ paddingTop: 0 }}>
           <span>{t('ticker_enabled')}</span>
@@ -923,7 +926,7 @@ function CardEditor({ t, lang }) {
       ))}
       <button className="btn-add" onClick={addButton}>+ {t('button_add')}</button>
 
-      <h2>{t('footer_title')} <span className="meta">· {t('footer_sub')}</span></h2>
+      <h2>{t('footer_title')} <span className="meta">· {t('footer_sub')} · {t('optional')}</span></h2>
       <div className="card-row" style={{ maxWidth: 640 }}>
         <Field id="footer-text" label={t('footer_text')}>
           <input id="footer-text" value={pick(profile.footer?.text, lang)} onChange={(e) => patchFooter({ text: setLangValue(profile.footer?.text, lang, e.target.value) })} placeholder={lang === 'ar' ? '© فيصل فهد 2026' : '© Your Name 2026'} />
@@ -1089,6 +1092,7 @@ function ProjectsEditor({ t, lang }) {
         <h1>{t('nav_projects')}</h1>
         <button className="btn-primary-inline" onClick={addProject}>+ {t('add_project')}</button>
       </div>
+      <p className="hint">{t('empty_rows_note')}</p>
 
       {projects.length === 0 ? (
         <div className="empty-cta">
