@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
 import Head from 'next/head';
 import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
 import { supabase } from '../lib/supabase';
@@ -360,6 +360,7 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
 // =========================================================
 function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   const [activeTab, setActiveTab] = useState('profile');
+  const dirtyRef = useRef(false); // set by the mounted SaveBar via DirtyContext
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const t = getTranslator(lang);
 
@@ -370,6 +371,9 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   };
 
   function navigate(tab) {
+    if (tab === activeTab) { setSidebarOpen(false); return; }
+    if (dirtyRef.current && !window.confirm(t('unsaved_switch'))) return;
+    dirtyRef.current = false;
     setActiveTab(tab);
     setSidebarOpen(false); // auto-close drawer on mobile after picking a tab
   }
@@ -383,6 +387,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   }, [sidebarOpen]);
 
   return (
+    <DirtyContext.Provider value={dirtyRef}>
     <div className={`dashboard ${theme || 'dark'}`}>
       {/* MOBILE TOP BAR — only visible <720px */}
       <header className="mobile-bar">
@@ -410,6 +415,11 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
           </div>
         </div>
 
+        <a href="/" target="_blank" rel="noopener noreferrer" className="view-site-btn">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          {t('view_live_site')}
+        </a>
+
         <nav className="nav">
           <NavItem icon="👤" label={t('nav_profile')}    active={activeTab === 'profile'}    onClick={() => navigate('profile')} />
           <NavItem icon="🪪" label={t('nav_card')}       active={activeTab === 'card'}       onClick={() => navigate('card')} />
@@ -422,10 +432,6 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         </nav>
 
         <div className="sidebar-footer">
-          <a href="/" target="_blank" rel="noopener noreferrer" className="view-site-btn">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            {t('view_live_site')}
-          </a>
           <SidebarUser session={session} t={t} />
           <button onClick={signOut} className="signout-btn">{t('sign_out')}</button>
         </div>
@@ -549,6 +555,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         }
       `}</style>
     </div>
+    </DirtyContext.Provider>
   );
 }
 
@@ -595,15 +602,26 @@ function SidebarUser({ session, t }) {
   );
 }
 
+// "Unsaved changes" ref owned by the Dashboard and written by the mounted SaveBar,
+// so the Dashboard can warn before switching tabs. Only one SaveBar is mounted at a
+// time (tabs render conditionally), so a single shared ref is sufficient.
+const DirtyContext = createContext(null);
+
 function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
+  const dirtyRef = useContext(DirtyContext);
+  useEffect(() => {
+    if (!dirtyRef) return;
+    dirtyRef.current = dirty;
+    return () => { dirtyRef.current = false; };
+  }, [dirty, dirtyRef]);
   return (
     <div className="actions">
       <button className="primary" onClick={onSave} disabled={saving}>
-        {saving ? '...' : t('save')}
+        {saving ? t('saving') : t('save')}
         {dirty && <span className="unsaved-dot" />}
       </button>
-      {dirty && !saving && !savedMsg && <span className="hint">{t('unsaved_changes')}</span>}
-      {savedMsg && <span className="saved-indicator">{savedMsg} ✓</span>}
+      {dirty && !saving && <span className="hint">{t('unsaved_changes')}</span>}
+      {savedMsg && !dirty && <span className="saved-indicator">{savedMsg} ✓</span>}
       {extra}
       <style jsx>{`
         .actions { display: flex; gap: 10px; align-items: center; margin-top: var(--space-6); padding-top: var(--space-5); border-top: 1px solid var(--border); flex-wrap: wrap; }
@@ -662,7 +680,7 @@ function ProfileEditor({ t, lang }) {
     setSaving(true);
     const { error } = await supabase.from('profile').upsert({ id: 1, ...profile });
     setSaving(false);
-    if (!error) { setSavedMsg(t('saved')); setDirty(false); setTimeout(() => setSavedMsg(''), 2000); }
+    if (!error) { setSavedMsg(t('saved')); setDirty(false); }
     else { console.error(error); alert(t('save_failed')); }
   }
   async function uploadImage(file) {
@@ -829,7 +847,7 @@ function CardEditor({ t, lang }) {
     setSaving(true);
     const { error } = await supabase.from('profile').upsert({ id: 1, ...profile });
     setSaving(false);
-    if (!error) { setSavedMsg(t('saved')); setDirty(false); setTimeout(() => setSavedMsg(''), 2000); }
+    if (!error) { setSavedMsg(t('saved')); setDirty(false); }
     else { console.error(error); alert(t('save_failed')); }
   }
   async function uploadAsset(prefix, file) {
@@ -1164,7 +1182,6 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
     await onSave(data);
     setSaving(false);
     setSavedMsg(t('saved')); setDirty(false);
-    setTimeout(() => setSavedMsg(''), 2000);
   }
   async function uploadCover(file) {
     const path = `project-${data.id}-cover-${Date.now()}.${file.name.split('.').pop()}`;
@@ -1263,7 +1280,7 @@ function LinksEditor({ t, lang }) {
     setSaving(true);
     const { error } = await supabase.from('profile').upsert({ id: 1, custom_links: links });
     setSaving(false);
-    if (!error) { setSavedMsg(t('saved')); setDirty(false); setTimeout(() => setSavedMsg(''), 2000); }
+    if (!error) { setSavedMsg(t('saved')); setDirty(false); }
     else { console.error(error); alert(t('save_failed')); }
   }
   function add() { patch([...links, { id: newId(), icon: 'website', label: emptyBilingual(), href: '' }]); }
@@ -1392,7 +1409,7 @@ function AppearanceEditor({ t, lang }) {
     setSaving(true);
     const { error } = await supabase.from('profile').upsert({ id: 1, appearance });
     setSaving(false);
-    if (!error) { setSavedMsg(t('saved')); setDirty(false); setTimeout(() => setSavedMsg(''), 2000); }
+    if (!error) { setSavedMsg(t('saved')); setDirty(false); }
     else { console.error(error); alert(t('save_failed')); }
   }
 
