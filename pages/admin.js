@@ -416,6 +416,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
           <NavItem icon="📁" label={t('nav_projects')}   active={activeTab === 'projects'}   onClick={() => navigate('projects')} />
           <NavItem icon="🔗" label={t('nav_links')}      active={activeTab === 'links'}      onClick={() => navigate('links')} />
           <NavItem icon="🎨" label={t('nav_appearance')} active={activeTab === 'appearance'} onClick={() => navigate('appearance')} />
+          <div className="nav-sep" aria-hidden="true" />
           <NavItem icon="📊" label={t('nav_analytics')}  active={activeTab === 'analytics'}  onClick={() => navigate('analytics')} />
           <NavItem icon="⚙️" label={t('nav_account')}    active={activeTab === 'account'}    onClick={() => navigate('account')} />
         </nav>
@@ -456,6 +457,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         .sidebar-title { font-size: 14px; font-weight: 700; }
         .drawer-close { display: none; width: 32px; height: 32px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); font-size: 20px; cursor: pointer; font-family: inherit; align-items: center; justify-content: center; }
         .nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+        .nav-sep { height: 1px; background: var(--border); margin: 8px 8px; }
         .sidebar-footer { padding: var(--space-3); border-top: 1px solid var(--border); }
         .view-site-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; margin-bottom: 10px; background: linear-gradient(180deg, rgba(79,110,242,0.12), rgba(79,110,242,0.04)); border: 1px solid rgba(79,110,242,0.25); border-radius: var(--radius-md); color: var(--text-primary); font-size: 12px; font-weight: 500; text-decoration: none; transition: var(--transition); }
         .view-site-btn:hover { background: rgba(79,110,242,0.18); }
@@ -623,8 +625,16 @@ function ProfileEditor({ t, lang }) {
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
+  const [showStart, setShowStart] = useState(false);
 
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    try { setShowStart(localStorage.getItem('admin_start_dismissed') !== '1'); } catch (e) {}
+  }, []);
+  function dismissStart() {
+    try { localStorage.setItem('admin_start_dismissed', '1'); } catch (e) {}
+    setShowStart(false);
+  }
 
   async function load() {
     const { data } = await supabase.from('profile').select('*').eq('id', 1).maybeSingle();
@@ -684,6 +694,20 @@ function ProfileEditor({ t, lang }) {
   return (
     <div className="editor">
       <h1>{t('nav_profile')}</h1>
+      <p className="hint">{t('profile_sub')}</p>
+
+      {showStart && (
+        <div className="start-here">
+          <button type="button" className="start-close" onClick={dismissStart} aria-label={t('close')}>×</button>
+          <strong>{t('start_here_title')}</strong>
+          <ol>
+            <li>{t('start_step_name')}</li>
+            <li>{t('start_step_photo')}</li>
+            <li>{t('start_step_project')}</li>
+            <li>{t('start_step_preview')}</li>
+          </ol>
+        </div>
+      )}
 
       <h2>{t('basics')}</h2>
       <Field id="profile-name" label={t('name')}>
@@ -2046,6 +2070,12 @@ function EditorStyles() {
   return (
     <style jsx global>{`
       .editor h1 { font-size: 24px; font-weight: 700; margin-bottom: var(--space-5); letter-spacing: -0.01em; }
+      .start-here { position: relative; margin: 0 0 var(--space-6); padding: 16px 18px; background: linear-gradient(180deg, rgba(79,110,242,0.12), rgba(79,110,242,0.04)); border: 1px solid rgba(79,110,242,0.3); border-radius: var(--radius-md); max-width: 520px; }
+      .start-here strong { display: block; font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+      .start-here ol { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 4px; }
+      .start-here li { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+      .start-close { position: absolute; top: 10px; inset-inline-end: 10px; width: 26px; height: 26px; border-radius: 50%; background: rgba(var(--on-bg),0.06); border: 1px solid var(--border); color: var(--text-secondary); font-size: 18px; line-height: 1; cursor: pointer; font-family: inherit; }
+      .start-close:hover { color: var(--text-primary); background: rgba(var(--on-bg),0.12); }
       .editor input[type="text"], .editor input[type="email"], .editor input[type="password"], .editor input[type="url"], .editor input:not([type]), .editor textarea, .editor select {
         width: 100%; max-width: 500px; padding: 10px 14px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; font-family: inherit; transition: var(--transition);
       }
