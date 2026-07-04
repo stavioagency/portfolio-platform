@@ -3,6 +3,7 @@ import Head from 'next/head';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
 import { pick } from '../lib/i18n';
+import { resolveTenant } from '../lib/tenant';
 import { privacyContent, termsContent } from '../lib/legal-content';
 import { BRAND_ICONS, normalizeIcon } from '../lib/brand-icons';
 
@@ -67,8 +68,36 @@ export default function Home() {
 
   async function loadData() {
     try {
-      const { data: profileData } = await supabase.from('profile').select('*').eq('id', 1).single();
-      const { data: projectsData } = await supabase.from('projects').select('*').order('display_order', { ascending: true });
+      // Resolve the active tenant. Until the tenants/tenant_domains tables exist,
+      // this fails-safe to the singleton default, so the queries below behave
+      // exactly as they do today. (No slug/host routing is wired yet — Batch 4/5.)
+      const tenant = await resolveTenant({
+        supabase,
+        host: typeof window !== 'undefined' ? window.location.hostname : '',
+      });
+      const tenantMode = tenant.mode === 'tenant' && !!tenant.id;
+
+      // --- Profile ---
+      let profileData;
+      if (tenantMode) {
+        // Future tenant path: one profile per tenant (needs the migration applied).
+        const { data } = await supabase.from('profile').select('*').eq('tenant_id', tenant.id).maybeSingle();
+        profileData = data;
+      } else {
+        // Current singleton behavior — unchanged.
+        const { data } = await supabase.from('profile').select('*').eq('id', 1).single();
+        profileData = data;
+      }
+
+      // --- Projects ---
+      let projectsQuery = supabase.from('projects').select('*');
+      if (tenantMode) projectsQuery = projectsQuery.eq('tenant_id', tenant.id); // future: scope to tenant
+      const { data: projectsData } = await projectsQuery.order('display_order', { ascending: true });
+
+      // NOTE (mt): analytics inserts stay as-is for now. `analytics_events` has no
+      // tenant_id column until the migration; a later batch will attach tenant_id
+      // once the column exists and the tenant is resolved before logging.
+
       if (profileData) {
         setProfile(profileData);
         const stored = readLang();
