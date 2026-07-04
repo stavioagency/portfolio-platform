@@ -38,10 +38,11 @@ const FONT_STACKS = {
 };
 const RADIUS_VALUES  = { soft: 12, sharp: 4, pill: 24 };
 
-export default function Home() {
+export default function Home({ slug = null } = {}) {
   const [profile, setProfile] = useState(null);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [lang, setLang] = useState('ar');
   const [bannerIdx, setBannerIdx] = useState(0);
   const [bannerPaused, setBannerPaused] = useState(false);
@@ -74,8 +75,14 @@ export default function Home() {
       const tenant = await resolveTenant({
         supabase,
         host: typeof window !== 'undefined' ? window.location.hostname : '',
+        slug,
       });
       const tenantMode = tenant.mode === 'tenant' && !!tenant.id;
+
+      // A slug route asked for a specific tenant that doesn't exist -> 404.
+      // (Don't fall back to the singleton for an explicit slug.) `/` has no slug,
+      // so it stays on the singleton path below.
+      if (slug && !tenantMode) { setNotFound(true); return; }
 
       // --- Profile ---
       let profileData;
@@ -198,6 +205,15 @@ export default function Home() {
           .loader-spinner { width: 32px; height: 32px; border: 2.5px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
           @keyframes spin { to { transform: rotate(360deg); } }
         `}</style>
+      </div>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <div dir={dir} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, color: 'var(--text-secondary)' }}>
+        <h1 style={{ fontSize: 40, marginBottom: 8, fontWeight: 700 }}>404</h1>
+        <p style={{ fontSize: 14, maxWidth: 400, lineHeight: 1.6 }}>{t('portfolio_not_found')}</p>
       </div>
     );
   }
