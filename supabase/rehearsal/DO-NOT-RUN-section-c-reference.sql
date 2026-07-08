@@ -1,0 +1,47 @@
+-- ############################################################################
+-- 🛑🛑🛑  DO NOT RUN THIS FILE  🛑🛑🛑
+-- ############################################################################
+-- This is a REFERENCE ONLY copy of Section C (the dangerous / gated hardening).
+-- It is NOT part of the scratch rehearsal. Every statement below is COMMENTED
+-- OUT on purpose. Do NOT uncomment. Do NOT run — not on scratch, not on prod.
+--
+-- Section C removes the single-profile lock, enforces NOT NULL/FKs, and swaps
+-- RLS from is_admin() to is_tenant_admin(). It must stay gated until:
+--   * the admin code no longer depends on profile id=1 (upsert({id:1}) etc.), AND
+--   * A + B are applied and every row has a non-null tenant_id, AND
+--   * a full production backup exists, AND
+--   * it has been verified on a dummy tenant.
+--
+-- Source of truth: Section C in the repo's  supabase-multitenant.sql
+-- Shown here only so the "never run yet" steps are visible in the runbook folder.
+-- ############################################################################
+
+-- C1. Remove the single-profile lock so multiple tenants can each have a profile.
+--     THIS IS THE BIGGEST BREAKING CHANGE. The app also still writes upsert({id:1})
+--     today — do NOT run C1 until the app no longer depends on id=1, or live save breaks.
+-- ALTER TABLE profile DROP CONSTRAINT IF EXISTS single_profile;
+-- ALTER TABLE profile ALTER COLUMN id DROP DEFAULT;
+-- ALTER TABLE profile ADD CONSTRAINT uq_profile_tenant UNIQUE (tenant_id);
+
+-- C2. Enforce ownership once backfilled + verified (rejects null tenant_id going forward)
+-- ALTER TABLE profile          ALTER COLUMN tenant_id SET NOT NULL;
+-- ALTER TABLE projects         ALTER COLUMN tenant_id SET NOT NULL;
+-- ALTER TABLE analytics_events ALTER COLUMN tenant_id SET NOT NULL;
+-- ALTER TABLE profile          ADD CONSTRAINT fk_profile_tenant   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+-- ALTER TABLE projects         ADD CONSTRAINT fk_projects_tenant  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+-- ALTER TABLE analytics_events ADD CONSTRAINT fk_analytics_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+
+-- C3. RLS DIRECTION (add NEW policies ALONGSIDE the old ones; drop old LAST).
+--     Step 1 — add tenant-scoped write policies (old policies still active):
+-- CREATE POLICY "Tenant admins write profile"  ON profile          FOR ALL TO authenticated USING (is_tenant_admin(tenant_id)) WITH CHECK (is_tenant_admin(tenant_id));
+-- CREATE POLICY "Tenant admins write projects" ON projects         FOR ALL TO authenticated USING (is_tenant_admin(tenant_id)) WITH CHECK (is_tenant_admin(tenant_id));
+-- CREATE POLICY "Tenant admins read events"    ON analytics_events FOR SELECT TO authenticated USING (is_tenant_admin(tenant_id));
+--     Step 2 — VERIFY on a dummy tenant (see MULTITENANT-PLAN.md isolation tests).
+--     Step 3 — ONLY after verification, drop the old un-scoped policies:
+-- DROP POLICY IF EXISTS "Admins can write profile"  ON profile;
+-- DROP POLICY IF EXISTS "Admins can write projects" ON projects;
+-- DROP POLICY IF EXISTS "Admins can read events"    ON analytics_events;
+
+-- ############################################################################
+-- 🛑  END REFERENCE — nothing above should ever be run from this file.  🛑
+-- ############################################################################
