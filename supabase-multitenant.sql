@@ -57,6 +57,20 @@ CREATE INDEX IF NOT EXISTS idx_tenant_domains_tenant ON tenant_domains(tenant_id
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_primary_domain
   ON tenant_domains(tenant_id) WHERE is_primary;
 
+-- 2b. PUBLIC READ for tenant resolution.
+--     The public site resolves tenants by host (tenant_domains) and slug (tenants)
+--     using the ANON key, so anon/authenticated MUST be able to SELECT these two
+--     tables. No write policy is added (writes stay closed). tenant_admins is
+--     intentionally NOT made public. Idempotent — safe to re-run.
+ALTER TABLE tenants        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenant_domains ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public can read tenants"        ON tenants;
+DROP POLICY IF EXISTS "Public can read tenant_domains" ON tenant_domains;
+CREATE POLICY "Public can read tenants"        ON tenants        FOR SELECT USING (true);
+CREATE POLICY "Public can read tenant_domains" ON tenant_domains FOR SELECT USING (true);
+GRANT SELECT ON tenants        TO anon, authenticated;
+GRANT SELECT ON tenant_domains TO anon, authenticated;
+
 -- 3. tenant_admins — which auth user may administer which tenant (owner-created)
 CREATE TABLE IF NOT EXISTS tenant_admins (
   tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
