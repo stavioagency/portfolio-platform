@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, createContext, useContext } from 
 import Head from 'next/head';
 import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
 import { supabase } from '../lib/supabase';
+import { resolveTenant } from '../lib/tenant';
 import { getTranslator } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
@@ -1817,14 +1818,37 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
   async function deletePortfolio() {
     const typed = prompt(t('delete_portfolio_confirm'));
     if (typed !== t('delete_portfolio_keyword')) return;
-    await supabase.from('analytics_events').delete().neq('id', 0);
-    await supabase.from('projects').delete().neq('id', 0);
-    await supabase.from('profile').update({
+
+    // Resolve the active tenant. Until the multi-tenant migration is applied this
+    // fails-safe to the singleton default, so the singleton branch below runs and
+    // behaves exactly as it does today. (No tenant_id column is referenced in
+    // singleton mode, so this is safe on the current un-migrated database.)
+    const tenant = await resolveTenant({
+      supabase,
+      host: typeof window !== 'undefined' ? window.location.hostname : '',
+    });
+    const tenantMode = tenant.mode === 'tenant' && !!tenant.id;
+
+    // The fields a "reset" clears — identical in both modes.
+    const reset = {
       name: emptyBilingual(), tagline: emptyBilingual(), bio: emptyBilingual(),
       profile_image: '', brand_logo: '',
       links: {}, custom_links: [], custom_fields: [], banners: [], stats: [], cta_buttons: [],
       appearance: {}, sections: { bio: true, custom_fields: true, projects: true, links: true, lang_switcher: true },
-    }).eq('id', 1);
+    };
+
+    if (tenantMode) {
+      // Future multi-tenant: delete ONLY this tenant's rows. NEVER a global delete.
+      await supabase.from('analytics_events').delete().eq('tenant_id', tenant.id);
+      await supabase.from('projects').delete().eq('tenant_id', tenant.id);
+      await supabase.from('profile').update(reset).eq('tenant_id', tenant.id);
+    } else {
+      // Current singleton behavior — unchanged.
+      await supabase.from('analytics_events').delete().neq('id', 0);
+      await supabase.from('projects').delete().neq('id', 0);
+      await supabase.from('profile').update(reset).eq('id', 1);
+    }
+
     alert(t('delete_done'));
     window.location.reload();
   }
