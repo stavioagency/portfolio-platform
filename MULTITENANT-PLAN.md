@@ -81,6 +81,30 @@ Supabase project. Bringing it into the main DB is a **later, manual** step (expo
 its profile/projects/images, insert under the `designakum` tenant). Until then, the
 `designakum` tenant exists but is **empty**.
 
+## Known landmines before tenant #2
+
+Do NOT onboard a second tenant until these are resolved. Each one is currently
+safe only because the app is effectively single-tenant.
+
+1. **`single_profile CHECK (id = 1)` stays until the code stops assuming id 1.**
+   Don't drop it while any admin read/write still uses `id: 1`, `.eq('id', 1)`, or
+   `upsert({ id: 1 })`. Dropping it early breaks the live admin "Save".
+2. **Admin reads/writes still need tenant scoping** across Profile, Card, Projects,
+   Links, Appearance, Analytics, and Account (all still key off the singleton profile).
+3. **Storage upload paths are still flat** (`profile-…`, `og-…`, `project-…`). They
+   need `{tenant_id}/` prefixes before real multi-tenant use, or files collide.
+4. **Analytics inserts/reads still lack `tenant_id`.** Until added, per-tenant stats
+   are mixed/untrustworthy.
+5. **Admin auth/session has no user→tenant mapping yet.** Logins must resolve the
+   tenant via `tenant_admins` before writes can be trusted.
+6. **Section C of `supabase-multitenant.sql` must stay gated** (constraint drop +
+   NOT NULL/FKs + RLS swap) until the app code above is ready and verified.
+7. **Before adding tenant #2, verify on a dummy tenant** that reset/delete, upload,
+   and save operations affect ONLY that tenant — never global.
+
+> Note: the worst of these — the global-delete in `deletePortfolio` — was defused
+> in commit `a2b00a8` (scoped to the active tenant; singleton behavior unchanged).
+
 ## What has NOT been done
 
 - No SQL executed. No Supabase change. No Vercel change. No env change.
