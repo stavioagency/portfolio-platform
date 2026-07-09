@@ -46,6 +46,12 @@ ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public can read profile" ON profile FOR SELECT USING (true);
 CREATE POLICY "Public can read projects" ON projects FOR SELECT USING (true);
 
+-- Table-level SELECT privilege for the public roles. RLS above decides WHICH
+-- rows are visible; this GRANT decides whether the role may touch the table at
+-- all. A fresh project does not auto-grant these, so without it the anon key
+-- gets "42501 permission denied for table profile". Read-only; no write access.
+GRANT SELECT ON profile, projects TO anon, authenticated;
+
 -- 4. Authenticated users can write (admin)
 CREATE POLICY "Authed can write profile" ON profile
   FOR ALL TO authenticated USING (true) WITH CHECK (true);
