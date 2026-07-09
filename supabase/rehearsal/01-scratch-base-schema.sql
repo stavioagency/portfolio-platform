@@ -259,6 +259,13 @@ DROP POLICY IF EXISTS "Anyone can log event" ON analytics_events;
 CREATE POLICY "Anyone can log event" ON analytics_events
   FOR INSERT TO anon, authenticated WITH CHECK (true);
 
+-- Table-level INSERT privilege for the public roles. The policy above decides the
+-- insert is ALLOWED; this GRANT lets the role touch the table at all. A fresh
+-- project does not auto-grant it, so without it the anon key gets
+-- "42501 permission denied for table analytics_events". INSERT only — the public
+-- roles still cannot SELECT/UPDATE/DELETE events (reads stay admin-only).
+GRANT INSERT ON analytics_events TO anon, authenticated;
+
 -- Only admins can read events (analytics tab)
 DROP POLICY IF EXISTS "Authed can read events" ON analytics_events;
 CREATE POLICY "Authed can read events" ON analytics_events
