@@ -266,6 +266,13 @@ CREATE POLICY "Anyone can log event" ON analytics_events
 -- roles still cannot SELECT/UPDATE/DELETE events (reads stay admin-only).
 GRANT INSERT ON analytics_events TO anon, authenticated;
 
+-- `analytics_events.id` is BIGSERIAL, so every insert calls nextval() on its
+-- sequence. Table INSERT does NOT carry sequence rights, so without this a fresh
+-- project fails the insert with "42501 permission denied for sequence
+-- analytics_events_id_seq". USAGE only (permits nextval) — no read of sequence
+-- values, no other privilege, no change to analytics read access.
+GRANT USAGE ON SEQUENCE analytics_events_id_seq TO anon, authenticated;
+
 -- Only admins can read events (analytics tab)
 DROP POLICY IF EXISTS "Authed can read events" ON analytics_events;
 CREATE POLICY "Authed can read events" ON analytics_events
