@@ -808,9 +808,10 @@ export default function Home({ slug = null } = {}) {
 }
 
 function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
-  const [expanded, setExpanded] = useState(null);
-  // Lightbox holds the active project's whole image set so we can navigate within it.
-  const [lightbox, setLightbox] = useState(null); // { images: string[], index: number, title: string } | null
+  // Lightbox holds the active project's whole image set + its details, so we can
+  // navigate the slideshow and show project info without the old dropdown.
+  const [lightbox, setLightbox] = useState(null); // { images, index, title, desc, meta, full, url } | null
+  const [detailsOpen, setDetailsOpen] = useState(false); // full_description expander
   const touchStartX = useRef(null);
   const stepLightbox = useCallback((delta) => {
     setLightbox(lb => (lb ? { ...lb, index: (lb.index + delta + lb.images.length) % lb.images.length } : lb));
@@ -845,12 +846,26 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
     };
   }, [onClose, lightbox, stepLightbox]);
 
-  function toggleProject(id) {
-    if (expanded !== id) onOpenProject?.(id);
-    setExpanded(expanded === id ? null : id);
+  // Clicking a project opens its slideshow directly (no dropdown step). Prefer the
+  // gallery images[]; fall back to the single cover_image; if it has neither but has
+  // an external link, just open that. Logs project_view exactly like before.
+  function openProject(p, title, desc) {
+    onOpenProject?.(p.id);
+    const images = (p.images && p.images.length) ? p.images
+      : (p.cover_image ? [p.cover_image] : []);
+    if (!images.length) {
+      // No images to show — if there's an external link, honor it; otherwise no-op.
+      if (p.external_url) window.open(p.external_url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    const full = pick(p.full_description, lang) || pick(p.full_description, 'en');
+    const meta = [p.client, p.year, p.role].filter(Boolean).join('  ·  ');
+    setDetailsOpen(false);
+    setLightbox({ images, index: 0, title, desc: desc || '', meta, full: full || '', url: p.external_url || null });
   }
 
   return (
+    <>
     <div className="modal-bg" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
         <div className="modal-head">
@@ -865,49 +880,21 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
               {projects.map(p => {
                 const title = pick(p.title, lang) || pick(p.title, 'en');
                 const desc = pick(p.description, lang) || pick(p.description, 'en');
-                const full = pick(p.full_description, lang) || pick(p.full_description, 'en');
-                const isOpen = expanded === p.id;
+                const count = (p.images && p.images.length) || (p.cover_image ? 1 : 0);
                 return (
-                  <article key={p.id} className={`pcard ${isOpen ? 'open' : ''}`}>
-                    <button className="pcard-trigger" onClick={() => toggleProject(p.id)}>
+                  <article key={p.id} className="pcard">
+                    <button type="button" className="pcard-trigger" onClick={() => openProject(p, title, desc)} aria-label={title}>
                       {p.cover_image && (
-                        <div className="pcard-cover"><img src={p.cover_image} alt={title} loading="lazy" /></div>
+                        <div className="pcard-cover">
+                          <img src={p.cover_image} alt={title} loading="lazy" />
+                          {count > 1 && <span className="pcard-badge" dir="ltr">{count}</span>}
+                        </div>
                       )}
                       <div className="pcard-meta">
                         <h3>{title}</h3>
                         {desc && <p>{desc}</p>}
                       </div>
                     </button>
-                    {isOpen && (
-                      <div className="pcard-details">
-                        {(p.client || p.year || p.role) && (
-                          <div className="pcard-meta-grid">
-                            {p.client && <div><span>{t('project_client')}</span><strong>{p.client}</strong></div>}
-                            {p.year && <div><span>{t('project_year')}</span><strong dir="ltr">{p.year}</strong></div>}
-                            {p.role && <div><span>{t('project_role')}</span><strong>{p.role}</strong></div>}
-                          </div>
-                        )}
-                        {full && <p className="pcard-full">{full}</p>}
-                        {p.images && p.images.length > 0 && (
-                          <div className="pcard-gallery">
-                            {p.images.map((img, i) => (
-                              <button
-                                type="button"
-                                key={i}
-                                className="pcard-thumb"
-                                onClick={() => setLightbox({ images: p.images, index: i, title })}
-                                aria-label={`${title} — ${i + 1}`}
-                              >
-                                <img src={img} alt="" loading="lazy" />
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {p.external_url && (
-                          <a href={p.external_url} target="_blank" rel="noopener noreferrer" className="pcard-link">{t('view_project')} →</a>
-                        )}
-                      </div>
-                    )}
                   </article>
                 );
               })}
@@ -915,11 +902,12 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
           )}
         </div>
       </div>
+    </div>
       {lightbox && (
         <div
           className="lightbox"
           dir={lang === 'ar' ? 'rtl' : 'ltr'}
-          onClick={(e) => { e.stopPropagation(); setLightbox(null); }}
+          onClick={() => setLightbox(null)}
         >
           <button
             className="lb-close"
@@ -927,36 +915,68 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
             aria-label={t('close')}
           >×</button>
 
-          {lightbox.images.length > 1 && (
-            <>
-              <button
-                className="lb-nav lb-prev"
-                onClick={(e) => { e.stopPropagation(); stepLightbox(-1); }}
-                aria-label={lang === 'ar' ? 'السابق' : 'Previous'}
-              >‹</button>
-              <button
-                className="lb-nav lb-next"
-                onClick={(e) => { e.stopPropagation(); stepLightbox(1); }}
-                aria-label={lang === 'ar' ? 'التالي' : 'Next'}
-              >›</button>
-            </>
-          )}
-
           <div
             className="lb-stage"
-            onClick={(e) => e.stopPropagation()}
             onTouchStart={onLbTouchStart}
             onTouchEnd={onLbTouchEnd}
           >
-            <img key={lightbox.index} src={lightbox.images[lightbox.index]} alt={lightbox.title || ''} />
+            {lightbox.images.length > 1 && (
+              <>
+                <button
+                  className="lb-nav lb-prev"
+                  onClick={(e) => { e.stopPropagation(); stepLightbox(-1); }}
+                  aria-label={lang === 'ar' ? 'السابق' : 'Previous'}
+                >‹</button>
+                <button
+                  className="lb-nav lb-next"
+                  onClick={(e) => { e.stopPropagation(); stepLightbox(1); }}
+                  aria-label={lang === 'ar' ? 'التالي' : 'Next'}
+                >›</button>
+              </>
+            )}
+            <img
+              key={lightbox.index}
+              src={lightbox.images[lightbox.index]}
+              alt={lightbox.title || ''}
+              onClick={(e) => e.stopPropagation()}
+            />
           </div>
 
-          <div className="lb-caption">
-            {lightbox.title && <span className="lb-title">{lightbox.title}</span>}
-            {lightbox.images.length > 1 && (
-              <span className="lb-count" dir="ltr">{lightbox.index + 1} / {lightbox.images.length}</span>
-            )}
-          </div>
+          {(lightbox.title || lightbox.desc || lightbox.meta || lightbox.full || lightbox.url || lightbox.images.length > 1) && (
+            <div className="lb-info" onClick={(e) => e.stopPropagation()}>
+              <div className="lb-info-top">
+                <div className="lb-info-heading">
+                  {lightbox.title && <h3 className="lb-title">{lightbox.title}</h3>}
+                  {lightbox.meta && <span className="lb-meta">{lightbox.meta}</span>}
+                </div>
+                {lightbox.images.length > 1 && (
+                  <span className="lb-count" dir="ltr">{lightbox.index + 1} / {lightbox.images.length}</span>
+                )}
+              </div>
+              {lightbox.desc && <p className="lb-desc">{lightbox.desc}</p>}
+              {(lightbox.full || lightbox.url) && (
+                <div className="lb-actions">
+                  {lightbox.full && (
+                    <button
+                      type="button"
+                      className="lb-details-btn"
+                      onClick={() => setDetailsOpen(o => !o)}
+                      aria-expanded={detailsOpen}
+                    >{detailsOpen ? (lang === 'ar' ? 'إخفاء التفاصيل' : 'Hide details') : (lang === 'ar' ? 'التفاصيل' : 'Details')}</button>
+                  )}
+                  {lightbox.url && (
+                    <a
+                      className="lb-link"
+                      href={lightbox.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >{t('view_project')} ↗</a>
+                  )}
+                </div>
+              )}
+              {lightbox.full && detailsOpen && <p className="lb-details">{lightbox.full}</p>}
+            </div>
+          )}
         </div>
       )}
       <style jsx>{`
@@ -1002,37 +1022,26 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
         .pcard:hover { border-color: var(--border-strong); box-shadow: 0 8px 30px rgba(0,0,0,0.22); }
         .pcard-trigger:active .pcard-meta h3 { opacity: 0.8; }
         .pcard-trigger { display: block; width: 100%; padding: 0; text-align: inherit; background: none; border: none; cursor: pointer; font-family: inherit; }
-        .pcard-cover { width: 100%; aspect-ratio: 1; overflow: hidden; background: var(--bg-primary); }
+        .pcard-cover { position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; background: var(--bg-primary); }
+        .pcard-badge { position: absolute; top: 8px; inset-inline-end: 8px; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
         .pcard-cover img { width: 100%; height: 100%; object-fit: cover; transition: var(--transition-slow); }
         .pcard:hover .pcard-cover img { transform: scale(1.02); }
         .pcard-meta { padding: 16px 20px; }
         .pcard-meta h3 { font-size: 16px; font-weight: 600; color: #fff; }
         .pcard-meta p { font-size: 13px; color: var(--text-tertiary); margin-top: 4px; }
-        .pcard-details { padding: 0 20px 20px; }
-        .pcard-meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); margin-bottom: 8px; }
-        .pcard-meta-grid > div { display: flex; flex-direction: column; gap: 2px; }
-        .pcard-meta-grid span { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-        :global(html[dir="rtl"]) .pcard-meta-grid span { text-transform: none; letter-spacing: normal; }
-        .pcard-meta-grid strong { font-size: 13px; color: var(--text-primary); font-weight: 600; }
-        .pcard-full { font-size: 14px; color: var(--text-secondary); line-height: 1.7; padding-top: 12px; border-top: 1px solid var(--border); margin-bottom: 16px; }
-        .pcard-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin-bottom: 16px; }
-        .pcard-thumb { position: relative; padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg-primary); cursor: zoom-in; aspect-ratio: 1; -webkit-tap-highlight-color: transparent; }
-        .pcard-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.25s ease, opacity 0.2s ease; }
-        .pcard-thumb:hover img { transform: scale(1.06); opacity: 0.9; }
-        .pcard-thumb:active { transform: scale(0.97); }
-        .pcard-thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         .lightbox {
           position: fixed; inset: 0; z-index: 200;
-          background: rgba(8,10,14,0.86);
+          background: rgba(8,10,14,0.88);
           -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
-          display: flex; align-items: center; justify-content: center;
-          padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
-          cursor: zoom-out; animation: fadeIn 0.2s ease;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          gap: 14px;
+          padding: max(20px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom));
+          cursor: zoom-out; overscroll-behavior: contain; animation: fadeIn 0.2s ease;
         }
-        .lb-stage { cursor: default; display: flex; align-items: center; justify-content: center; max-width: 100%; max-height: 100%; }
+        .lb-stage { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
         .lb-stage img {
-          max-width: min(96vw, 1200px); max-height: 84vh; width: auto; height: auto;
-          object-fit: contain; border-radius: 10px;
+          max-width: min(96vw, 1200px); max-height: 100%; width: auto; height: auto;
+          object-fit: contain; border-radius: 10px; cursor: default;
           box-shadow: 0 20px 70px rgba(0,0,0,0.6);
           animation: lbPop 0.22s ease;
         }
@@ -1048,7 +1057,7 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
         }
         .lb-close:hover { background: rgba(255,255,255,0.24); }
         .lb-nav {
-          position: fixed; top: 50%; transform: translateY(-50%);
+          position: absolute; top: 50%; transform: translateY(-50%);
           width: 48px; height: 48px; border-radius: 50%;
           background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18);
           color: #fff; font-size: 28px; line-height: 1; padding-bottom: 3px; cursor: pointer; font-family: inherit;
@@ -1057,26 +1066,41 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
           transition: background 0.15s ease;
         }
         .lb-nav:hover { background: rgba(255,255,255,0.2); }
-        .lb-prev { left: 12px; }
-        .lb-next { right: 12px; }
-        .lb-caption {
-          position: fixed; left: 0; right: 0; bottom: max(16px, env(safe-area-inset-bottom));
-          display: flex; flex-direction: column; align-items: center; gap: 4px;
-          padding: 0 70px; pointer-events: none;
+        .lb-prev { left: 8px; }
+        .lb-next { right: 8px; }
+        .lb-info {
+          flex: 0 0 auto; width: 100%; max-width: 720px;
+          display: flex; flex-direction: column; gap: 8px;
+          text-align: start; color: #fff;
         }
-        .lb-title { color: rgba(255,255,255,0.92); font-size: 13px; font-weight: 600; text-align: center; max-width: 640px; }
-        .lb-count { color: rgba(255,255,255,0.55); font-size: 12px; font-variant-numeric: tabular-nums; }
+        .lb-info-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+        .lb-info-heading { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .lb-title { color: #fff; font-size: 15px; font-weight: 700; }
+        .lb-meta { color: rgba(255,255,255,0.55); font-size: 12px; }
+        .lb-count { color: rgba(255,255,255,0.55); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; flex: 0 0 auto; }
+        .lb-desc { color: rgba(255,255,255,0.8); font-size: 13px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .lb-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+        .lb-details-btn, .lb-link {
+          color: #fff; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;
+          background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.22);
+          padding: 6px 14px; border-radius: 999px;
+          -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+          transition: background 0.15s ease;
+        }
+        .lb-details-btn:hover, .lb-link:hover { background: rgba(255,255,255,0.24); }
+        .lb-details {
+          color: rgba(255,255,255,0.82); font-size: 13px; line-height: 1.7;
+          max-height: 22vh; overflow-y: auto; overscroll-behavior: contain;
+          padding-top: 4px; white-space: pre-wrap;
+        }
         @media (max-width: 600px) {
-          .lb-nav { top: auto; transform: none; bottom: max(16px, env(safe-area-inset-bottom)); width: 44px; height: 44px; }
-          .lb-prev { left: 16px; }
-          .lb-next { right: 16px; }
-          .lb-stage img { max-height: 72vh; }
-          .lb-caption { bottom: max(74px, calc(env(safe-area-inset-bottom) + 74px)); padding: 0 16px; }
+          .lb-nav { width: 44px; height: 44px; }
+          .lb-title { font-size: 14px; }
+          .lb-details { max-height: 26vh; }
         }
-        .pcard-link { display: inline-block; padding: 8px 16px; background: var(--accent); color: var(--bg-primary); border-radius: 10px; font-size: 13px; font-weight: 600; }
         @media (min-width: 640px) { .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } }
       `}</style>
-    </div>
+    </>
   );
 }
 
