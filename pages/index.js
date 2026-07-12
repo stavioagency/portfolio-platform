@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
@@ -809,22 +809,41 @@ export default function Home({ slug = null } = {}) {
 
 function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
   const [expanded, setExpanded] = useState(null);
-  const [lightboxSrc, setLightboxSrc] = useState(null);
+  // Lightbox holds the active project's whole image set so we can navigate within it.
+  const [lightbox, setLightbox] = useState(null); // { images: string[], index: number, title: string } | null
+  const touchStartX = useRef(null);
+  const stepLightbox = useCallback((delta) => {
+    setLightbox(lb => (lb ? { ...lb, index: (lb.index + delta + lb.images.length) % lb.images.length } : lb));
+  }, []);
+  function onLbTouchStart(e) { touchStartX.current = e.touches[0].clientX; }
+  function onLbTouchEnd(e) {
+    if (touchStartX.current == null || !lightbox || lightbox.images.length < 2) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (Math.abs(dx) > 40) stepLightbox(dx < 0 ? 1 : -1); // swipe left -> next, right -> prev
+    touchStartX.current = null;
+  }
 
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') {
-        if (lightboxSrc) setLightboxSrc(null);
+        if (lightbox) setLightbox(null);
         else onClose();
+        return;
       }
+      // Arrow nav only inside the lightbox and only when there's more than one image.
+      // Physical mapping (Left = previous, Right = next) matches the button positions
+      // in both LTR and RTL, so it stays predictable.
+      if (!lightbox || lightbox.images.length < 2) return;
+      if (e.key === 'ArrowLeft') stepLightbox(-1);
+      else if (e.key === 'ArrowRight') stepLightbox(1);
     }
     document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden'; // scroll-lock the page behind the modal
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [onClose, lightboxSrc]);
+  }, [onClose, lightbox, stepLightbox]);
 
   function toggleProject(id) {
     if (expanded !== id) onOpenProject?.(id);
@@ -871,7 +890,17 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
                         {full && <p className="pcard-full">{full}</p>}
                         {p.images && p.images.length > 0 && (
                           <div className="pcard-gallery">
-                            {p.images.map((img, i) => <img key={i} src={img} alt="" loading="lazy" onClick={() => setLightboxSrc(img)} />)}
+                            {p.images.map((img, i) => (
+                              <button
+                                type="button"
+                                key={i}
+                                className="pcard-thumb"
+                                onClick={() => setLightbox({ images: p.images, index: i, title })}
+                                aria-label={`${title} — ${i + 1}`}
+                              >
+                                <img src={img} alt="" loading="lazy" />
+                              </button>
+                            ))}
                           </div>
                         )}
                         {p.external_url && (
@@ -886,10 +915,48 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
           )}
         </div>
       </div>
-      {lightboxSrc && (
-        <div className="lightbox" onClick={(e) => { e.stopPropagation(); setLightboxSrc(null); }}>
-          <button className="lightbox-close" onClick={(e) => { e.stopPropagation(); setLightboxSrc(null); }} aria-label="Close">×</button>
-          <img src={lightboxSrc} alt="" onClick={(e) => e.stopPropagation()} />
+      {lightbox && (
+        <div
+          className="lightbox"
+          dir={lang === 'ar' ? 'rtl' : 'ltr'}
+          onClick={(e) => { e.stopPropagation(); setLightbox(null); }}
+        >
+          <button
+            className="lb-close"
+            onClick={(e) => { e.stopPropagation(); setLightbox(null); }}
+            aria-label={t('close')}
+          >×</button>
+
+          {lightbox.images.length > 1 && (
+            <>
+              <button
+                className="lb-nav lb-prev"
+                onClick={(e) => { e.stopPropagation(); stepLightbox(-1); }}
+                aria-label={lang === 'ar' ? 'السابق' : 'Previous'}
+              >‹</button>
+              <button
+                className="lb-nav lb-next"
+                onClick={(e) => { e.stopPropagation(); stepLightbox(1); }}
+                aria-label={lang === 'ar' ? 'التالي' : 'Next'}
+              >›</button>
+            </>
+          )}
+
+          <div
+            className="lb-stage"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={onLbTouchStart}
+            onTouchEnd={onLbTouchEnd}
+          >
+            <img key={lightbox.index} src={lightbox.images[lightbox.index]} alt={lightbox.title || ''} />
+          </div>
+
+          <div className="lb-caption">
+            {lightbox.title && <span className="lb-title">{lightbox.title}</span>}
+            {lightbox.images.length > 1 && (
+              <span className="lb-count" dir="ltr">{lightbox.index + 1} / {lightbox.images.length}</span>
+            )}
+          </div>
         </div>
       )}
       <style jsx>{`
@@ -909,6 +976,7 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
           border: 1px solid var(--border-strong);
           border-radius: 20px;
           overflow: hidden;
+          box-shadow: 0 30px 80px rgba(0,0,0,0.5);
           animation: slideUp 0.3s ease;
         }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -931,7 +999,8 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
         .modal-empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
         .grid { display: flex; flex-direction: column; gap: 12px; }
         .pcard { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: var(--transition); }
-        .pcard:hover { border-color: var(--border-strong); }
+        .pcard:hover { border-color: var(--border-strong); box-shadow: 0 8px 30px rgba(0,0,0,0.22); }
+        .pcard-trigger:active .pcard-meta h3 { opacity: 0.8; }
         .pcard-trigger { display: block; width: 100%; padding: 0; text-align: inherit; background: none; border: none; cursor: pointer; font-family: inherit; }
         .pcard-cover { width: 100%; aspect-ratio: 1; overflow: hidden; background: var(--bg-primary); }
         .pcard-cover img { width: 100%; height: 100%; object-fit: cover; transition: var(--transition-slow); }
@@ -946,13 +1015,64 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
         :global(html[dir="rtl"]) .pcard-meta-grid span { text-transform: none; letter-spacing: normal; }
         .pcard-meta-grid strong { font-size: 13px; color: var(--text-primary); font-weight: 600; }
         .pcard-full { font-size: 14px; color: var(--text-secondary); line-height: 1.7; padding-top: 12px; border-top: 1px solid var(--border); margin-bottom: 16px; }
-        .pcard-gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 16px; }
-        .pcard-gallery img { width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--bg-primary); border-radius: 8px; cursor: zoom-in; transition: opacity 0.2s ease; }
-        .pcard-gallery img:hover { opacity: 0.85; }
-        .lightbox { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.92); display: flex; align-items: center; justify-content: center; padding: 20px; cursor: zoom-out; animation: fadeIn 0.18s ease; }
-        .lightbox img { max-width: 96vw; max-height: 92vh; object-fit: contain; border-radius: 6px; cursor: default; box-shadow: 0 12px 60px rgba(0,0,0,0.6); }
-        .lightbox-close { position: fixed; top: 16px; inset-inline-end: 16px; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.12); color: #fff; border: none; cursor: pointer; font-size: 22px; line-height: 1; font-family: inherit; display: flex; align-items: center; justify-content: center; z-index: 201; }
-        .lightbox-close:hover { background: rgba(255,255,255,0.22); }
+        .pcard-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; margin-bottom: 16px; }
+        .pcard-thumb { position: relative; padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg-primary); cursor: zoom-in; aspect-ratio: 1; -webkit-tap-highlight-color: transparent; }
+        .pcard-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.25s ease, opacity 0.2s ease; }
+        .pcard-thumb:hover img { transform: scale(1.06); opacity: 0.9; }
+        .pcard-thumb:active { transform: scale(0.97); }
+        .pcard-thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .lightbox {
+          position: fixed; inset: 0; z-index: 200;
+          background: rgba(8,10,14,0.86);
+          -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+          display: flex; align-items: center; justify-content: center;
+          padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+          cursor: zoom-out; animation: fadeIn 0.2s ease;
+        }
+        .lb-stage { cursor: default; display: flex; align-items: center; justify-content: center; max-width: 100%; max-height: 100%; }
+        .lb-stage img {
+          max-width: min(96vw, 1200px); max-height: 84vh; width: auto; height: auto;
+          object-fit: contain; border-radius: 10px;
+          box-shadow: 0 20px 70px rgba(0,0,0,0.6);
+          animation: lbPop 0.22s ease;
+        }
+        @keyframes lbPop { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: scale(1); } }
+        .lb-close {
+          position: fixed; top: max(14px, env(safe-area-inset-top)); right: 14px;
+          width: 44px; height: 44px; border-radius: 50%;
+          background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18);
+          color: #fff; font-size: 24px; line-height: 1; cursor: pointer; font-family: inherit;
+          display: flex; align-items: center; justify-content: center; z-index: 210;
+          -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+          transition: background 0.15s ease;
+        }
+        .lb-close:hover { background: rgba(255,255,255,0.24); }
+        .lb-nav {
+          position: fixed; top: 50%; transform: translateY(-50%);
+          width: 48px; height: 48px; border-radius: 50%;
+          background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18);
+          color: #fff; font-size: 28px; line-height: 1; padding-bottom: 3px; cursor: pointer; font-family: inherit;
+          display: flex; align-items: center; justify-content: center; z-index: 210;
+          -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+          transition: background 0.15s ease;
+        }
+        .lb-nav:hover { background: rgba(255,255,255,0.2); }
+        .lb-prev { left: 12px; }
+        .lb-next { right: 12px; }
+        .lb-caption {
+          position: fixed; left: 0; right: 0; bottom: max(16px, env(safe-area-inset-bottom));
+          display: flex; flex-direction: column; align-items: center; gap: 4px;
+          padding: 0 70px; pointer-events: none;
+        }
+        .lb-title { color: rgba(255,255,255,0.92); font-size: 13px; font-weight: 600; text-align: center; max-width: 640px; }
+        .lb-count { color: rgba(255,255,255,0.55); font-size: 12px; font-variant-numeric: tabular-nums; }
+        @media (max-width: 600px) {
+          .lb-nav { top: auto; transform: none; bottom: max(16px, env(safe-area-inset-bottom)); width: 44px; height: 44px; }
+          .lb-prev { left: 16px; }
+          .lb-next { right: 16px; }
+          .lb-stage img { max-height: 72vh; }
+          .lb-caption { bottom: max(74px, calc(env(safe-area-inset-bottom) + 74px)); padding: 0 16px; }
+        }
         .pcard-link { display: inline-block; padding: 8px 16px; background: var(--accent); color: var(--bg-primary); border-radius: 10px; font-size: 13px; font-weight: 600; }
         @media (min-width: 640px) { .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } }
       `}</style>
