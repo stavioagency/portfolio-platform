@@ -52,6 +52,10 @@ export default function Home({ slug = null } = {}) {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [pageUrl, setPageUrl] = useState('');
+  // Resolved tenant id for analytics stamping. Null in singleton/default fallback
+  // (kept null so inserts behave exactly as before). Set once loadData resolves.
+  const [tenantId, setTenantId] = useState(null);
+  const pageViewLogged = useRef(false);
 
   const t = getTranslator(lang);
   const dir = lang === 'ar' ? 'rtl' : 'ltr';
@@ -78,6 +82,8 @@ export default function Home({ slug = null } = {}) {
         slug,
       });
       const tenantMode = tenant.mode === 'tenant' && !!tenant.id;
+      // Stamp analytics with this tenant when resolved; null keeps singleton behavior.
+      setTenantId(tenantMode ? tenant.id : null);
 
       // A slug route asked for a specific tenant that doesn't exist -> 404.
       // (Don't fall back to the singleton for an explicit slug.) `/` has no slug,
@@ -101,9 +107,9 @@ export default function Home({ slug = null } = {}) {
       if (tenantMode) projectsQuery = projectsQuery.eq('tenant_id', tenant.id); // future: scope to tenant
       const { data: projectsData } = await projectsQuery.order('display_order', { ascending: true });
 
-      // NOTE (mt): analytics inserts stay as-is for now. `analytics_events` has no
-      // tenant_id column until the migration; a later batch will attach tenant_id
-      // once the column exists and the tenant is resolved before logging.
+      // NOTE (mt): analytics inserts stamp `tenant_id` from the resolved tenant
+      // (see the page_view effect and logEvent). In singleton/default fallback
+      // tenantId stays null, so inserts behave exactly as before.
 
       if (profileData) {
         setProfile(profileData);
@@ -161,18 +167,23 @@ export default function Home({ slug = null } = {}) {
     link.href = profile.favicon_url;
   }, [profile]);
 
-  // Log page_view once per mount
+  // Log page_view once per mount. Deferred until loadData has resolved (loading
+  // flips false) so the resolved tenantId is available to stamp; the ref guard
+  // keeps it to a single insert.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const visitor_id = getVisitorId();
-    supabase.from('analytics_events').insert({
+    if (loading || pageViewLogged.current) return;
+    pageViewLogged.current = true;
+    const row = {
       event_type: 'page_view',
       path: window.location.pathname,
       referrer: document.referrer || null,
       user_agent: navigator.userAgent.slice(0, 200),
-      visitor_id,
-    }).then(() => {}).catch(() => {});
-  }, []);
+      visitor_id: getVisitorId(),
+    };
+    if (tenantId) row.tenant_id = tenantId; // singleton fallback: tenantId null -> omitted
+    supabase.from('analytics_events').insert(row).then(() => {}).catch(() => {});
+  }, [loading, tenantId]);
 
   // Auto-advance banner every 5s — paused on hover/focus and when reduced-motion is requested
   useEffect(() => {
@@ -273,7 +284,9 @@ export default function Home({ slug = null } = {}) {
 
   function logEvent(payload) {
     if (typeof window === 'undefined') return;
-    supabase.from('analytics_events').insert({ visitor_id: getVisitorId(), ...payload }).then(() => {}).catch(() => {});
+    const row = { visitor_id: getVisitorId(), ...payload };
+    if (tenantId) row.tenant_id = tenantId; // singleton fallback: tenantId null -> omitted
+    supabase.from('analytics_events').insert(row).then(() => {}).catch(() => {});
   }
   function onCtaClick(btn) {
     logEvent({ event_type: 'link_click', link_key: btn.icon || 'cta' });
