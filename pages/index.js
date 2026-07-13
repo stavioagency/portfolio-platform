@@ -810,8 +810,8 @@ export default function Home({ slug = null } = {}) {
 function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
   // Lightbox holds the active project's whole image set + its details, so we can
   // navigate the slideshow and show project info without the old dropdown.
-  const [lightbox, setLightbox] = useState(null); // { images, index, title, desc, meta, full, url } | null
-  const [detailsOpen, setDetailsOpen] = useState(false); // full_description expander
+  const [lightbox, setLightbox] = useState(null); // { images, index, title, desc, meta, url } | null
+  const [imgLoaded, setImgLoaded] = useState(false); // stage image load state (spinner + fade-in)
   const touchStartX = useRef(null);
   const stepLightbox = useCallback((delta) => {
     setLightbox(lb => (lb ? { ...lb, index: (lb.index + delta + lb.images.length) % lb.images.length } : lb));
@@ -846,6 +846,18 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
     };
   }, [onClose, lightbox, stepLightbox]);
 
+  // Whenever the visible slide changes: show the spinner again for the new image,
+  // and warm the browser cache for the immediate next/previous images so stepping
+  // feels instant — without eagerly fetching the entire set.
+  useEffect(() => {
+    if (!lightbox) return;
+    setImgLoaded(false);
+    if (lightbox.images.length < 2) return;
+    const { images, index } = lightbox;
+    [(index + 1) % images.length, (index - 1 + images.length) % images.length]
+      .forEach(i => { const im = new Image(); im.src = images[i]; });
+  }, [lightbox]);
+
   // Clicking a project opens its slideshow directly (no dropdown step). Prefer the
   // gallery images[]; fall back to the single cover_image; if it has neither but has
   // an external link, just open that. Logs project_view exactly like before.
@@ -858,10 +870,8 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
       if (p.external_url) window.open(p.external_url, '_blank', 'noopener,noreferrer');
       return;
     }
-    const full = pick(p.full_description, lang) || pick(p.full_description, 'en');
     const meta = [p.client, p.year, p.role].filter(Boolean).join('  ·  ');
-    setDetailsOpen(false);
-    setLightbox({ images, index: 0, title, desc: desc || '', meta, full: full || '', url: p.external_url || null });
+    setLightbox({ images, index: 0, title, desc: desc || '', meta, url: p.external_url || null });
   }
 
   return (
@@ -934,15 +944,19 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
                 >›</button>
               </>
             )}
+            {!imgLoaded && <div className="lb-spinner" aria-hidden="true" />}
             <img
               key={lightbox.index}
+              className={imgLoaded ? 'loaded' : ''}
               src={lightbox.images[lightbox.index]}
               alt={lightbox.title || ''}
+              decoding="async"
+              onLoad={() => setImgLoaded(true)}
               onClick={(e) => e.stopPropagation()}
             />
           </div>
 
-          {(lightbox.title || lightbox.desc || lightbox.meta || lightbox.full || lightbox.url || lightbox.images.length > 1) && (
+          {(lightbox.title || lightbox.desc || lightbox.meta || lightbox.url || lightbox.images.length > 1) && (
             <div className="lb-info" onClick={(e) => e.stopPropagation()}>
               <div className="lb-info-top">
                 <div className="lb-info-heading">
@@ -954,27 +968,16 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
                 )}
               </div>
               {lightbox.desc && <p className="lb-desc">{lightbox.desc}</p>}
-              {(lightbox.full || lightbox.url) && (
+              {lightbox.url && (
                 <div className="lb-actions">
-                  {lightbox.full && (
-                    <button
-                      type="button"
-                      className="lb-details-btn"
-                      onClick={() => setDetailsOpen(o => !o)}
-                      aria-expanded={detailsOpen}
-                    >{detailsOpen ? (lang === 'ar' ? 'إخفاء التفاصيل' : 'Hide details') : (lang === 'ar' ? 'التفاصيل' : 'Details')}</button>
-                  )}
-                  {lightbox.url && (
-                    <a
-                      className="lb-link"
-                      href={lightbox.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >{t('view_project')} ↗</a>
-                  )}
+                  <a
+                    className="lb-link"
+                    href={lightbox.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >{t('view_project')} ↗</a>
                 </div>
               )}
-              {lightbox.full && detailsOpen && <p className="lb-details">{lightbox.full}</p>}
             </div>
           )}
         </div>
@@ -1043,9 +1046,15 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
           max-width: min(96vw, 1200px); max-height: 100%; width: auto; height: auto;
           object-fit: contain; border-radius: 10px; cursor: default;
           box-shadow: 0 20px 70px rgba(0,0,0,0.6);
-          animation: lbPop 0.22s ease;
+          opacity: 0; transition: opacity 0.18s ease;
         }
-        @keyframes lbPop { from { opacity: 0; transform: scale(0.985); } to { opacity: 1; transform: scale(1); } }
+        .lb-stage img.loaded { opacity: 1; }
+        .lb-spinner {
+          position: absolute; inset: 0; margin: auto; width: 34px; height: 34px; border-radius: 50%;
+          border: 3px solid rgba(255,255,255,0.18); border-top-color: rgba(255,255,255,0.85);
+          animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .lb-close {
           position: fixed; top: max(14px, env(safe-area-inset-top)); right: 14px;
           width: 44px; height: 44px; border-radius: 50%;
@@ -1080,23 +1089,17 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
         .lb-count { color: rgba(255,255,255,0.55); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; flex: 0 0 auto; }
         .lb-desc { color: rgba(255,255,255,0.8); font-size: 13px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .lb-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
-        .lb-details-btn, .lb-link {
+        .lb-link {
           color: #fff; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;
           background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.22);
-          padding: 6px 14px; border-radius: 999px;
+          padding: 6px 14px; border-radius: 999px; text-decoration: none;
           -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
           transition: background 0.15s ease;
         }
-        .lb-details-btn:hover, .lb-link:hover { background: rgba(255,255,255,0.24); }
-        .lb-details {
-          color: rgba(255,255,255,0.82); font-size: 13px; line-height: 1.7;
-          max-height: 22vh; overflow-y: auto; overscroll-behavior: contain;
-          padding-top: 4px; white-space: pre-wrap;
-        }
+        .lb-link:hover { background: rgba(255,255,255,0.24); }
         @media (max-width: 600px) {
           .lb-nav { width: 44px; height: 44px; }
           .lb-title { font-size: 14px; }
-          .lb-details { max-height: 26vh; }
         }
         @media (min-width: 640px) { .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } }
       `}</style>
