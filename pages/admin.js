@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useRef, createContext, useContext } from 
 import Head from 'next/head';
 import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
 import { supabase } from '../lib/supabase';
-import { resolveTenant } from '../lib/tenant';
 import { getTranslator } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
@@ -363,6 +362,8 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   const [activeTab, setActiveTab] = useState('profile');
   const dirtyRef = useRef(false); // set by the mounted SaveBar via DirtyContext
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [tenants, setTenants] = useState([]);
+  const [tenant, setTenant] = useState(null);
   const t = getTranslator(lang);
 
   const TAB_LABELS = {
@@ -380,6 +381,40 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   }
   async function signOut() { await supabase.auth.signOut(); }
 
+  // Which tenants may this admin edit? Sourced from tenant_admins for the signed-in
+  // user. If nothing is mapped — or the tenant tables aren't readable — we stay in
+  // legacy single-profile mode (tenant = null), preserving today's behavior.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const uid = session?.user?.id;
+        if (!uid) return;
+        const { data, error } = await supabase
+          .from('tenant_admins')
+          .select('tenants ( id, slug, name, status )')
+          .eq('user_id', uid);
+        if (cancelled || error || !data) return;
+        const list = data.map(r => r.tenants).filter(Boolean).filter(x => x.status !== 'disabled');
+        list.sort((a, b) => String(a.name || a.slug).localeCompare(String(b.name || b.slug)));
+        if (list.length === 0) return;
+        setTenants(list);
+        setTenant(prev => prev || list[0]);
+      } catch (_) { /* tables missing / offline -> legacy single-profile mode */ }
+    })();
+    return () => { cancelled = true; };
+  }, [session]);
+
+  // Switching tenant remounts the editors (via key), discarding unsaved edits —
+  // so guard it the same way tab switches are guarded.
+  function switchTenant(id) {
+    const next = tenants.find(x => String(x.id) === String(id));
+    if (!next || next.id === tenant?.id) return;
+    if (dirtyRef.current && !window.confirm(t('unsaved_switch'))) return;
+    dirtyRef.current = false;
+    setTenant(next);
+  }
+
   // Lock body scroll when drawer is open (mobile)
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -387,8 +422,11 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
     return () => { document.body.style.overflow = ''; };
   }, [sidebarOpen]);
 
+  const tenantKey = tenant?.id ?? 'single'; // remount editors on tenant switch -> reload scoped data
+
   return (
     <DirtyContext.Provider value={dirtyRef}>
+    <TenantContext.Provider value={{ tenant, tenants, setTenant }}>
     <div className={`dashboard ${theme || 'dark'}`}>
       {/* MOBILE TOP BAR — only visible <720px */}
       <header className="mobile-bar">
@@ -442,13 +480,14 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
       <div className={`backdrop ${sidebarOpen ? 'show' : ''}`} onClick={() => setSidebarOpen(false)} aria-hidden="true" />
 
       <main className="content">
-        {activeTab === 'profile'    && <ProfileEditor    t={t} lang={lang} />}
-        {activeTab === 'card'       && <CardEditor       t={t} lang={lang} />}
-        {activeTab === 'projects'   && <ProjectsEditor   t={t} lang={lang} />}
-        {activeTab === 'links'      && <LinksEditor      t={t} lang={lang} />}
-        {activeTab === 'appearance' && <AppearanceEditor t={t} lang={lang} />}
-        {activeTab === 'analytics'  && <AnalyticsEditor  t={t} lang={lang} />}
-        {activeTab === 'account'    && <AccountEditor    t={t} lang={lang} session={session} setChromeLang={setLang} />}
+        <TenantSelector tenants={tenants} tenant={tenant} onChange={switchTenant} lang={lang} />
+        {activeTab === 'profile'    && <ProfileEditor    key={tenantKey} t={t} lang={lang} />}
+        {activeTab === 'card'       && <CardEditor       key={tenantKey} t={t} lang={lang} />}
+        {activeTab === 'projects'   && <ProjectsEditor   key={tenantKey} t={t} lang={lang} />}
+        {activeTab === 'links'      && <LinksEditor      key={tenantKey} t={t} lang={lang} />}
+        {activeTab === 'appearance' && <AppearanceEditor key={tenantKey} t={t} lang={lang} />}
+        {activeTab === 'analytics'  && <AnalyticsEditor  key={tenantKey} t={t} lang={lang} />}
+        {activeTab === 'account'    && <AccountEditor    key={tenantKey} t={t} lang={lang} session={session} setChromeLang={setLang} />}
       </main>
 
       <style jsx>{`
@@ -556,7 +595,36 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         }
       `}</style>
     </div>
+    </TenantContext.Provider>
     </DirtyContext.Provider>
+  );
+}
+
+// Tenant picker shown at the top of the admin. Hidden entirely in legacy mode
+// (no tenants). With one tenant it shows a static label (single-tenant behavior
+// preserved); with several it becomes a dropdown.
+function TenantSelector({ tenants, tenant, onChange, lang }) {
+  if (!tenants || tenants.length === 0) return null;
+  const label = lang === 'ar' ? 'مساحة العمل' : 'Workspace';
+  return (
+    <div className="tenant-bar">
+      <span className="tenant-bar-label">{label}</span>
+      {tenants.length > 1 ? (
+        <select className="tenant-select" value={tenant?.id || ''} onChange={(e) => onChange(e.target.value)} aria-label={label}>
+          {tenants.map(tn => <option key={tn.id} value={tn.id}>{tn.name || tn.slug}</option>)}
+        </select>
+      ) : (
+        <span className="tenant-current">{tenant?.name || tenant?.slug}</span>
+      )}
+      <style jsx>{`
+        .tenant-bar { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-5); padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-secondary); max-width: 640px; }
+        .tenant-bar-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); }
+        :global(html[dir="rtl"]) .tenant-bar-label { text-transform: none; letter-spacing: normal; }
+        .tenant-current { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+        .tenant-select { font-family: inherit; font-size: 13px; font-weight: 600; padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-primary); cursor: pointer; }
+        .tenant-select:focus { outline: none; border-color: var(--accent); }
+      `}</style>
+    </div>
   );
 }
 
@@ -608,6 +676,28 @@ function SidebarUser({ session, t }) {
 // time (tabs render conditionally), so a single shared ref is sufficient.
 const DirtyContext = createContext(null);
 
+// The tenant the admin is currently editing. `tenant` is null in legacy/single
+// mode (no tenant mapping or the tenant tables aren't readable), which preserves
+// the exact id=1 behavior below.
+const TenantContext = createContext({ tenant: null, tenants: [], setTenant: () => {} });
+function useTenant() { return useContext(TenantContext); }
+
+// Tenant-scoped data helpers. When a tenant is selected we scope by tenant_id;
+// with no tenant we fall back to the legacy single-profile (id = 1) row so an
+// un-migrated / unmapped database behaves exactly as it does today.
+function loadProfile(tenant, columns = '*') {
+  const q = supabase.from('profile').select(columns);
+  return (tenant ? q.eq('tenant_id', tenant.id) : q.eq('id', 1)).maybeSingle();
+}
+function persistProfile(tenant, fields) {
+  // Update the existing row by tenant_id (no id=1 hardcode) once a tenant is
+  // selected; otherwise keep the legacy upsert. Note: this updates an EXISTING
+  // profile row — creating a brand-new tenant's profile needs Section C.
+  return tenant
+    ? supabase.from('profile').update(fields).eq('tenant_id', tenant.id)
+    : supabase.from('profile').upsert({ id: 1, ...fields });
+}
+
 function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
   const dirtyRef = useContext(DirtyContext);
   useEffect(() => {
@@ -657,6 +747,7 @@ function ProfileEditor({ t, lang }) {
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
   const [showStart, setShowStart] = useState(false);
+  const { tenant } = useTenant();
 
   useEffect(() => { load(); }, []);
   useEffect(() => {
@@ -668,7 +759,7 @@ function ProfileEditor({ t, lang }) {
   }
 
   async function load() {
-    const { data } = await supabase.from('profile').select('*').eq('id', 1).maybeSingle();
+    const { data } = await loadProfile(tenant);
     if (data) {
       setProfile({
         name: data.name || emptyBilingual(),
@@ -691,7 +782,7 @@ function ProfileEditor({ t, lang }) {
 
   async function save() {
     setSaving(true);
-    const { error } = await supabase.from('profile').upsert({ id: 1, ...profile });
+    const { error } = await persistProfile(tenant, profile);
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); }
     else { console.error(error); alert(t('save_failed')); }
@@ -829,11 +920,12 @@ function CardEditor({ t, lang }) {
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
+  const { tenant } = useTenant();
 
   useEffect(() => { load(); }, []);
 
   async function load() {
-    const { data } = await supabase.from('profile').select('*').eq('id', 1).maybeSingle();
+    const { data } = await loadProfile(tenant);
     if (data) setProfile({
       banners: data.banners || [],
       stats: data.stats || [],
@@ -858,7 +950,7 @@ function CardEditor({ t, lang }) {
   function patch(updates) { setProfile(p => ({ ...p, ...updates })); setDirty(true); }
   async function save() {
     setSaving(true);
-    const { error } = await supabase.from('profile').upsert({ id: 1, ...profile });
+    const { error } = await persistProfile(tenant, profile);
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); }
     else { console.error(error); alert(t('save_failed')); }
@@ -1084,14 +1176,22 @@ function ButtonRow({ btn, lang, onChange, onRemove, onUp, onDown, canUp, canDown
 function ProjectsEditor({ t, lang }) {
   const [projects, setProjects] = useState([]);
   const [editing, setEditing] = useState(null);
+  const { tenant } = useTenant();
 
   useEffect(() => { load(); }, []);
-  async function load() { const { data } = await supabase.from('projects').select('*').order('display_order'); setProjects(data || []); }
+  async function load() {
+    let q = supabase.from('projects').select('*');
+    if (tenant) q = q.eq('tenant_id', tenant.id);
+    const { data } = await q.order('display_order');
+    setProjects(data || []);
+  }
 
   async function addProject() {
     const nextOrder = projects.length;
     const defaultTitle = { en: 'New Project', ar: 'مشروع جديد' };
-    const { data, error } = await supabase.from('projects').insert({ title: defaultTitle, display_order: nextOrder, images: [] }).select().single();
+    const row = { title: defaultTitle, display_order: nextOrder, images: [] };
+    if (tenant) row.tenant_id = tenant.id; // stamp new projects with the active tenant
+    const { data, error } = await supabase.from('projects').insert(row).select().single();
     if (data) { setProjects([...projects, data]); setEditing(data); }
     if (error) { console.error(error); alert(t('save_failed')); }
   }
@@ -1282,16 +1382,17 @@ function LinksEditor({ t, lang }) {
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
   const [pickerForId, setPickerForId] = useState(null);
+  const { tenant } = useTenant();
 
   useEffect(() => { load(); }, []);
   async function load() {
-    const { data } = await supabase.from('profile').select('custom_links').eq('id', 1).maybeSingle();
+    const { data } = await loadProfile(tenant, 'custom_links');
     setLinks(data?.custom_links || []);
   }
   function patch(next) { setLinks(next); setDirty(true); }
   async function save() {
     setSaving(true);
-    const { error } = await supabase.from('profile').upsert({ id: 1, custom_links: links });
+    const { error } = await persistProfile(tenant, { custom_links: links });
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); }
     else { console.error(error); alert(t('save_failed')); }
@@ -1401,10 +1502,11 @@ function AppearanceEditor({ t, lang }) {
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
   const [device, setDevice] = useState('desktop');
+  const { tenant } = useTenant();
 
   useEffect(() => { load(); }, []);
   async function load() {
-    const { data } = await supabase.from('profile').select('appearance').eq('id', 1).maybeSingle();
+    const { data } = await loadProfile(tenant, 'appearance');
     if (data?.appearance) {
       setAppearance({
         theme: data.appearance.theme || 'midnight',
@@ -1420,7 +1522,7 @@ function AppearanceEditor({ t, lang }) {
   function applyPreset(key) { setAppearance(a => ({ ...a, theme: key, tokens: { ...THEME_PRESETS[key].tokens } })); setDirty(true); }
   async function save() {
     setSaving(true);
-    const { error } = await supabase.from('profile').upsert({ id: 1, appearance });
+    const { error } = await persistProfile(tenant, { appearance });
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); }
     else { console.error(error); alert(t('save_failed')); }
@@ -1524,6 +1626,7 @@ function AnalyticsEditor({ t, lang }) {
   const [events, setEvents] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { tenant } = useTenant();
 
   useEffect(() => { load(); }, [range]);
 
@@ -1536,8 +1639,12 @@ function AnalyticsEditor({ t, lang }) {
     else if (range === '30d') from = new Date(now - 30 * 86400 * 1000);
     else from = new Date(0);
 
-    const { data: evs } = await supabase.from('analytics_events').select('*').gte('created_at', from.toISOString()).order('created_at', { ascending: false });
-    const { data: projs } = await supabase.from('projects').select('id, title');
+    let evq = supabase.from('analytics_events').select('*').gte('created_at', from.toISOString());
+    if (tenant) evq = evq.eq('tenant_id', tenant.id);
+    const { data: evs } = await evq.order('created_at', { ascending: false });
+    let pq = supabase.from('projects').select('id, title');
+    if (tenant) pq = pq.eq('tenant_id', tenant.id);
+    const { data: projs } = await pq;
     setEvents(evs || []);
     setProjects(projs || []);
     setLoading(false);
@@ -1780,18 +1887,19 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
   const [pwdLoading, setPwdLoading] = useState(false);
   const [pwdMsg, setPwdMsg] = useState('');
   const [pwdErr, setPwdErr] = useState('');
+  const { tenant } = useTenant();
 
   useEffect(() => { load(); }, []);
   async function load() {
     const { data: u } = await supabase.from('admin_usernames').select('username').eq('user_id', session.user.id).maybeSingle();
     if (u?.username) setUsername(u.username);
-    const { data: p } = await supabase.from('profile').select('default_lang').eq('id', 1).maybeSingle();
+    const { data: p } = await loadProfile(tenant, 'default_lang');
     if (p?.default_lang) setDefaultLang(p.default_lang);
   }
 
   async function saveDefaultLang(next) {
     setDefaultLang(next); setSavingLang(true);
-    const { error } = await supabase.from('profile').upsert({ id: 1, default_lang: next });
+    const { error } = await persistProfile(tenant, { default_lang: next });
     setSavingLang(false);
     if (!error) {
       setSavedLangMsg(t('saved'));
@@ -1819,15 +1927,9 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
     const typed = prompt(t('delete_portfolio_confirm'));
     if (typed !== t('delete_portfolio_keyword')) return;
 
-    // Resolve the active tenant. Until the multi-tenant migration is applied this
-    // fails-safe to the singleton default, so the singleton branch below runs and
-    // behaves exactly as it does today. (No tenant_id column is referenced in
-    // singleton mode, so this is safe on the current un-migrated database.)
-    const tenant = await resolveTenant({
-      supabase,
-      host: typeof window !== 'undefined' ? window.location.hostname : '',
-    });
-    const tenantMode = tenant.mode === 'tenant' && !!tenant.id;
+    // Reset ONLY the currently selected tenant. In legacy mode (tenant = null) this
+    // falls through to the singleton branch and behaves exactly as it does today.
+    const tenantMode = !!tenant;
 
     // The fields a "reset" clears — identical in both modes.
     const reset = {
