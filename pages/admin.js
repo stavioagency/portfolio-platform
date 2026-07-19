@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, createContext, useContext } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, createContext, useContext } from 'react';
 import Head from 'next/head';
 import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
 import { supabase } from '../lib/supabase';
@@ -364,6 +364,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tenants, setTenants] = useState([]);
   const [tenant, setTenant] = useState(null);
+  const TENANT_LS_KEY = 'admin_selected_tenant';
   const t = getTranslator(lang);
 
   const TAB_LABELS = {
@@ -384,35 +385,47 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   // Which tenants may this admin edit? Sourced from tenant_admins for the signed-in
   // user. If nothing is mapped — or the tenant tables aren't readable — we stay in
   // legacy single-profile mode (tenant = null), preserving today's behavior.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const uid = session?.user?.id;
-        if (!uid) return;
-        const { data, error } = await supabase
-          .from('tenant_admins')
-          .select('tenants ( id, slug, name, status )')
-          .eq('user_id', uid);
-        if (cancelled || error || !data) return;
-        const list = data.map(r => r.tenants).filter(Boolean).filter(x => x.status !== 'disabled');
-        list.sort((a, b) => String(a.name || a.slug).localeCompare(String(b.name || b.slug)));
-        if (list.length === 0) return;
-        setTenants(list);
-        setTenant(prev => prev || list[0]);
-      } catch (_) { /* tables missing / offline -> legacy single-profile mode */ }
-    })();
-    return () => { cancelled = true; };
+  // Which tenants may this admin edit? Sourced from tenant_admins for the signed-in
+  // user. If nothing is mapped — or the tenant tables aren't readable — we stay in
+  // legacy single-profile mode (tenant = null), preserving today's behavior. Exposed
+  // via context so the Create-Tenant flow can refresh the list after onboarding.
+  const loadTenants = useCallback(async () => {
+    try {
+      console.log('[tenant] loading...');
+      const uid = session?.user?.id;
+      console.log('[tenant] user:', uid);
+      if (!uid) return;
+      const { data, error } = await supabase
+        .from('tenant_admins')
+        .select('tenants ( id, slug, name, status )')
+        .eq('user_id', uid);
+      console.log('[tenant] response:', data);
+      console.log('[tenant] error:', error);
+      if (error || !data) return; // legacy single-profile fallback
+      const list = data.map(r => r.tenants).filter(Boolean).filter(x => x.status !== 'disabled');
+      list.sort((a, b) => String(a.name || a.slug).localeCompare(String(b.name || b.slug)));
+      console.log('[tenant] tenants:', list);
+      setTenants(list);
+      if (list.length === 0) { setTenant(null); return; }
+      let stored = null;
+      try { stored = localStorage.getItem(TENANT_LS_KEY); } catch (_) {}
+      const preferred = list.find(x => String(x.id) === String(stored)) || list[0];
+      setTenant(prev => prev || preferred);
+      console.log('[tenant] active tenant:', preferred);
+    } catch (e) { console.log('[tenant] error:', e); }
   }, [session]);
 
+  useEffect(() => { loadTenants(); }, [loadTenants]);
+
   // Switching tenant remounts the editors (via key), discarding unsaved edits —
-  // so guard it the same way tab switches are guarded.
+  // so guard it the same way tab switches are guarded. The choice is remembered.
   function switchTenant(id) {
     const next = tenants.find(x => String(x.id) === String(id));
     if (!next || next.id === tenant?.id) return;
     if (dirtyRef.current && !window.confirm(t('unsaved_switch'))) return;
     dirtyRef.current = false;
     setTenant(next);
+    try { localStorage.setItem(TENANT_LS_KEY, String(next.id)); } catch (_) {}
   }
 
   // Lock body scroll when drawer is open (mobile)
@@ -426,7 +439,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
   return (
     <DirtyContext.Provider value={dirtyRef}>
-    <TenantContext.Provider value={{ tenant, tenants, setTenant }}>
+    <TenantContext.Provider value={{ tenant, tenants, setTenant, reloadTenants: loadTenants }}>
     <div className={`dashboard ${theme || 'dark'}`}>
       {/* MOBILE TOP BAR — only visible <720px */}
       <header className="mobile-bar">
@@ -679,7 +692,7 @@ const DirtyContext = createContext(null);
 // The tenant the admin is currently editing. `tenant` is null in legacy/single
 // mode (no tenant mapping or the tenant tables aren't readable), which preserves
 // the exact id=1 behavior below.
-const TenantContext = createContext({ tenant: null, tenants: [], setTenant: () => {} });
+const TenantContext = createContext({ tenant: null, tenants: [], setTenant: () => {}, reloadTenants: async () => {} });
 function useTenant() { return useContext(TenantContext); }
 
 // Tenant-scoped data helpers. When a tenant is selected we scope by tenant_id;
@@ -696,6 +709,22 @@ function persistProfile(tenant, fields) {
   return tenant
     ? supabase.from('profile').update(fields).eq('tenant_id', tenant.id)
     : supabase.from('profile').upsert({ id: 1, ...fields });
+}
+
+// Tenant-isolated storage path: a tenant's media lives under `t-<id>/`; legacy
+// (no tenant) keeps the flat filename so existing URLs and singleton mode are
+// unchanged. Files are still timestamped, so no cross-tenant overwrite is possible.
+function tenantStoragePath(tenant, name) {
+  return tenant ? `t-${tenant.id}/${name}` : name;
+}
+
+// A blank slug is invalid; keep slugs to a safe host-friendly charset.
+function normalizeSlug(v) {
+  return String(v || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+// Host only, lowercase, no scheme/path/port — matches lib/tenant.js normalizeHost.
+function normalizeDomain(v) {
+  return String(v || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '').replace(/\.$/, '');
 }
 
 function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
@@ -788,14 +817,14 @@ function ProfileEditor({ t, lang }) {
     else { console.error(error); alert(t('save_failed')); }
   }
   async function uploadImage(file) {
-    const path = `profile-${Date.now()}.${file.name.split('.').pop()}`;
+    const path = tenantStoragePath(tenant, `profile-${Date.now()}.${file.name.split('.').pop()}`);
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
     if (error) { console.error(error); alert(t('upload_failed')); return; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     patch({ profile_image: data.publicUrl });
   }
   async function uploadOgImage(file) {
-    const path = `og-${Date.now()}.${file.name.split('.').pop()}`;
+    const path = tenantStoragePath(tenant, `og-${Date.now()}.${file.name.split('.').pop()}`);
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
     if (error) { console.error(error); alert(t('upload_failed')); return; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
@@ -956,7 +985,7 @@ function CardEditor({ t, lang }) {
     else { console.error(error); alert(t('save_failed')); }
   }
   async function uploadAsset(prefix, file) {
-    const path = `${prefix}-${Date.now()}.${file.name.split('.').pop()}`;
+    const path = tenantStoragePath(tenant, `${prefix}-${Date.now()}.${file.name.split('.').pop()}`);
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
     if (error) { console.error(error); alert(t('upload_failed')); return null; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
@@ -1286,6 +1315,7 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
+  const { tenant } = useTenant();
 
   function patch(updates) { setData(d => ({ ...d, ...updates })); setDirty(true); }
   function bilingualPatch(key, val) { patch({ [key]: setLangValue(data[key], lang, val) }); }
@@ -1297,14 +1327,14 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
     setSavedMsg(t('saved')); setDirty(false);
   }
   async function uploadCover(file) {
-    const path = `project-${data.id}-cover-${Date.now()}.${file.name.split('.').pop()}`;
+    const path = tenantStoragePath(tenant, `project-${data.id}-cover-${Date.now()}.${file.name.split('.').pop()}`);
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
     if (error) { console.error(error); return alert(t('upload_failed')); }
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
     patch({ cover_image: urlData.publicUrl });
   }
   async function uploadGalleryImage(file) {
-    const path = `project-${data.id}-${Date.now()}.${file.name.split('.').pop()}`;
+    const path = tenantStoragePath(tenant, `project-${data.id}-${Date.now()}.${file.name.split('.').pop()}`);
     const { error } = await supabase.storage.from('media').upload(path, file);
     if (error) { console.error(error); return alert(t('upload_failed')); }
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
@@ -1875,6 +1905,142 @@ function TableCard({ title, headLabel, headValue, rows }) {
 // =========================================================
 // Account Editor
 // =========================================================
+// Onboarding: create a workspace (tenant) per client and manage its custom domains.
+// All writes here require the multi-tenant onboarding migration (tenants/tenant_admins/
+// tenant_domains write policies + grants, and Section C so a new profile row can exist).
+// Until that migration is applied these calls surface a clear error instead of failing
+// silently; nothing here runs against or breaks the current single-tenant database.
+function TenantAdminSection({ session, lang }) {
+  const { tenant, setTenant, reloadTenants } = useTenant();
+  const ar = lang === 'ar';
+
+  const [slug, setSlug] = useState('');
+  const [name, setName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createMsg, setCreateMsg] = useState('');
+  const [createErr, setCreateErr] = useState('');
+
+  async function createTenant(e) {
+    e.preventDefault();
+    setCreateErr(''); setCreateMsg('');
+    const s = normalizeSlug(slug);
+    if (!s) { setCreateErr(ar ? 'أدخل معرّفًا صالحًا' : 'Enter a valid slug'); return; }
+    setCreating(true);
+    try {
+      // 1) tenant row
+      const { data: tRow, error: tErr } = await supabase.from('tenants')
+        .insert({ slug: s, name: name.trim() || s, default_lang: 'ar', status: 'active' })
+        .select().single();
+      if (tErr) throw tErr;
+      // 2) initial profile row (needs Section C: single_profile removed + id auto-generated).
+      //    Roll the tenant back if this fails so we never leave a profile-less tenant behind.
+      const { error: pErr } = await supabase.from('profile').insert({ tenant_id: tRow.id, default_lang: 'ar' });
+      if (pErr) { await supabase.from('tenants').delete().eq('id', tRow.id); throw pErr; }
+      // 3) link the current admin as owner
+      const { error: aErr } = await supabase.from('tenant_admins')
+        .insert({ tenant_id: tRow.id, user_id: session.user.id, role: 'owner' });
+      if (aErr) throw aErr;
+      setSlug(''); setName('');
+      setCreateMsg(ar ? 'تم إنشاء المساحة' : 'Workspace created');
+      await reloadTenants();
+      setTenant(tRow);
+      try { localStorage.setItem('admin_selected_tenant', String(tRow.id)); } catch (_) {}
+    } catch (err) {
+      console.error('[tenant] create failed:', err);
+      setCreateErr(err?.message || err?.code || (ar ? 'فشل الإنشاء' : 'Creation failed'));
+    } finally { setCreating(false); }
+  }
+
+  const [domains, setDomains] = useState([]);
+  const [newDomain, setNewDomain] = useState('');
+  const [domErr, setDomErr] = useState('');
+  const [domBusy, setDomBusy] = useState(false);
+
+  const loadDomains = useCallback(async () => {
+    if (!tenant) { setDomains([]); return; }
+    const { data } = await supabase.from('tenant_domains').select('*').eq('tenant_id', tenant.id).order('created_at');
+    setDomains(data || []);
+  }, [tenant]);
+  useEffect(() => { loadDomains(); }, [loadDomains]);
+
+  async function addDomain(e) {
+    e.preventDefault(); setDomErr('');
+    if (!tenant) { setDomErr(ar ? 'اختر مساحة أولًا' : 'Select a workspace first'); return; }
+    const d = normalizeDomain(newDomain);
+    if (!d) { setDomErr(ar ? 'أدخل نطاقًا صالحًا' : 'Enter a valid domain'); return; }
+    setDomBusy(true);
+    const { error } = await supabase.from('tenant_domains')
+      .insert({ tenant_id: tenant.id, domain: d, is_primary: domains.length === 0, status: 'pending' });
+    setDomBusy(false);
+    if (error) { setDomErr(error.message || String(error)); return; }
+    setNewDomain(''); loadDomains();
+  }
+  async function removeDomain(id) {
+    if (!confirm(ar ? 'حذف النطاق؟' : 'Remove domain?')) return;
+    const { error } = await supabase.from('tenant_domains').delete().eq('id', id);
+    if (error) setDomErr(error.message || String(error)); else loadDomains();
+  }
+
+  return (
+    <>
+      <h2>{ar ? 'المساحات (العملاء)' : 'Workspaces (clients)'}</h2>
+      <p className="hint">{ar
+        ? 'أنشئ مساحة لكل عميل. يتم إنشاء ملف تعريف وربطك كمالك تلقائيًا.'
+        : 'Create a workspace per client. A profile is provisioned and you are linked as owner automatically.'}</p>
+      <form onSubmit={createTenant} style={{ maxWidth: 500 }}>
+        <Field id="tenant-slug" label={ar ? 'المعرّف (slug)' : 'Slug'}>
+          <input id="tenant-slug" type="text" dir="ltr" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="acme-studio" />
+        </Field>
+        <Field id="tenant-name" label={ar ? 'الاسم' : 'Name'}>
+          <input id="tenant-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={ar ? 'أكمي ستوديو' : 'Acme Studio'} />
+        </Field>
+        {createErr && <div className="ts-err">{createErr}</div>}
+        {createMsg && <div className="ts-ok">{createMsg} ✓</div>}
+        <button type="submit" className="ts-primary" disabled={creating} style={{ marginTop: 12 }}>
+          {creating ? '...' : (ar ? 'إنشاء مساحة' : 'Create workspace')}
+        </button>
+      </form>
+
+      <h2>{ar ? 'النطاقات المخصصة' : 'Custom domains'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
+      <p className="hint">{ar
+        ? `أضف نطاق العميل هنا، ثم أضِف نفس النطاق في Vercel ووجّه DNS. حتى ذلك الحين يعمل الرابط عبر المعرّف: /${tenant?.slug || 'slug'}`
+        : `Add the client’s domain here, then add the same domain in Vercel and point DNS. Until then the slug URL works: /${tenant?.slug || 'slug'}`}</p>
+      {tenant ? (
+        <>
+          <div className="domain-list">
+            {domains.length === 0 && <div className="hint">{ar ? 'لا توجد نطاقات بعد' : 'No domains yet'}</div>}
+            {domains.map(d => (
+              <div key={d.id} className="domain-row">
+                <span dir="ltr" className="domain-name">{d.domain}{d.is_primary ? ' ★' : ''}</span>
+                <span className="domain-status">{d.status}</span>
+                <button type="button" className="x-small" onClick={() => removeDomain(d.id)} aria-label="remove">×</button>
+              </div>
+            ))}
+          </div>
+          <form onSubmit={addDomain} style={{ display: 'flex', gap: 8, maxWidth: 500, marginTop: 10, alignItems: 'flex-start' }}>
+            <input type="text" dir="ltr" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} placeholder="client.com" />
+            <button type="submit" className="btn-add" disabled={domBusy}>{domBusy ? '...' : (ar ? 'إضافة' : 'Add')}</button>
+          </form>
+          {domErr && <div className="ts-err">{domErr}</div>}
+        </>
+      ) : (
+        <div className="hint">{ar ? 'اختر مساحة من الأعلى لإدارة نطاقاتها.' : 'Select a workspace at the top to manage its domains.'}</div>
+      )}
+
+      <style jsx>{`
+        .ts-primary { padding: 10px 18px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(79,110,242,0.25); font-family: inherit; }
+        .ts-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        .ts-err { padding: 8px 12px; background: rgba(255,80,80,0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
+        .ts-ok { padding: 8px 12px; background: rgba(125,211,125,0.1); color: #7dd37d; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
+        .domain-list { display: flex; flex-direction: column; gap: 6px; max-width: 500px; }
+        .domain-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); }
+        .domain-name { font-size: 13px; font-weight: 600; }
+        .domain-status { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; margin-inline-start: auto; }
+      `}</style>
+    </>
+  );
+}
+
 function AccountEditor({ t, lang, session, setChromeLang }) {
   const [username, setUsername] = useState('');
   const [defaultLang, setDefaultLang] = useState('ar');
@@ -1980,6 +2146,8 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
       </Field>
       {savingLang && <span className="hint">...</span>}
       {savedLangMsg && <span className="saved-indicator">{savedLangMsg} ✓</span>}
+
+      <TenantAdminSection session={session} lang={lang} />
 
       <h2>{t('change_password')}</h2>
       <form onSubmit={updatePassword} style={{ maxWidth: 500 }}>
