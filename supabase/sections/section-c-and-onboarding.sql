@@ -144,6 +144,33 @@ GRANT EXECUTE ON FUNCTION assign_tenant_admin(UUID, TEXT) TO authenticated;
 -- selector: SELECT grantee, privilege_type FROM information_schema.role_table_grants
 --           WHERE table_name IN ('tenant_admins','tenants','tenant_domains') AND grantee='authenticated';
 
+-- ============================================================================
+-- PART 5 — PER-CLIENT ONBOARDING (manual steps that cannot be done from the app)
+-- ============================================================================
+-- Creating an auth user requires the Supabase dashboard or the admin API (service
+-- role). The browser client cannot do it, and we deliberately do NOT ship a service
+-- key to the front end. So for each new client, once per client:
+--
+--   1) Supabase Dashboard -> Authentication -> Users -> "Add user"
+--      (email + password; send them the credentials or a reset link).
+--
+--   2) Give them a username so they can sign in (the /admin login resolves
+--      username -> email via get_email_for_username). Replace the values:
+--        INSERT INTO admin_usernames (username, user_id)
+--        VALUES ('clientname', '<their auth user uuid>')
+--        ON CONFLICT (username) DO NOTHING;
+--
+--   3) In /admin -> Account -> "Client admin", type that username and press Grant.
+--      That calls assign_tenant_admin() (3e) and maps them to the selected tenant.
+--
+--   4) Custom domain: add the domain in /admin -> Account -> "Custom domains",
+--      THEN add the same domain to the Vercel project and point DNS at Vercel.
+--      Until DNS resolves, the client's portfolio is reachable at /<slug>.
+--
+-- NOTE: a client only needs an admin_usernames row to LOG IN. Their data access is
+-- governed by tenant_admins + is_tenant_admin() (Part 3), so they can only ever
+-- read/write their own tenant once 3g has been applied.
+
 -- ############################################################################
 -- 🛑  END — nothing above has been executed by the application. Run deliberately.
 -- ############################################################################
