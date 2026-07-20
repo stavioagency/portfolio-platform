@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, createContext, useCo
 import Head from 'next/head';
 import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
 import { supabase } from '../lib/supabase';
+import { normalizeHost } from '../lib/tenant';
 import { getTranslator } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
@@ -401,7 +402,9 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
       // it visible — but still fall back to legacy single-profile mode.
       if (error) { console.error('[tenant] tenant_admins read failed:', error.message || error); return; }
       if (!data) return;
-      const list = data.map(r => r.tenants).filter(Boolean).filter(x => x.status !== 'disabled');
+      // Keep disabled tenants in the ADMIN list — the owner must be able to see and
+      // re-enable a suspended client. Public visibility is enforced by lib/tenant.js.
+      const list = data.map(r => r.tenants).filter(Boolean);
       list.sort((a, b) => String(a.name || a.slug).localeCompare(String(b.name || b.slug)));
       setTenants(list);
       if (list.length === 0) { setTenant(null); return; }
@@ -621,10 +624,16 @@ function TenantSelector({ tenants, tenant, onChange, lang }) {
       <span className="tenant-bar-label">{label}</span>
       {tenants.length > 1 ? (
         <select className="tenant-select" value={tenant?.id || ''} onChange={(e) => onChange(e.target.value)} aria-label={label}>
-          {tenants.map(tn => <option key={tn.id} value={tn.id}>{tn.name || tn.slug}</option>)}
+          {tenants.map(tn => (
+            <option key={tn.id} value={tn.id}>
+              {(tn.name || tn.slug) + (tn.status === 'disabled' ? (lang === 'ar' ? ' (معلّقة)' : ' (suspended)') : '')}
+            </option>
+          ))}
         </select>
       ) : (
-        <span className="tenant-current">{tenant?.name || tenant?.slug}</span>
+        <span className="tenant-current">
+          {(tenant?.name || tenant?.slug || '') + (tenant?.status === 'disabled' ? (lang === 'ar' ? ' (معلّقة)' : ' (suspended)') : '')}
+        </span>
       )}
       <style jsx>{`
         .tenant-bar { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-5); padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-secondary); max-width: 640px; }
@@ -723,9 +732,11 @@ const RESERVED_SLUGS = ['admin', 'privacy', 'terms', 'api', '_next', '404', '500
 function normalizeSlug(v) {
   return String(v || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
-// Host only, lowercase, no scheme/path/port — matches lib/tenant.js normalizeHost.
+// Host only: strip scheme/path here, then delegate to the resolver's own normalizeHost
+// so a stored domain is normalized EXACTLY like an incoming request host. (Duplicating
+// this logic would let a saved domain silently never match at runtime.)
 function normalizeDomain(v) {
-  return String(v || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/:\d+$/, '').replace(/\.$/, '');
+  return normalizeHost(String(v || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
 }
 
 function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
@@ -1956,6 +1967,52 @@ function TenantAdminSection({ session, lang }) {
     } finally { setCreating(false); }
   }
 
+  // Workspace settings for the ACTIVE tenant: rename, change slug, suspend/reactivate.
+  // Suspending sets status='disabled' — the public resolver then 404s that tenant's
+  // domain instead of falling back to another tenant's portfolio.
+  const [wsName, setWsName] = useState('');
+  const [wsSlug, setWsSlug] = useState('');
+  const [wsBusy, setWsBusy] = useState(false);
+  const [wsMsg, setWsMsg] = useState('');
+  const [wsErr, setWsErr] = useState('');
+  useEffect(() => {
+    setWsName(tenant?.name || '');
+    setWsSlug(tenant?.slug || '');
+    setWsMsg(''); setWsErr('');
+  }, [tenant]);
+
+  async function saveWorkspace(e) {
+    e.preventDefault();
+    setWsErr(''); setWsMsg('');
+    if (!tenant) return;
+    const s = normalizeSlug(wsSlug);
+    if (!s) { setWsErr(ar ? 'أدخل معرّفًا صالحًا' : 'Enter a valid slug'); return; }
+    if (RESERVED_SLUGS.includes(s)) { setWsErr(ar ? 'هذا المعرّف محجوز' : 'That slug is reserved'); return; }
+    setWsBusy(true);
+    const { error } = await supabase.from('tenants')
+      .update({ name: wsName.trim() || s, slug: s }).eq('id', tenant.id);
+    setWsBusy(false);
+    if (error) { setWsErr(error.message || String(error)); return; }
+    setWsMsg(ar ? 'تم الحفظ' : 'Saved');
+    await reloadTenants();
+  }
+
+  async function toggleStatus() {
+    if (!tenant) return;
+    const disabling = tenant.status !== 'disabled';
+    const warn = ar
+      ? 'تعليق هذه المساحة سيجعل موقع العميل غير متاح (404). متابعة؟'
+      : "Suspending this workspace makes the client's site unavailable (404). Continue?";
+    if (disabling && !confirm(warn)) return;
+    setWsErr(''); setWsMsg(''); setWsBusy(true);
+    const { error } = await supabase.from('tenants')
+      .update({ status: disabling ? 'disabled' : 'active' }).eq('id', tenant.id);
+    setWsBusy(false);
+    if (error) { setWsErr(error.message || String(error)); return; }
+    setWsMsg(disabling ? (ar ? 'تم التعليق' : 'Suspended') : (ar ? 'تم التفعيل' : 'Reactivated'));
+    await reloadTenants();
+  }
+
   // Assign a client as admin of the active tenant. Done through a SECURITY DEFINER
   // RPC because tenant_admins is readable only for your OWN mappings — the client's
   // user_id can't (and shouldn't) be looked up from the browser.
@@ -2007,6 +2064,17 @@ function TenantAdminSection({ session, lang }) {
     const { error } = await supabase.from('tenant_domains').delete().eq('id', id);
     if (error) setDomErr(error.message || String(error)); else loadDomains();
   }
+  // Clear the flag across the tenant FIRST — a partial unique index allows only one
+  // primary domain per tenant, so setting the new one first would violate it.
+  async function makePrimary(id) {
+    if (!tenant) return;
+    setDomErr('');
+    const { error: clearErr } = await supabase.from('tenant_domains')
+      .update({ is_primary: false }).eq('tenant_id', tenant.id);
+    if (clearErr) { setDomErr(clearErr.message || String(clearErr)); return; }
+    const { error } = await supabase.from('tenant_domains').update({ is_primary: true }).eq('id', id);
+    if (error) setDomErr(error.message || String(error)); else loadDomains();
+  }
 
   return (
     <>
@@ -2027,6 +2095,28 @@ function TenantAdminSection({ session, lang }) {
           {creating ? '...' : (ar ? 'إنشاء مساحة' : 'Create workspace')}
         </button>
       </form>
+
+      {tenant && (
+        <>
+          <h2>{ar ? 'إعدادات المساحة' : 'Workspace settings'} <span className="meta">· {tenant.status === 'disabled' ? (ar ? 'معلّقة' : 'suspended') : (ar ? 'نشطة' : 'active')}</span></h2>
+          <form onSubmit={saveWorkspace} style={{ maxWidth: 500 }}>
+            <Field id="ws-name" label={ar ? 'الاسم' : 'Name'}>
+              <input id="ws-name" type="text" value={wsName} onChange={(e) => setWsName(e.target.value)} />
+            </Field>
+            <Field id="ws-slug" label={ar ? 'المعرّف (slug)' : 'Slug'}>
+              <input id="ws-slug" type="text" dir="ltr" value={wsSlug} onChange={(e) => setWsSlug(e.target.value)} />
+            </Field>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
+              <button type="submit" className="ts-primary" disabled={wsBusy}>{wsBusy ? '...' : (ar ? 'حفظ' : 'Save')}</button>
+              <button type="button" className="btn-add" onClick={toggleStatus} disabled={wsBusy}>
+                {tenant.status === 'disabled' ? (ar ? 'إعادة التفعيل' : 'Reactivate') : (ar ? 'تعليق المساحة' : 'Suspend workspace')}
+              </button>
+            </div>
+          </form>
+          {wsErr && <div className="ts-err">{wsErr}</div>}
+          {wsMsg && <div className="ts-ok">{wsMsg} ✓</div>}
+        </>
+      )}
 
       <h2>{ar ? 'مدير العميل' : 'Client admin'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
@@ -2055,6 +2145,11 @@ function TenantAdminSection({ session, lang }) {
               <div key={d.id} className="domain-row">
                 <span dir="ltr" className="domain-name">{d.domain}{d.is_primary ? ' ★' : ''}</span>
                 <span className="domain-status">{d.status}</span>
+                {!d.is_primary && (
+                  <button type="button" className="btn-add" onClick={() => makePrimary(d.id)}>
+                    {ar ? 'أساسي' : 'Make primary'}
+                  </button>
+                )}
                 <button type="button" className="x-small" onClick={() => removeDomain(d.id)} aria-label="remove">×</button>
               </div>
             ))}
