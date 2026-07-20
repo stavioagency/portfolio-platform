@@ -391,28 +391,25 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   // via context so the Create-Tenant flow can refresh the list after onboarding.
   const loadTenants = useCallback(async () => {
     try {
-      console.log('[tenant] loading...');
       const uid = session?.user?.id;
-      console.log('[tenant] user:', uid);
       if (!uid) return;
       const { data, error } = await supabase
         .from('tenant_admins')
         .select('tenants ( id, slug, name, status )')
         .eq('user_id', uid);
-      console.log('[tenant] response:', data);
-      console.log('[tenant] error:', error);
-      if (error || !data) return; // legacy single-profile fallback
+      // A read failure here is a real misconfiguration (missing grant/policy), so keep
+      // it visible — but still fall back to legacy single-profile mode.
+      if (error) { console.error('[tenant] tenant_admins read failed:', error.message || error); return; }
+      if (!data) return;
       const list = data.map(r => r.tenants).filter(Boolean).filter(x => x.status !== 'disabled');
       list.sort((a, b) => String(a.name || a.slug).localeCompare(String(b.name || b.slug)));
-      console.log('[tenant] tenants:', list);
       setTenants(list);
       if (list.length === 0) { setTenant(null); return; }
       let stored = null;
       try { stored = localStorage.getItem(TENANT_LS_KEY); } catch (_) {}
       const preferred = list.find(x => String(x.id) === String(stored)) || list[0];
       setTenant(prev => prev || preferred);
-      console.log('[tenant] active tenant:', preferred);
-    } catch (e) { console.log('[tenant] error:', e); }
+    } catch (e) { console.error('[tenant] tenant load error:', e); }
   }, [session]);
 
   useEffect(() => { loadTenants(); }, [loadTenants]);
@@ -1951,6 +1948,28 @@ function TenantAdminSection({ session, lang }) {
     } finally { setCreating(false); }
   }
 
+  // Assign a client as admin of the active tenant. Done through a SECURITY DEFINER
+  // RPC because tenant_admins is readable only for your OWN mappings — the client's
+  // user_id can't (and shouldn't) be looked up from the browser.
+  const [adminUser, setAdminUser] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [assignMsg, setAssignMsg] = useState('');
+  const [assignErr, setAssignErr] = useState('');
+
+  async function assignAdmin(e) {
+    e.preventDefault();
+    setAssignErr(''); setAssignMsg('');
+    if (!tenant) { setAssignErr(ar ? 'اختر مساحة أولًا' : 'Select a workspace first'); return; }
+    const u = adminUser.trim();
+    if (!u) { setAssignErr(ar ? 'أدخل اسم المستخدم' : 'Enter a username'); return; }
+    setAssigning(true);
+    const { error } = await supabase.rpc('assign_tenant_admin', { p_tenant_id: tenant.id, p_username: u });
+    setAssigning(false);
+    if (error) { setAssignErr(error.message || String(error)); return; }
+    setAdminUser('');
+    setAssignMsg(ar ? 'تم منح الوصول' : 'Access granted');
+  }
+
   const [domains, setDomains] = useState([]);
   const [newDomain, setNewDomain] = useState('');
   const [domErr, setDomErr] = useState('');
@@ -2000,6 +2019,21 @@ function TenantAdminSection({ session, lang }) {
           {creating ? '...' : (ar ? 'إنشاء مساحة' : 'Create workspace')}
         </button>
       </form>
+
+      <h2>{ar ? 'مدير العميل' : 'Client admin'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
+      <p className="hint">{ar
+        ? 'امنح العميل حق إدارة مساحته. يجب أن يكون لديه حساب دخول واسم مستخدم بالفعل.'
+        : 'Grant the client admin access to this workspace. They must already have a login and username.'}</p>
+      {tenant ? (
+        <form onSubmit={assignAdmin} style={{ display: 'flex', gap: 8, maxWidth: 500, alignItems: 'flex-start' }}>
+          <input type="text" dir="ltr" value={adminUser} onChange={(e) => setAdminUser(e.target.value)} placeholder={ar ? 'اسم المستخدم' : 'username'} />
+          <button type="submit" className="btn-add" disabled={assigning}>{assigning ? '...' : (ar ? 'منح' : 'Grant')}</button>
+        </form>
+      ) : (
+        <div className="hint">{ar ? 'اختر مساحة من الأعلى.' : 'Select a workspace at the top.'}</div>
+      )}
+      {assignErr && <div className="ts-err">{assignErr}</div>}
+      {assignMsg && <div className="ts-ok">{assignMsg} ✓</div>}
 
       <h2>{ar ? 'النطاقات المخصصة' : 'Custom domains'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar

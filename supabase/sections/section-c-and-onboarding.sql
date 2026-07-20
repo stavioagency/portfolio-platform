@@ -94,12 +94,41 @@ DROP POLICY IF EXISTS "Tenant admins manage domains" ON tenant_domains;
 CREATE POLICY "Tenant admins manage domains" ON tenant_domains
   FOR ALL TO authenticated USING (is_tenant_admin(tenant_id)) WITH CHECK (is_tenant_admin(tenant_id));
 
--- 3e. Storage: (OPTIONAL hardening) once uploads live under `t-<id>/`, you may scope
+-- 3e. Assign a CLIENT as admin of a tenant you already administer (the "assign a
+--     client admin" onboarding step; called by the admin UI via supabase.rpc()).
+--     SECURITY DEFINER so it can resolve username -> user_id and insert the mapping
+--     WITHOUT exposing admin_usernames or other users' mappings to the browser
+--     (tenant_admins stays readable only for your own rows, per 3c).
+CREATE OR REPLACE FUNCTION assign_tenant_admin(p_tenant_id UUID, p_username TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_user UUID;
+BEGIN
+  -- the caller must already administer this tenant
+  IF NOT is_tenant_admin(p_tenant_id) THEN
+    RAISE EXCEPTION 'not an admin of this tenant';
+  END IF;
+  SELECT user_id INTO v_user FROM admin_usernames WHERE username = p_username;
+  IF v_user IS NULL THEN
+    RAISE EXCEPTION 'no user with that username';
+  END IF;
+  INSERT INTO tenant_admins (tenant_id, user_id, role)
+  VALUES (p_tenant_id, v_user, 'owner')
+  ON CONFLICT (tenant_id, user_id) DO NOTHING;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION assign_tenant_admin(UUID, TEXT) TO authenticated;
+
+-- 3f. Storage: (OPTIONAL hardening) once uploads live under `t-<id>/`, you may scope
 --     media writes per tenant by parsing the path prefix. Not required at launch —
 --     images are public portfolio assets. Left commented on purpose.
 -- (see storage.objects policies in supabase-complete.sql)
 
--- 3f. ONLY AFTER verifying 3a on a dummy tenant, drop the old un-scoped policies:
+-- 3g. ONLY AFTER verifying 3a on a dummy tenant, drop the old un-scoped policies:
 -- DROP POLICY IF EXISTS "Admins can write profile"  ON profile;
 -- DROP POLICY IF EXISTS "Admins can write projects" ON projects;
 -- DROP POLICY IF EXISTS "Admins can read events"    ON analytics_events;
