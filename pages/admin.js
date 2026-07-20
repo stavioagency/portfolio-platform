@@ -715,6 +715,10 @@ function tenantStoragePath(tenant, name) {
   return tenant ? `t-${tenant.id}/${name}` : name;
 }
 
+// Slugs that would collide with real routes — a static route always wins over the
+// dynamic /[slug] page, so such a tenant would be unreachable.
+const RESERVED_SLUGS = ['admin', 'privacy', 'terms', 'api', '_next', '404', '500', 'favicon.ico'];
+
 // A blank slug is invalid; keep slugs to a safe host-friendly charset.
 function normalizeSlug(v) {
   return String(v || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
@@ -1922,6 +1926,10 @@ function TenantAdminSection({ session, lang }) {
     setCreateErr(''); setCreateMsg('');
     const s = normalizeSlug(slug);
     if (!s) { setCreateErr(ar ? 'أدخل معرّفًا صالحًا' : 'Enter a valid slug'); return; }
+    if (RESERVED_SLUGS.includes(s)) {
+      setCreateErr(ar ? 'هذا المعرّف محجوز، اختر غيره' : 'That slug is reserved — pick another');
+      return;
+    }
     setCreating(true);
     try {
       // 1) tenant row

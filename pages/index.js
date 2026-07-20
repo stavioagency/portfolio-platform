@@ -85,6 +85,11 @@ export default function Home({ slug = null } = {}) {
       // Stamp analytics with this tenant when resolved; null keeps singleton behavior.
       setTenantId(tenantMode ? tenant.id : null);
 
+      // This host is mapped to a tenant that is disabled/missing -> 404. Never fall
+      // back to the singleton here, or a client's domain would show another
+      // tenant's portfolio.
+      if (tenant.mode === 'blocked') { setNotFound(true); return; }
+
       // A slug route asked for a specific tenant that doesn't exist -> 404.
       // (Don't fall back to the singleton for an explicit slug.) `/` has no slug,
       // so it stays on the singleton path below.
