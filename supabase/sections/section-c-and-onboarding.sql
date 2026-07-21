@@ -25,15 +25,15 @@
 -- │   ✅ Part 3  section_c_part3_add_tenant_rls        (tenant-scoped + write   │
 -- │             policies + assign_tenant_admin)                                │
 -- │   ✅ Part 3b section_c_part3b_tenant_delete_policy                          │
--- │   ⛔ Part 3g DROP of the 3 old is_admin() policies is STILL PENDING —       │
--- │             blocked by the automation safety classifier (DROP POLICY).     │
--- │             RUN THESE 3 LINES MANUALLY in the Supabase SQL editor to        │
--- │             ENFORCE isolation (until then, is_admin still permits cross-    │
--- │             tenant writes — same as before, no regression):                │
+-- │   ✅ Part 3g section_c_drop_old_is_admin_policies (old is_admin policies    │
+-- │             DROPPED — tenant isolation now ENFORCED, verified by probe)     │
+-- │   ✅ Fix    fix_create_tenant_policy_use_is_admin ("Admins create tenants"  │
+-- │             now uses is_admin() SECURITY DEFINER; the inline EXISTS on      │
+-- │             admin_usernames failed because authenticated can't read it)     │
 -- │                                                                            │
--- │   DROP POLICY IF EXISTS "Admins can write profile"  ON profile;            │
--- │   DROP POLICY IF EXISTS "Admins can write projects" ON projects;           │
--- │   DROP POLICY IF EXISTS "Admins can read events"    ON analytics_events;   │
+-- │   ISOLATION VERIFIED 2026-07-21: f9designer-only admin CANNOT write/read    │
+-- │   designakum (denied); owner of both CAN; Create-Tenant+profile+domain      │
+-- │   flow succeeds (new profile id auto-assigned). SECTION C COMPLETE.         │
 -- └──────────────────────────────────────────────────────────────────────────┘
 --
 -- VERIFIED PRODUCTION STATE (project gphrzvjlstznhypcfgre, audited read-only):
