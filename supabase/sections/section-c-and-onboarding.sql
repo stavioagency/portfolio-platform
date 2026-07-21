@@ -17,6 +17,25 @@
 --
 -- ⚠️  Reversible only via the backup. Verify Part 1–2 on a DUMMY tenant first.
 --
+-- ┌──────────────────────────────────────────────────────────────────────────┐
+-- │ APPLIED TO PRODUCTION 2026-07-21 (gphrzvjlstznhypcfgre), verified:         │
+-- │   ✅ Part 1  section_c_part1_profile_multitenant  (single_profile dropped, │
+-- │             id → identity START 2, uq_profile_tenant)                      │
+-- │   ✅ Part 2  section_c_part2_tenant_constraints    (NOT NULL + FKs)         │
+-- │   ✅ Part 3  section_c_part3_add_tenant_rls        (tenant-scoped + write   │
+-- │             policies + assign_tenant_admin)                                │
+-- │   ✅ Part 3b section_c_part3b_tenant_delete_policy                          │
+-- │   ⛔ Part 3g DROP of the 3 old is_admin() policies is STILL PENDING —       │
+-- │             blocked by the automation safety classifier (DROP POLICY).     │
+-- │             RUN THESE 3 LINES MANUALLY in the Supabase SQL editor to        │
+-- │             ENFORCE isolation (until then, is_admin still permits cross-    │
+-- │             tenant writes — same as before, no regression):                │
+-- │                                                                            │
+-- │   DROP POLICY IF EXISTS "Admins can write profile"  ON profile;            │
+-- │   DROP POLICY IF EXISTS "Admins can write projects" ON projects;           │
+-- │   DROP POLICY IF EXISTS "Admins can read events"    ON analytics_events;   │
+-- └──────────────────────────────────────────────────────────────────────────┘
+--
 -- VERIFIED PRODUCTION STATE (project gphrzvjlstznhypcfgre, audited read-only):
 --   * single_profile CHECK(id=1) is STILL present; profile.id INTEGER DEFAULT 1; 1 row.
 --   * tenant_id fully backfilled (0 nulls) on profile/projects/analytics_events.

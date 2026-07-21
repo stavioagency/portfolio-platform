@@ -1948,14 +1948,15 @@ function TenantAdminSection({ session, lang }) {
         .insert({ slug: s, name: name.trim() || s, default_lang: 'ar', status: 'active' })
         .select().single();
       if (tErr) throw tErr;
-      // 2) initial profile row (needs Section C: single_profile removed + id auto-generated).
-      //    Roll the tenant back if this fails so we never leave a profile-less tenant behind.
-      const { error: pErr } = await supabase.from('profile').insert({ tenant_id: tRow.id, default_lang: 'ar' });
-      if (pErr) { await supabase.from('tenants').delete().eq('id', tRow.id); throw pErr; }
-      // 3) link the current admin as owner
+      // 2) link the current admin as owner FIRST. The profile write is gated by
+      //    is_tenant_admin(tenant_id), so we must administer this tenant before we can
+      //    create its profile. Roll the tenant back on failure (cascades the mapping).
       const { error: aErr } = await supabase.from('tenant_admins')
         .insert({ tenant_id: tRow.id, user_id: session.user.id, role: 'owner' });
-      if (aErr) throw aErr;
+      if (aErr) { await supabase.from('tenants').delete().eq('id', tRow.id); throw aErr; }
+      // 3) initial profile row for this tenant (now permitted by is_tenant_admin)
+      const { error: pErr } = await supabase.from('profile').insert({ tenant_id: tRow.id, default_lang: 'ar' });
+      if (pErr) { await supabase.from('tenants').delete().eq('id', tRow.id); throw pErr; }
       setSlug(''); setName('');
       setCreateMsg(ar ? 'تم إنشاء المساحة' : 'Workspace created');
       await reloadTenants();
