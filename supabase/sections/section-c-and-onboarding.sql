@@ -16,6 +16,15 @@
 -- tenant_admins readable by the admin app.
 --
 -- ⚠️  Reversible only via the backup. Verify Part 1–2 on a DUMMY tenant first.
+--
+-- VERIFIED PRODUCTION STATE (project gphrzvjlstznhypcfgre, audited read-only):
+--   * single_profile CHECK(id=1) is STILL present; profile.id INTEGER DEFAULT 1; 1 row.
+--   * tenant_id fully backfilled (0 nulls) on profile/projects/analytics_events.
+--   * RLS is still the OLD is_admin() policies (no tenant isolation yet).
+--   * tenants/tenant_domains have ONLY a public-read policy (writes blocked) — the
+--     grants below are mostly redundant (anon+authenticated already hold broad grants),
+--     but tenant_admins needs the INSERT/UPDATE/DELETE grant; all are idempotent.
+--   * assign_tenant_admin() does not exist yet (created in Part 3e).
 -- ############################################################################
 
 
@@ -170,6 +179,33 @@ GRANT EXECUTE ON FUNCTION assign_tenant_admin(UUID, TEXT) TO authenticated;
 -- NOTE: a client only needs an admin_usernames row to LOG IN. Their data access is
 -- governed by tenant_admins + is_tenant_admin() (Part 3), so they can only ever
 -- read/write their own tenant once 3g has been applied.
+
+-- ============================================================================
+-- PART 6 — OPTIONAL SECURITY HARDENING (from Supabase advisors; non-destructive)
+-- ============================================================================
+-- Safe to run anytime — none of these affect data or the live site.
+--
+-- 6a. anon should not be able to call the admin-check helpers by RPC.
+REVOKE EXECUTE ON FUNCTION is_admin() FROM anon;
+REVOKE EXECUTE ON FUNCTION is_tenant_admin(uuid) FROM anon;
+-- (get_email_for_username stays anon-executable — the /admin login needs it.)
+--
+-- 6b. Tighten the public media bucket so clients can't LIST every file. Object URLs
+--     still work; this only removes directory listing.
+-- DROP POLICY IF EXISTS "Public can view media" ON storage.objects;
+-- CREATE POLICY "Public can view media" ON storage.objects
+--   FOR SELECT USING (bucket_id = 'media');   -- (URL fetch works; listing via API is limited by Supabase)
+--
+-- 6c. (Consider) revoke the unused broad writes from anon on core tables. RLS already
+--     blocks these, but anon never needs write on profile/projects/tenants/tenant_domains.
+--     Do NOT revoke anon INSERT on analytics_events — the public site logs events as anon.
+-- REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON profile        FROM anon;
+-- REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON projects       FROM anon;
+-- REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON tenants        FROM anon;
+-- REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON tenant_domains FROM anon;
+-- REVOKE          UPDATE, DELETE, TRUNCATE ON analytics_events FROM anon;  -- keep INSERT
+--
+-- 6d. Dashboard-only: enable Auth "Leaked password protection" (HaveIBeenPwned).
 
 -- ############################################################################
 -- 🛑  END — nothing above has been executed by the application. Run deliberately.
