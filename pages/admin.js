@@ -365,9 +365,10 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tenants, setTenants] = useState([]);
   const [tenant, setTenant] = useState(null);
-  const [isOwner, setIsOwner] = useState(false); // platform owner? (UX gating; RLS is the authority)
+  const [isOwner, setIsOwner] = useState(null); // null = unknown; true = owner; false = client (UX only; RLS is the authority)
   const TENANT_LS_KEY = 'admin_selected_tenant';
   const t = getTranslator(lang);
+  const ar = lang === 'ar';
 
   // Detect platform-owner status from the database (is_platform_owner). This only
   // decides which UI is shown; every privileged action is still enforced by RLS.
@@ -381,6 +382,12 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
     })();
     return () => { cancelled = true; };
   }, [session]);
+
+  // Once we know the user is a CLIENT, land them on their Home (onboarding) screen
+  // instead of the raw Profile editor. Owners keep the Profile default.
+  useEffect(() => {
+    if (isOwner === false) setActiveTab((prev) => (prev === 'profile' ? 'home' : prev));
+  }, [isOwner]);
 
   const TAB_LABELS = {
     profile: t('nav_profile'), card: t('nav_card'), projects: t('nav_projects'),
@@ -487,6 +494,8 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         </a>
 
         <nav className="nav">
+          {isOwner === false && <NavItem icon="🏠" label={ar ? 'الرئيسية' : 'Home'} active={activeTab === 'home'} onClick={() => navigate('home')} />}
+          {isOwner === true && <NavItem icon="👥" label={ar ? 'العملاء' : 'Clients'} active={activeTab === 'clients'} onClick={() => navigate('clients')} />}
           <NavItem icon="👤" label={t('nav_profile')}    active={activeTab === 'profile'}    onClick={() => navigate('profile')} />
           <NavItem icon="🪪" label={t('nav_card')}       active={activeTab === 'card'}       onClick={() => navigate('card')} />
           <NavItem icon="📁" label={t('nav_projects')}   active={activeTab === 'projects'}   onClick={() => navigate('projects')} />
@@ -508,6 +517,8 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
       <main className="content">
         {isOwner && <TenantSelector tenants={tenants} tenant={tenant} onChange={switchTenant} lang={lang} />}
+        {activeTab === 'home'       && isOwner === false && <ClientHome key={tenantKey} lang={lang} onNavigate={navigate} />}
+        {activeTab === 'clients'    && isOwner === true  && <OwnerClientsOverview lang={lang} onOpen={(id) => { switchTenant(id); navigate('profile'); }} />}
         {activeTab === 'profile'    && <ProfileEditor    key={tenantKey} t={t} lang={lang} />}
         {activeTab === 'card'       && <CardEditor       key={tenantKey} t={t} lang={lang} />}
         {activeTab === 'projects'   && <ProjectsEditor   key={tenantKey} t={t} lang={lang} />}
@@ -1284,6 +1295,9 @@ function ProjectsEditor({ t, lang }) {
         <div className="empty-cta">
           <div className="empty-icon">📁</div>
           <div className="empty-title">{t('no_projects')}</div>
+          <p className="hint" style={{ maxWidth: 360, margin: '0 auto 14px', textAlign: 'center' }}>
+            {lang === 'ar' ? 'أعمالك هي ما يقنع الزوار. أضِف أول مشروع لعرض ما تبرع فيه.' : 'Your projects are what convince visitors. Add your first one to show what you do best.'}
+          </p>
           <button className="btn-primary-inline" onClick={addProject}>+ {t('no_projects_yet_cta')}</button>
         </div>
       ) : (
@@ -1462,6 +1476,17 @@ function LinksEditor({ t, lang }) {
     <div className="editor">
       <h1>{t('links_title')}</h1>
       <p className="hint">{t('links_sub')}</p>
+
+      {links.length === 0 && (
+        <div className="empty-cta">
+          <div className="empty-icon">🔗</div>
+          <div className="empty-title">{lang === 'ar' ? 'لا توجد روابط بعد' : 'No links yet'}</div>
+          <p className="hint" style={{ maxWidth: 360, margin: '0 auto 14px', textAlign: 'center' }}>
+            {lang === 'ar' ? 'أضِف حساباتك (إنستغرام، بيهانس، لينكدإن…) ليتواصل معك الزوار.' : 'Add your socials (Instagram, Behance, LinkedIn…) so visitors can reach you.'}
+          </p>
+          <button type="button" className="btn-primary-inline" onClick={add}>+ {lang === 'ar' ? 'أضف رابطًا' : 'Add a link'}</button>
+        </div>
+      )}
 
       {links.map((l, i) => {
         const icon = BRAND_ICONS[normalizeIcon(l.icon)] || BRAND_ICONS.website;
@@ -2249,6 +2274,208 @@ function TenantAdminSection({ session, lang }) {
         .domain-status { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; margin-inline-start: auto; }
       `}</style>
     </>
+  );
+}
+
+// ---- Client onboarding: completion is DERIVED from existing data (no new tables) ----
+function hasBilingualText(v) { return !!(v && (String(v.ar || '').trim() || String(v.en || '').trim())); }
+function computeSetup({ profile, projectCount, domainCount }) {
+  const p = profile || {};
+  const items = [
+    { key: 'photo',   tab: 'profile',    done: !!(p.profile_image || p.brand_logo) },
+    { key: 'bio',     tab: 'profile',    done: hasBilingualText(p.bio) },
+    { key: 'project', tab: 'projects',   done: (projectCount || 0) > 0 },
+    { key: 'links',   tab: 'links',      done: (p.custom_links || []).length > 0 },
+    { key: 'theme',   tab: 'appearance', done: !!p.appearance },
+    { key: 'domain',  tab: 'account',    done: (domainCount || 0) > 0 },
+    { key: 'publish', tab: 'profile',    done: hasBilingualText(p.name) },
+  ];
+  const done = items.filter((i) => i.done).length;
+  return { items, done, total: items.length, percent: Math.round((done / items.length) * 100) };
+}
+
+// Reusable, client-only, mobile-friendly checklist. Each row opens the relevant tab.
+function ClientOnboardingChecklist({ items, labels, onNavigate, ar }) {
+  return (
+    <div className="ck">
+      {items.map((it) => (
+        <button key={it.key} type="button" className={`ck-item ${it.done ? 'done' : ''}`} onClick={() => onNavigate(it.tab)}>
+          <span className="ck-box">{it.done ? '✓' : ''}</span>
+          <span className="ck-label">{labels[it.key]}</span>
+          <span className="ck-arrow">{ar ? '‹' : '›'}</span>
+        </button>
+      ))}
+      <style jsx>{`
+        .ck { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+        .ck-item { display: flex; align-items: center; gap: 12px; width: 100%; text-align: start; padding: 13px 14px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; font-family: inherit; font-size: 14px; color: var(--text-primary); transition: var(--transition); min-height: 48px; }
+        .ck-item:hover { border-color: var(--border-strong); }
+        .ck-box { width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; border: 1.5px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font-size: 13px; color: #fff; }
+        .ck-item.done .ck-box { background: var(--accent); border-color: var(--accent); }
+        .ck-item.done .ck-label { color: var(--text-tertiary); text-decoration: line-through; }
+        .ck-label { flex: 1; }
+        .ck-arrow { color: var(--text-muted); font-size: 18px; }
+      `}</style>
+    </div>
+  );
+}
+
+// Client home / welcome screen — status, URL, completion, quick actions, checklist.
+function ClientHome({ lang, onNavigate }) {
+  const { tenant } = useTenant();
+  const ar = lang === 'ar';
+  const [profile, setProfile] = useState(null);
+  const [projectCount, setProjectCount] = useState(0);
+  const [domains, setDomains] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const { data: p } = await loadProfile(tenant);
+      let pc = 0, dm = [];
+      if (tenant) {
+        const { count } = await supabase.from('projects').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id);
+        pc = count || 0;
+        const { data: d } = await supabase.from('tenant_domains').select('domain,is_primary,status').eq('tenant_id', tenant.id);
+        dm = d || [];
+      }
+      if (!cancelled) { setProfile(p || {}); setProjectCount(pc); setDomains(dm); setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [tenant]);
+
+  const setup = computeSetup({ profile, projectCount, domainCount: domains.length });
+  const name = pick(profile?.name, lang) || pick(profile?.name, 'en') || '';
+  const primary = domains.find((d) => d.is_primary) || domains[0];
+  const slugUrl = tenant ? `/${tenant.slug}` : '/';
+  const publicUrl = primary ? `https://${primary.domain}` : slugUrl;
+  const active = (tenant?.status || 'active') !== 'disabled';
+  const LABELS = {
+    photo: ar ? 'أضف صورة الملف' : 'Add profile photo',
+    bio: ar ? 'اكتب نبذتك' : 'Write your bio',
+    project: ar ? 'أضف أول مشروع' : 'Add your first project',
+    links: ar ? 'أضف روابط التواصل' : 'Add social links',
+    theme: ar ? 'اختر مظهرًا' : 'Choose a theme',
+    domain: ar ? 'اربط نطاقك' : 'Connect a domain',
+    publish: ar ? 'أضف اسمك وانشر' : 'Add your name & publish',
+  };
+
+  return (
+    <div className="editor">
+      <h1>{name ? (ar ? `مرحبًا ${name} 👋` : `Welcome, ${name} 👋`) : (ar ? 'مرحبًا بك في منشئ موقعك 👋' : 'Welcome to your portfolio builder 👋')}</h1>
+      <p className="hint">{ar ? 'موقعك جاهز ومباشر. أكمل الخطوات التالية لجعله رائعًا.' : 'Your website is ready and live. Complete the steps below to make it shine.'}</p>
+
+      <div className="ch-grid">
+        <div className="ch-card">
+          <div className="ch-label">{ar ? 'حالة الموقع' : 'Website status'}</div>
+          <div className="ch-status">{active ? '🟢' : '🔴'} {active ? (ar ? 'مباشر' : 'Active') : (ar ? 'معلّق' : 'Suspended')}</div>
+        </div>
+        <div className="ch-card">
+          <div className="ch-label">{ar ? 'رابط موقعك' : 'Your website'}</div>
+          <a className="ch-url" href={publicUrl} target="_blank" rel="noopener noreferrer" dir="ltr">{primary ? primary.domain : slugUrl}</a>
+        </div>
+        <div className="ch-card">
+          <div className="ch-label">{ar ? 'الاكتمال' : 'Completion'}</div>
+          <div className="ch-status">{loading ? '—' : `${setup.percent}%`}</div>
+          <div className="ch-bar"><div className="ch-bar-fill" style={{ width: `${loading ? 0 : setup.percent}%` }} /></div>
+        </div>
+      </div>
+
+      <h2>{ar ? 'إجراءات سريعة' : 'Quick actions'}</h2>
+      <div className="ch-actions">
+        <button className="ch-action" onClick={() => onNavigate('profile')}>👤 {ar ? 'تعديل الملف' : 'Edit profile'}</button>
+        <button className="ch-action" onClick={() => onNavigate('projects')}>📁 {ar ? 'إضافة مشروع' : 'Add project'}</button>
+        <button className="ch-action" onClick={() => onNavigate('appearance')}>🎨 {ar ? 'تخصيص التصميم' : 'Customize design'}</button>
+        <button className="ch-action" onClick={() => onNavigate('account')}>🌐 {ar ? 'ربط نطاق' : 'Connect domain'}</button>
+      </div>
+
+      <h2>{ar ? 'أكمل موقعك' : 'Complete your website'} <span className="meta">· {loading ? '…' : `${setup.done}/${setup.total}`}</span></h2>
+      {!loading && <ClientOnboardingChecklist items={setup.items} labels={LABELS} onNavigate={onNavigate} ar={ar} />}
+
+      <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
+      <style jsx>{`
+        .ch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; max-width: 640px; margin-bottom: var(--space-5); }
+        .ch-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; }
+        .ch-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 6px; }
+        :global(html[dir="rtl"]) .ch-label { text-transform: none; letter-spacing: normal; }
+        .ch-status { font-size: 18px; font-weight: 700; }
+        .ch-url { font-size: 14px; font-weight: 600; color: var(--accent); text-decoration: none; word-break: break-all; }
+        .ch-bar { height: 6px; background: var(--bg-elevated); border-radius: 999px; margin-top: 8px; overflow: hidden; }
+        .ch-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s ease; }
+        .ch-actions { display: flex; flex-wrap: wrap; gap: 8px; max-width: 640px; margin-bottom: var(--space-4); }
+        .ch-action { padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--text-primary); min-height: 44px; }
+        .ch-action:hover { border-color: var(--border-strong); }
+      `}</style>
+    </div>
+  );
+}
+
+// Owner-only simple overview: name, domain, status, completion. Click to open.
+function OwnerClientsOverview({ lang, onOpen }) {
+  const { tenants } = useTenant();
+  const ar = lang === 'ar';
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const ids = tenants.map((x) => x.id);
+      if (ids.length === 0) { if (!cancelled) { setRows([]); setLoading(false); } return; }
+      const [{ data: profiles }, { data: projects }, { data: domains }] = await Promise.all([
+        supabase.from('profile').select('tenant_id,name,bio,profile_image,brand_logo,custom_links,appearance').in('tenant_id', ids),
+        supabase.from('projects').select('tenant_id').in('tenant_id', ids),
+        supabase.from('tenant_domains').select('tenant_id,domain,is_primary').in('tenant_id', ids),
+      ]);
+      const pcount = {}; (projects || []).forEach((p) => { pcount[p.tenant_id] = (pcount[p.tenant_id] || 0) + 1; });
+      const pmap = {}; (profiles || []).forEach((p) => { pmap[p.tenant_id] = p; });
+      const dmap = {}; (domains || []).forEach((d) => { (dmap[d.tenant_id] = dmap[d.tenant_id] || []).push(d); });
+      const out = tenants.map((x) => {
+        const s = computeSetup({ profile: pmap[x.id], projectCount: pcount[x.id] || 0, domainCount: (dmap[x.id] || []).length });
+        const dom = (dmap[x.id] || []).find((d) => d.is_primary) || (dmap[x.id] || [])[0];
+        return { id: x.id, name: x.name || x.slug, status: x.status, domain: dom?.domain || `/${x.slug}`, percent: s.percent };
+      }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      if (!cancelled) { setRows(out); setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [tenants]);
+
+  return (
+    <div className="editor">
+      <h1>{ar ? 'العملاء' : 'Clients'} <span className="meta">· {rows.length}</span></h1>
+      <p className="hint">{ar ? 'نظرة عامة على مساحات العملاء. اضغط لفتح مساحة.' : 'A quick overview of your client workspaces. Tap one to open it.'}</p>
+      {loading ? <div className="hint">…</div> : rows.length === 0 ? (
+        <div className="hint">{ar ? 'لا يوجد عملاء بعد.' : 'No clients yet.'}</div>
+      ) : (
+        <div className="cl-list">
+          {rows.map((r) => (
+            <button key={r.id} type="button" className="cl-row" onClick={() => onOpen(r.id)}>
+              <div className="cl-main">
+                <div className="cl-name">{r.name}</div>
+                <div className="cl-domain" dir="ltr">{r.domain}</div>
+              </div>
+              <span className={`cl-badge ${r.status === 'disabled' ? 'off' : 'on'}`}>{r.status === 'disabled' ? (ar ? 'معلّق' : 'Suspended') : (ar ? 'نشط' : 'Active')}</span>
+              <span className="cl-pct">{r.percent}%</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
+      <style jsx>{`
+        .cl-list { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
+        .cl-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: start; padding: 14px 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; font-family: inherit; color: var(--text-primary); transition: var(--transition); min-height: 56px; }
+        .cl-row:hover { border-color: var(--border-strong); }
+        .cl-main { flex: 1; min-width: 0; }
+        .cl-name { font-size: 14px; font-weight: 600; }
+        .cl-domain { font-size: 12px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cl-badge { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; flex-shrink: 0; }
+        .cl-badge.on { background: rgba(125,211,125,0.14); color: #7dd37d; }
+        .cl-badge.off { background: rgba(255,80,80,0.14); color: #ff8080; }
+        .cl-pct { font-size: 13px; font-weight: 700; color: var(--accent); min-width: 42px; text-align: end; flex-shrink: 0; }
+      `}</style>
+    </div>
   );
 }
 
