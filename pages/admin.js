@@ -9,6 +9,18 @@ import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
 
 function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
 
+// Canonical admin URL for auth redirects (password reset + invites). Using ONE fixed
+// origin — instead of window.location.origin — means only this URL needs to be in the
+// Supabase "Redirect URLs" allowlist, no matter how many client custom domains exist.
+// Override per environment with NEXT_PUBLIC_ADMIN_URL; on localhost we keep the local
+// origin so dev password-reset works.
+function adminRedirectUrl() {
+  const isLocal = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+  const base = process.env.NEXT_PUBLIC_ADMIN_URL
+    || (isLocal ? window.location.origin : 'https://portfolio-platform-designakum.vercel.app');
+  return `${String(base).replace(/\/+$/, '')}/admin`;
+}
+
 function readLang() {
   if (typeof window === 'undefined') return 'ar';
   return localStorage.getItem('lang') || 'ar';
@@ -216,7 +228,7 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
       email = data || null;
     }
     if (email) {
-      await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/admin` });
+      await supabase.auth.resetPasswordForEmail(email, { redirectTo: adminRedirectUrl() });
     }
     setForgotLoading(false);
     setForgotDone(true);
@@ -1983,7 +1995,7 @@ function TenantAdminSection({ session, lang }) {
         tenant_id: tenant.id,
         email: invEmail.trim(),
         username: invUser.trim(),
-        redirect_to: typeof window !== 'undefined' ? `${window.location.origin}/admin` : undefined,
+        redirect_to: adminRedirectUrl(),
       },
     });
     setInvBusy(false);
