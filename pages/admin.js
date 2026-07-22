@@ -365,8 +365,22 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tenants, setTenants] = useState([]);
   const [tenant, setTenant] = useState(null);
+  const [isOwner, setIsOwner] = useState(false); // platform owner? (UX gating; RLS is the authority)
   const TENANT_LS_KEY = 'admin_selected_tenant';
   const t = getTranslator(lang);
+
+  // Detect platform-owner status from the database (is_platform_owner). This only
+  // decides which UI is shown; every privileged action is still enforced by RLS.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase.rpc('is_platform_owner');
+        if (!cancelled) setIsOwner(data === true);
+      } catch (_) { if (!cancelled) setIsOwner(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [session]);
 
   const TAB_LABELS = {
     profile: t('nav_profile'), card: t('nav_card'), projects: t('nav_projects'),
@@ -439,7 +453,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
   return (
     <DirtyContext.Provider value={dirtyRef}>
-    <TenantContext.Provider value={{ tenant, tenants, setTenant, reloadTenants: loadTenants }}>
+    <TenantContext.Provider value={{ tenant, tenants, setTenant, reloadTenants: loadTenants, isOwner }}>
     <div className={`dashboard ${theme || 'dark'}`}>
       {/* MOBILE TOP BAR — only visible <720px */}
       <header className="mobile-bar">
@@ -493,7 +507,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
       <div className={`backdrop ${sidebarOpen ? 'show' : ''}`} onClick={() => setSidebarOpen(false)} aria-hidden="true" />
 
       <main className="content">
-        <TenantSelector tenants={tenants} tenant={tenant} onChange={switchTenant} lang={lang} />
+        {isOwner && <TenantSelector tenants={tenants} tenant={tenant} onChange={switchTenant} lang={lang} />}
         {activeTab === 'profile'    && <ProfileEditor    key={tenantKey} t={t} lang={lang} />}
         {activeTab === 'card'       && <CardEditor       key={tenantKey} t={t} lang={lang} />}
         {activeTab === 'projects'   && <ProjectsEditor   key={tenantKey} t={t} lang={lang} />}
@@ -698,7 +712,7 @@ const DirtyContext = createContext(null);
 // The tenant the admin is currently editing. `tenant` is null in legacy/single
 // mode (no tenant mapping or the tenant tables aren't readable), which preserves
 // the exact id=1 behavior below.
-const TenantContext = createContext({ tenant: null, tenants: [], setTenant: () => {}, reloadTenants: async () => {} });
+const TenantContext = createContext({ tenant: null, tenants: [], setTenant: () => {}, reloadTenants: async () => {}, isOwner: false });
 function useTenant() { return useContext(TenantContext); }
 
 // Tenant-scoped data helpers. When a tenant is selected we scope by tenant_id;
@@ -1923,8 +1937,41 @@ function TableCard({ title, headLabel, headValue, rows }) {
 // Until that migration is applied these calls surface a clear error instead of failing
 // silently; nothing here runs against or breaks the current single-tenant database.
 function TenantAdminSection({ session, lang }) {
-  const { tenant, setTenant, reloadTenants } = useTenant();
+  const { tenant, setTenant, reloadTenants, isOwner } = useTenant();
   const ar = lang === 'ar';
+
+  // Invite a NEW client login (owner-only, via the invite-client Edge Function).
+  const [invEmail, setInvEmail] = useState('');
+  const [invUser, setInvUser] = useState('');
+  const [invBusy, setInvBusy] = useState(false);
+  const [invMsg, setInvMsg] = useState('');
+  const [invErr, setInvErr] = useState('');
+  async function inviteClient(e) {
+    e.preventDefault();
+    setInvErr(''); setInvMsg('');
+    if (!tenant) { setInvErr(ar ? 'اختر مساحة أولًا' : 'Select a workspace first'); return; }
+    setInvBusy(true);
+    // supabase.functions.invoke attaches the owner's session JWT; the function verifies
+    // is_platform_owner server-side before doing anything.
+    const { data, error } = await supabase.functions.invoke('invite-client', {
+      body: {
+        tenant_id: tenant.id,
+        email: invEmail.trim(),
+        username: invUser.trim(),
+        redirect_to: typeof window !== 'undefined' ? `${window.location.origin}/admin` : undefined,
+      },
+    });
+    setInvBusy(false);
+    if (error) {
+      let detail = error.message;
+      try { const b = await error.context?.json?.(); if (b?.error) detail = b.error; } catch (_) {}
+      setInvErr(detail || (ar ? 'فشلت الدعوة' : 'Invite failed'));
+      return;
+    }
+    if (data?.error) { setInvErr(data.error); return; }
+    setInvEmail(''); setInvUser('');
+    setInvMsg((ar ? 'تمت دعوة العميل' : 'Client invited') + (data?.user_created ? '' : ' ✓'));
+  }
 
   const [slug, setSlug] = useState('');
   const [name, setName] = useState('');
@@ -2079,6 +2126,8 @@ function TenantAdminSection({ session, lang }) {
 
   return (
     <>
+      {isOwner && (
+      <>
       <h2>{ar ? 'المساحات (العملاء)' : 'Workspaces (clients)'}</h2>
       <p className="hint">{ar
         ? 'أنشئ مساحة لكل عميل. يتم إنشاء ملف تعريف وربطك كمالك تلقائيًا.'
@@ -2119,10 +2168,32 @@ function TenantAdminSection({ session, lang }) {
         </>
       )}
 
+      <h2>{ar ? 'دعوة عميل' : 'Invite client'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
+      <p className="hint">{ar
+        ? 'أنشئ حساب دخول جديد للعميل وأرسل له دعوة بالبريد. يُربط تلقائيًا بهذه المساحة كـ«عميل».'
+        : 'Create a new login for the client and email them an invite. They are linked to this workspace as a client automatically.'}</p>
+      {tenant ? (
+        <form onSubmit={inviteClient} style={{ maxWidth: 500 }}>
+          <Field id="inv-email" label={ar ? 'البريد الإلكتروني' : 'Email'}>
+            <input id="inv-email" type="email" dir="ltr" value={invEmail} onChange={(e) => setInvEmail(e.target.value)} placeholder="client@email.com" />
+          </Field>
+          <Field id="inv-user" label={ar ? 'اسم المستخدم' : 'Username'}>
+            <input id="inv-user" type="text" dir="ltr" value={invUser} onChange={(e) => setInvUser(e.target.value)} placeholder="client" />
+          </Field>
+          {invErr && <div className="ts-err">{invErr}</div>}
+          {invMsg && <div className="ts-ok">{invMsg} ✓</div>}
+          <button type="submit" className="ts-primary" disabled={invBusy} style={{ marginTop: 12 }}>
+            {invBusy ? '...' : (ar ? 'إرسال الدعوة' : 'Send invite')}
+          </button>
+        </form>
+      ) : (
+        <div className="hint">{ar ? 'اختر مساحة من الأعلى.' : 'Select a workspace at the top.'}</div>
+      )}
+
       <h2>{ar ? 'مدير العميل' : 'Client admin'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
-        ? 'امنح العميل حق إدارة مساحته. يجب أن يكون لديه حساب دخول واسم مستخدم بالفعل.'
-        : 'Grant the client admin access to this workspace. They must already have a login and username.'}</p>
+        ? 'امنح مستخدمًا موجودًا (باسم مستخدم) حق إدارة هذه المساحة.'
+        : 'Grant an EXISTING user (by username) admin access to this workspace.'}</p>
       {tenant ? (
         <form onSubmit={assignAdmin} style={{ display: 'flex', gap: 8, maxWidth: 500, alignItems: 'flex-start' }}>
           <input type="text" dir="ltr" value={adminUser} onChange={(e) => setAdminUser(e.target.value)} placeholder={ar ? 'اسم المستخدم' : 'username'} />
@@ -2133,11 +2204,13 @@ function TenantAdminSection({ session, lang }) {
       )}
       {assignErr && <div className="ts-err">{assignErr}</div>}
       {assignMsg && <div className="ts-ok">{assignMsg} ✓</div>}
+      </>
+      )}
 
       <h2>{ar ? 'النطاقات المخصصة' : 'Custom domains'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
-        ? `أضف نطاق العميل هنا، ثم أضِف نفس النطاق في Vercel ووجّه DNS. حتى ذلك الحين يعمل الرابط عبر المعرّف: /${tenant?.slug || 'slug'}`
-        : `Add the client’s domain here, then add the same domain in Vercel and point DNS. Until then the slug URL works: /${tenant?.slug || 'slug'}`}</p>
+        ? `أضف نطاقك هنا، ثم أضِف نفس النطاق في Vercel ووجّه DNS. حتى ذلك الحين يعمل الرابط عبر المعرّف: /${tenant?.slug || 'slug'}`
+        : `Add your custom domain here, then add the same domain in Vercel and point DNS. Until then the slug URL works: /${tenant?.slug || 'slug'}`}</p>
       {tenant ? (
         <>
           <div className="domain-list">
