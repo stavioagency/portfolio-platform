@@ -6,6 +6,7 @@ import { pick } from '../lib/i18n';
 import { resolveTenant } from '../lib/tenant';
 import { privacyContent, termsContent } from '../lib/legal-content';
 import { BRAND_ICONS, normalizeIcon } from '../lib/brand-icons';
+import { safeUrl } from '../lib/safe-url';
 
 const BANNER_BGS = {
   purple: 'linear-gradient(135deg, #7a72d6, #9FA7FF)',
@@ -302,7 +303,8 @@ export default function Home({ slug = null } = {}) {
   function onCtaClick(btn) {
     logEvent({ event_type: 'link_click', link_key: btn.icon || 'cta' });
     if (btn.action === 'open_projects') { setProjectsOpen(true); return; }
-    if (btn.href) window.open(btn.href, '_blank', 'noopener,noreferrer');
+    const dest = safeUrl(btn.href);
+    if (dest) window.open(dest, '_blank', 'noopener,noreferrer');
   }
   function onSocialClick(iconKey) {
     logEvent({ event_type: 'link_click', link_key: iconKey });
@@ -373,12 +375,14 @@ export default function Home({ slug = null } = {}) {
                 const iconKey = normalizeIcon(l.icon);
                 const ic = BRAND_ICONS[iconKey];
                 if (!ic) return null;
-                const href = iconKey === 'whatsapp' && /^[+\d\s]+$/.test(l.href)
+                const rawHref = iconKey === 'whatsapp' && /^[+\d\s]+$/.test(l.href)
                   ? `https://wa.me/${l.href.replace(/[^\d]/g, '')}`
                   : l.href;
-                const isMail = iconKey === 'email' && l.href.includes('@');
+                const isMail = iconKey === 'email' && (l.href || '').includes('@');
+                const href = safeUrl(isMail ? `mailto:${l.href}` : rawHref);
+                if (!href) return null; // drop links with an unsafe/empty scheme
                 return (
-                  <a key={i} href={isMail ? `mailto:${l.href}` : href} target="_blank" rel="noopener noreferrer" className="social-icon" aria-label={pick(l.label, lang)} onClick={() => onSocialClick(iconKey)}>
+                  <a key={i} href={href} target="_blank" rel="noopener noreferrer" className="social-icon" aria-label={pick(l.label, lang)} onClick={() => onSocialClick(iconKey)}>
                     <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
                   </a>
                 );
@@ -878,7 +882,8 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
       : (p.cover_image ? [p.cover_image] : []);
     if (!images.length) {
       // No images to show — if there's an external link, honor it; otherwise no-op.
-      if (p.external_url) window.open(p.external_url, '_blank', 'noopener,noreferrer');
+      const dest = safeUrl(p.external_url);
+      if (dest) window.open(dest, '_blank', 'noopener,noreferrer');
       return;
     }
     const meta = [p.client, p.year, p.role].filter(Boolean).join('  ·  ');
@@ -979,11 +984,11 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
                 )}
               </div>
               {lightbox.desc && <p className="lb-desc">{lightbox.desc}</p>}
-              {lightbox.url && (
+              {safeUrl(lightbox.url) && (
                 <div className="lb-actions">
                   <a
                     className="lb-link"
-                    href={lightbox.url}
+                    href={safeUrl(lightbox.url)}
                     target="_blank"
                     rel="noopener noreferrer"
                   >{t('view_project')} ↗</a>

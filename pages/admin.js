@@ -252,15 +252,19 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true); setError('');
-    const trimmed = username.trim().toLowerCase();
-    const { data: email, error: rpcError } = await supabase.rpc('get_email_for_username', { p_username: trimmed });
-    if (rpcError || !email) {
+    try {
+      const trimmed = username.trim().toLowerCase();
+      const { data: email, error: rpcError } = await supabase.rpc('get_email_for_username', { p_username: trimmed });
+      if (rpcError || !email) { setError(t('invalid_credentials')); return; }
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) setError(t('invalid_credentials'));
+    } catch (err) {
+      // network / unexpected failure — never leave the button stuck spinning
+      console.error('[auth] sign-in failed:', err);
       setError(t('invalid_credentials'));
-      setLoading(false); return;
+    } finally {
+      setLoading(false);
     }
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-    if (authError) setError(t('invalid_credentials'));
-    setLoading(false);
   }
 
   async function handleForgotSubmit(e) {
@@ -270,16 +274,23 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
     // Accept a typed email directly; otherwise resolve a username to its email
     // via the same RPC the sign-in form uses. Either way we show the same
     // generic message afterward so we never reveal whether an account exists.
-    let email = raw.includes('@') ? raw : null;
-    if (!email) {
-      const { data } = await supabase.rpc('get_email_for_username', { p_username: raw.toLowerCase() });
-      email = data || null;
+    try {
+      let email = raw.includes('@') ? raw : null;
+      if (!email) {
+        const { data } = await supabase.rpc('get_email_for_username', { p_username: raw.toLowerCase() });
+        email = data || null;
+      }
+      if (email) {
+        await supabase.auth.resetPasswordForEmail(email, { redirectTo: adminRedirectUrl() });
+      }
+    } catch (err) {
+      // Swallow — the generic "if it exists, we sent a link" screen is shown
+      // regardless, so a failure here must not reveal account existence.
+      console.error('[auth] reset request failed:', err);
+    } finally {
+      setForgotLoading(false);
+      setForgotDone(true);
     }
-    if (email) {
-      await supabase.auth.resetPasswordForEmail(email, { redirectTo: adminRedirectUrl() });
-    }
-    setForgotLoading(false);
-    setForgotDone(true);
   }
 
   function backToSignIn() {
@@ -389,11 +400,17 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
     if (newPwd.length < 8) { setError(t('password_too_short')); return; }
     if (newPwd !== confirmPwd) { setError(t('password_mismatch')); return; }
     setLoading(true);
-    const { error: updateErr } = await supabase.auth.updateUser({ password: newPwd });
-    setLoading(false);
-    if (updateErr) { setError(updateErr.message); return; }
-    setDone(true);
-    setTimeout(() => onDone && onDone(), 1200);
+    try {
+      const { error: updateErr } = await supabase.auth.updateUser({ password: newPwd });
+      if (updateErr) { setError(updateErr.message); return; }
+      setDone(true);
+      setTimeout(() => onDone && onDone(), 1200);
+    } catch (err) {
+      console.error('[auth] set-password failed:', err);
+      setError(t('save_failed'));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -1150,10 +1167,13 @@ function ProfileEditor({ t, lang }) {
 
   async function save() {
     setSaving(true);
-    const { error } = await persistProfile(tenant, profile);
-    setSaving(false);
-    if (!error) { setSavedMsg(t('saved')); setDirty(false); }
-    else { console.error(error); toast.error(t('save_failed')); }
+    try {
+      const { error } = await persistProfile(tenant, profile);
+      if (!error) { setSavedMsg(t('saved')); setDirty(false); }
+      else { console.error(error); toast.error(t('save_failed')); }
+    } catch (err) {
+      console.error(err); toast.error(t('save_failed'));
+    } finally { setSaving(false); }
   }
   async function uploadImage(file) {
     const path = tenantStoragePath(tenant, `profile-${Date.now()}.${file.name.split('.').pop()}`);
@@ -1318,10 +1338,13 @@ function CardEditor({ t, lang }) {
   function patch(updates) { setProfile(p => ({ ...p, ...updates })); setDirty(true); }
   async function save() {
     setSaving(true);
-    const { error } = await persistProfile(tenant, profile);
-    setSaving(false);
-    if (!error) { setSavedMsg(t('saved')); setDirty(false); }
-    else { console.error(error); toast.error(t('save_failed')); }
+    try {
+      const { error } = await persistProfile(tenant, profile);
+      if (!error) { setSavedMsg(t('saved')); setDirty(false); }
+      else { console.error(error); toast.error(t('save_failed')); }
+    } catch (err) {
+      console.error(err); toast.error(t('save_failed'));
+    } finally { setSaving(false); }
   }
   async function uploadAsset(prefix, file) {
     const path = tenantStoragePath(tenant, `${prefix}-${Date.now()}.${file.name.split('.').pop()}`);
@@ -1678,9 +1701,12 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
 
   async function save() {
     setSaving(true);
-    await onSave(data);
-    setSaving(false);
-    setSavedMsg(t('saved')); setDirty(false);
+    try {
+      await onSave(data);
+      setSavedMsg(t('saved')); setDirty(false);
+    } catch (err) {
+      console.error(err); toast.error(t('save_failed'));
+    } finally { setSaving(false); }
   }
   async function uploadCover(file) {
     const path = tenantStoragePath(tenant, `project-${data.id}-cover-${Date.now()}.${file.name.split('.').pop()}`);
@@ -1779,10 +1805,13 @@ function LinksEditor({ t, lang }) {
   function patch(next) { setLinks(next); setDirty(true); }
   async function save() {
     setSaving(true);
-    const { error } = await persistProfile(tenant, { custom_links: links });
-    setSaving(false);
-    if (!error) { setSavedMsg(t('saved')); setDirty(false); }
-    else { console.error(error); toast.error(t('save_failed')); }
+    try {
+      const { error } = await persistProfile(tenant, { custom_links: links });
+      if (!error) { setSavedMsg(t('saved')); setDirty(false); }
+      else { console.error(error); toast.error(t('save_failed')); }
+    } catch (err) {
+      console.error(err); toast.error(t('save_failed'));
+    } finally { setSaving(false); }
   }
   function add() { patch([...links, { id: newId(), icon: 'website', label: emptyBilingual(), href: '' }]); }
   function update(id, u) { patch(links.map(l => l.id === id ? { ...l, ...u } : l)); }
@@ -1932,10 +1961,13 @@ function AppearanceEditor({ t, lang }) {
   function applyPreset(key) { setAppearance(a => ({ ...a, theme: key, tokens: { ...THEME_PRESETS[key].tokens } })); setDirty(true); }
   async function save() {
     setSaving(true);
-    const { error } = await persistProfile(tenant, { appearance });
-    setSaving(false);
-    if (!error) { setSavedMsg(t('saved')); setDirty(false); }
-    else { console.error(error); toast.error(t('save_failed')); }
+    try {
+      const { error } = await persistProfile(tenant, { appearance });
+      if (!error) { setSavedMsg(t('saved')); setDirty(false); }
+      else { console.error(error); toast.error(t('save_failed')); }
+    } catch (err) {
+      console.error(err); toast.error(t('save_failed'));
+    } finally { setSaving(false); }
   }
 
   const deviceWidth = device === 'mobile' ? 360 : device === 'tablet' ? 640 : '100%';
@@ -2038,9 +2070,16 @@ function AnalyticsEditor({ t, lang }) {
   const [loading, setLoading] = useState(true);
   const { tenant } = useTenant();
 
-  useEffect(() => { load(); }, [range]);
+  // A ref-based token guards against a range-switch race: if the user changes
+  // range while a slower request is in flight, only the latest one writes state.
+  const loadSeq = useRef(0);
+  useEffect(() => {
+    const seq = ++loadSeq.current;
+    load(seq);
+    return () => { /* mark superseded — the check in load() handles it */ };
+  }, [range, tenant]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function load() {
+  async function load(seq) {
     setLoading(true);
     let from;
     const now = new Date();
@@ -2049,15 +2088,21 @@ function AnalyticsEditor({ t, lang }) {
     else if (range === '30d') from = new Date(now - 30 * 86400 * 1000);
     else from = new Date(0);
 
-    let evq = supabase.from('analytics_events').select('*').gte('created_at', from.toISOString());
-    if (tenant) evq = evq.eq('tenant_id', tenant.id);
-    const { data: evs } = await evq.order('created_at', { ascending: false });
-    let pq = supabase.from('projects').select('id, title');
-    if (tenant) pq = pq.eq('tenant_id', tenant.id);
-    const { data: projs } = await pq;
-    setEvents(evs || []);
-    setProjects(projs || []);
-    setLoading(false);
+    try {
+      let evq = supabase.from('analytics_events').select('*').gte('created_at', from.toISOString());
+      if (tenant) evq = evq.eq('tenant_id', tenant.id);
+      const { data: evs } = await evq.order('created_at', { ascending: false });
+      let pq = supabase.from('projects').select('id, title');
+      if (tenant) pq = pq.eq('tenant_id', tenant.id);
+      const { data: projs } = await pq;
+      if (seq !== loadSeq.current) return; // a newer range was requested; drop this result
+      setEvents(evs || []);
+      setProjects(projs || []);
+    } catch (e) {
+      console.error('[analytics] load failed:', e);
+    } finally {
+      if (seq === loadSeq.current) setLoading(false);
+    }
   }
 
   const pageViews = events.filter(e => e.event_type === 'page_view');
@@ -2302,10 +2347,17 @@ function isApexDomain(d) {
 // "no DNS" — otherwise Verify would downgrade a perfectly working domain.
 async function checkDomainDns(domain) {
   const q = async (type) => {
-    const r = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`);
-    if (!r.ok) throw new Error(`dns http ${r.status}`);
-    const j = await r.json();
-    return (j.Answer || []).map((a) => String(a.data || '').replace(/\.$/, '').toLowerCase());
+    // Abort a stalled DoH request so Verify can't spin forever on a flaky network.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const r = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`, { signal: ctrl.signal });
+      if (!r.ok) throw new Error(`dns http ${r.status}`);
+      const j = await r.json();
+      return (j.Answer || []).map((a) => String(a.data || '').replace(/\.$/, '').toLowerCase());
+    } finally {
+      clearTimeout(timer);
+    }
   };
   try {
     const [cname, a] = await Promise.all([q('CNAME'), q('A')]);
@@ -2393,11 +2445,17 @@ function DomainManager({ lang, isOwner }) {
     }
     if (domains.some((x) => x.domain === d)) { setErr(ar ? 'هذا النطاق مضاف بالفعل' : 'That domain is already added'); return; }
     setBusy(true);
-    const { error } = await supabase.from('tenant_domains')
-      .insert({ tenant_id: tenant.id, domain: d, is_primary: domains.length === 0, status: 'pending' });
-    setBusy(false);
-    if (error) { setErr(error.message || String(error)); return; }
-    setNewDomain(''); await load(); setOpenDns(d);
+    try {
+      const { error } = await supabase.from('tenant_domains')
+        .insert({ tenant_id: tenant.id, domain: d, is_primary: domains.length === 0, status: 'pending' });
+      if (error) { setErr(error.message || String(error)); return; }
+      setNewDomain(''); await load(); setOpenDns(d);
+    } catch (e2) {
+      console.error('[domain] add failed:', e2);
+      setErr(ar ? 'تعذّر إضافة النطاق' : 'Could not add the domain');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function verify(row) {
@@ -2529,26 +2587,32 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
     setInvErr(''); setInvMsg('');
     if (!tenant) { setInvErr(ar ? 'اختر مساحة أولًا' : 'Select a workspace first'); return; }
     setInvBusy(true);
-    // supabase.functions.invoke attaches the owner's session JWT; the function verifies
-    // is_platform_owner server-side before doing anything.
-    const { data, error } = await supabase.functions.invoke('invite-client', {
-      body: {
-        tenant_id: tenant.id,
-        email: invEmail.trim(),
-        username: invUser.trim(),
-        redirect_to: adminRedirectUrl(),
-      },
-    });
-    setInvBusy(false);
-    if (error) {
-      let detail = error.message;
-      try { const b = await error.context?.json?.(); if (b?.error) detail = b.error; } catch (_) {}
-      setInvErr(detail || (ar ? 'فشلت الدعوة' : 'Invite failed'));
-      return;
+    try {
+      // supabase.functions.invoke attaches the owner's session JWT; the function verifies
+      // is_platform_owner server-side before doing anything.
+      const { data, error } = await supabase.functions.invoke('invite-client', {
+        body: {
+          tenant_id: tenant.id,
+          email: invEmail.trim(),
+          username: invUser.trim(),
+          redirect_to: adminRedirectUrl(),
+        },
+      });
+      if (error) {
+        let detail = error.message;
+        try { const b = await error.context?.json?.(); if (b?.error) detail = b.error; } catch (_) {}
+        setInvErr(detail || (ar ? 'فشلت الدعوة' : 'Invite failed'));
+        return;
+      }
+      if (data?.error) { setInvErr(data.error); return; }
+      setInvEmail(''); setInvUser('');
+      setInvMsg((ar ? 'تمت دعوة العميل' : 'Client invited') + (data?.user_created ? '' : ' ✓'));
+    } catch (err) {
+      console.error('[invite] failed:', err);
+      setInvErr(ar ? 'فشلت الدعوة' : 'Invite failed');
+    } finally {
+      setInvBusy(false);
     }
-    if (data?.error) { setInvErr(data.error); return; }
-    setInvEmail(''); setInvUser('');
-    setInvMsg((ar ? 'تمت دعوة العميل' : 'Client invited') + (data?.user_created ? '' : ' ✓'));
   }
 
   const [slug, setSlug] = useState('');
@@ -3030,14 +3094,17 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
 
   async function saveDefaultLang(next) {
     setDefaultLang(next); setSavingLang(true);
-    const { error } = await persistProfile(tenant, { default_lang: next });
-    setSavingLang(false);
-    if (!error) {
-      setSavedLangMsg(t('saved'));
-      // Also flip the admin chrome to match — feels weird if default lang doesn't apply
-      if (setChromeLang) setChromeLang(next);
-      setTimeout(() => setSavedLangMsg(''), 2000);
-    }
+    try {
+      const { error } = await persistProfile(tenant, { default_lang: next });
+      if (!error) {
+        setSavedLangMsg(t('saved'));
+        // Also flip the admin chrome to match — feels weird if default lang doesn't apply
+        if (setChromeLang) setChromeLang(next);
+        setTimeout(() => setSavedLangMsg(''), 2000);
+      } else { toast.error(t('save_failed')); }
+    } catch (err) {
+      console.error('[account] save lang failed:', err); toast.error(t('save_failed'));
+    } finally { setSavingLang(false); }
   }
 
   async function updatePassword(e) {
@@ -3046,12 +3113,18 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
     if (newPwd.length < 8) { setPwdErr(t('password_too_short')); return; }
     if (newPwd !== confirmPwd) { setPwdErr(t('password_mismatch')); return; }
     setPwdLoading(true);
-    const { error: reAuthErr } = await supabase.auth.signInWithPassword({ email: session.user.email, password: curPwd });
-    if (reAuthErr) { setPwdErr(t('invalid_credentials')); setPwdLoading(false); return; }
-    const { error } = await supabase.auth.updateUser({ password: newPwd });
-    setPwdLoading(false);
-    if (error) setPwdErr(error.message);
-    else { setPwdMsg(t('password_updated')); setCurPwd(''); setNewPwd(''); setConfirmPwd(''); setTimeout(() => setPwdMsg(''), 3000); }
+    try {
+      const { error: reAuthErr } = await supabase.auth.signInWithPassword({ email: session.user.email, password: curPwd });
+      if (reAuthErr) { setPwdErr(t('invalid_credentials')); return; }
+      const { error } = await supabase.auth.updateUser({ password: newPwd });
+      if (error) setPwdErr(error.message);
+      else { setPwdMsg(t('password_updated')); setCurPwd(''); setNewPwd(''); setConfirmPwd(''); setTimeout(() => setPwdMsg(''), 3000); }
+    } catch (err) {
+      console.error('[account] password change failed:', err);
+      setPwdErr(t('save_failed'));
+    } finally {
+      setPwdLoading(false);
+    }
   }
 
   async function deletePortfolio() {
@@ -3202,13 +3275,21 @@ function ImageUpload({ value, onUpload, onClear, aspect, hint, t }) {
       setCropFile(file);
       return;
     }
-    setUploading(true); await onUpload(file); setUploading(false);
+    // try/finally so a thrown upload (e.g. network drop) can't leave the control
+    // stuck in the uploading state; the error surfaces as a toast.
+    setUploading(true);
+    try { await onUpload(file); }
+    catch (err) { console.error(err); toast.error(t('upload_failed')); }
+    finally { setUploading(false); }
   }
   async function handleCropDone(blob) {
     const ext = blob.type === 'image/png' ? '.png' : '.jpg';
     const out = new File([blob], cropFile.name.replace(/\.[^.]+$/, ext), { type: blob.type || 'image/jpeg' });
     setCropFile(null);
-    setUploading(true); await onUpload(out); setUploading(false);
+    setUploading(true);
+    try { await onUpload(out); }
+    catch (err) { console.error(err); toast.error(t('upload_failed')); }
+    finally { setUploading(false); }
   }
   return (
     <div className="iu">
@@ -3335,7 +3416,10 @@ function MultiImageUpload({ images, onUpload, onRemove, hint, t }) {
     // one toast per distinct reason, instead of one alert per rejected file
     [...new Set(files.map(uploadError).filter(Boolean))].forEach(k => toast.error(t(k)));
     if (valid.length === 0) return;
-    setUploading(true); for (const f of valid) await onUpload(f); setUploading(false);
+    setUploading(true);
+    try { for (const f of valid) await onUpload(f); }
+    catch (err) { console.error(err); toast.error(t('upload_failed')); }
+    finally { setUploading(false); }
   }
   return (
     <div className="multi-upload">
