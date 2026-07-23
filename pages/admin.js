@@ -8,7 +8,7 @@ import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
 import { navGroups } from '../lib/admin-nav';
 import {
-  Button, Card, CardHeader, Badge, EmptyState, Icon,
+  Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
 } from '../components/ui';
 
@@ -915,9 +915,9 @@ function SidebarUser({ session, t, isOwner, ar }) {
         .avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #4f6ef2, #2d47a8); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0; }
         .user-meta { min-width: 0; flex: 1; }
         .user-name { font-size: 12px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .user-status { font-size: 10px; color: #7DD37D; display: flex; align-items: center; gap: 4px; }
+        .user-status { font-size: 10px; color: var(--success); display: flex; align-items: center; gap: 4px; }
         .user-role { font-size: 10px; font-weight: 600; color: var(--accent); }
-        .dot { width: 6px; height: 6px; border-radius: 50%; background: #7DD37D; box-shadow: 0 0 6px #7DD37D; }
+        .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
       `}</style>
     </div>
   );
@@ -1456,6 +1456,7 @@ function ProjectsEditor({ t, lang }) {
   const confirm = useConfirm();
   const [projects, setProjects] = useState([]);
   const [editing, setEditing] = useState(null);
+  const [loading, setLoading] = useState(true); // gate the empty state until the first load lands
   const { tenant } = useTenant();
 
   useEffect(() => { load(); }, []);
@@ -1464,6 +1465,7 @@ function ProjectsEditor({ t, lang }) {
     if (tenant) q = q.eq('tenant_id', tenant.id);
     const { data } = await q.order('display_order');
     setProjects(data || []);
+    setLoading(false);
   }
 
   async function addProject() {
@@ -1505,7 +1507,22 @@ function ProjectsEditor({ t, lang }) {
       </div>
       <p className="hint">{t('empty_rows_note')}</p>
 
-      {projects.length === 0 ? (
+      {loading ? (
+        <div className="project-list" aria-hidden="true">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="project-row">
+              <div className="prow-actions"><Skeleton width={28} height={28} /></div>
+              <Card pad="sm" className="prow-main">
+                <Skeleton width={44} height={44} radius="var(--radius-sm)" />
+                <div className="prow-meta" style={{ flex: 1 }}>
+                  <Skeleton width="45%" height={13} />
+                  <Skeleton width="70%" height={11} />
+                </div>
+              </Card>
+            </div>
+          ))}
+        </div>
+      ) : projects.length === 0 ? (
         <EmptyState
           icon={<Icon name="folder" size={24} />}
           title={t('no_projects')}
@@ -1660,12 +1677,14 @@ function LinksEditor({ t, lang }) {
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
   const [pickerForId, setPickerForId] = useState(null);
+  const [loading, setLoading] = useState(true); // gate the empty state until the first load lands
   const { tenant } = useTenant();
 
   useEffect(() => { load(); }, []);
   async function load() {
     const { data } = await loadProfile(tenant, 'custom_links');
     setLinks(data?.custom_links || []);
+    setLoading(false);
   }
   function patch(next) { setLinks(next); setDirty(true); }
   async function save() {
@@ -1685,7 +1704,20 @@ function LinksEditor({ t, lang }) {
       <h1>{t('links_title')}</h1>
       <p className="hint">{t('links_sub')}</p>
 
-      {links.length === 0 && (
+      {loading && (
+        <div aria-hidden="true">
+          {[0, 1].map(i => (
+            <div key={i} className="link-row">
+              <div className="link-actions"><Skeleton width={28} height={28} /></div>
+              <Skeleton width={36} height={36} radius="var(--radius-sm)" />
+              <Skeleton width={160} height={36} />
+              <Skeleton width="30%" height={36} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && links.length === 0 && (
         <EmptyState
           icon={<Icon name="link" size={24} />}
           title={lang === 'ar' ? 'لا توجد روابط بعد' : 'No links yet'}
@@ -2643,8 +2675,8 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
       )}
 
       <style jsx>{`
-        .ts-err { padding: 8px 12px; background: rgba(255,80,80,0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
-        .ts-ok { padding: 8px 12px; background: rgba(125,211,125,0.1); color: #7dd37d; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
+        .ts-err { padding: 8px 12px; background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
+        .ts-ok { padding: 8px 12px; background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
       `}</style>
     </>
   );
@@ -3018,9 +3050,9 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
         <Button type="submit" loading={pwdLoading} style={{ marginTop: 12 }}>{t('update_password')}</Button>
       </form>
 
-      <h2 style={{ color: '#ff8080', marginTop: 48 }}>{t('danger_zone')}</h2>
+      <h2 className="danger-heading">{t('danger_zone')}</h2>
       <div className="danger-card">
-        <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>{t('delete_portfolio_desc')}</div>
+        <div className="danger-desc">{t('delete_portfolio_desc')}</div>
         <Button variant="danger" size="sm" onClick={deletePortfolio}>{t('delete_portfolio')}</Button>
       </div>
 
@@ -3030,9 +3062,11 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
         .avatar-lg { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #4f6ef2, #2d47a8); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #fff; }
         .user-name { font-size: 14px; font-weight: 600; }
         .user-email { font-size: 12px; color: var(--text-tertiary); }
-        .danger-card { padding: 16px; background: rgba(255,80,80,0.05); border: 1px solid rgba(255,80,80,0.2); border-radius: var(--radius-md); max-width: 500px; }
-        .err { padding: 8px 12px; background: rgba(255,80,80,0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
-        .ok { padding: 8px 12px; background: rgba(125,211,125,0.1); color: #7dd37d; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
+        .danger-card { padding: 16px; background: var(--danger-bg); border: 1px solid var(--danger-border); border-radius: var(--radius-md); max-width: 500px; }
+        .danger-heading { color: var(--danger); margin-top: 48px; }
+        .danger-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+        .err { padding: 8px 12px; background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
+        .ok { padding: 8px 12px; background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
       `}</style>
     </div>
   );
@@ -3286,6 +3320,9 @@ function AdminStyles() {
       .card-row .x-small, .x-small { width: 28px; height: 28px; border-radius: 6px; background: var(--bg-elevated); color: var(--text-tertiary); border: 1px solid var(--border); font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-family: inherit; }
       .card-row .x-small:hover:not(:disabled), .x-small:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
       .card-row .x-small:disabled, .x-small:disabled { opacity: 0.3; cursor: not-allowed; }
+      /* keyboard focus rings — these small row controls had none */
+      .editor .x-small:focus-visible, .editor .brand:focus-visible, .editor .brand-mini:focus-visible,
+      .editor .row-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       .row-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 100%; }
       .row-grid-2 .field { margin-bottom: 0; }
       @media (max-width: 720px) {
