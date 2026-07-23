@@ -20,6 +20,9 @@
 
   --accent: #9FA7FF;
   --accent-hover: #b5bcff;
+  /* foreground to place ON a filled accent/danger surface — flips in light mode */
+  --accent-fg: #0b0b12;
+  --danger-fg: #240b0b;
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -44,7 +47,53 @@
 
   /* density multiplier — admin Appearance editor overrides this */
   --density: 1;
+
+  /* ---- Typography scale ------------------------------------------------- */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+
+  /* ---- Elevation -------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.30);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.45);
+
+  /* ---- Status colours (paired fg / bg / border) -------------------------- */
+  --success: #6ee7a8;
+  --success-bg: rgba(110, 231, 168, 0.12);
+  --success-border: rgba(110, 231, 168, 0.28);
+  --warning: #f5c56b;
+  --warning-bg: rgba(245, 197, 107, 0.12);
+  --warning-border: rgba(245, 197, 107, 0.28);
+  --danger: #ff8080;
+  --danger-bg: rgba(255, 128, 128, 0.12);
+  --danger-border: rgba(255, 128, 128, 0.28);
+
+  /* ---- Light-mode text ramp --------------------------------------------
+     The admin's `.light` overrides previously set primary/secondary/tertiary/
+     muted to the SAME colour, collapsing all hierarchy. These four steps mirror
+     the dark ramp's contrast ratios (1 / .72 / .5 / .36) and are referenced by
+     every `.light` block so the ramp is defined in exactly one place.        */
+  --light-text-1: #0c1530;
+  --light-text-2: rgba(12, 21, 48, 0.72);
+  --light-text-3: rgba(12, 21, 48, 0.50);
+  --light-text-4: rgba(12, 21, 48, 0.36);
+
+  /* ---- Layering --------------------------------------------------------- */
+  --z-modal: 400;
+  --z-toast: 500;
 }
+
+/* ---- Breakpoint convention (CSS vars can't be used in @media) ------------
+   Use these four widths consistently:
+     640px  — phone / small tablet boundary
+     768px  — tablet
+     1024px — small laptop (sidebar + preview)
+     1280px — desktop
+   Existing code uses a single 720px breakpoint; migrate toward the above.  */
 
 *, *::before, *::after {
   box-sizing: border-box;

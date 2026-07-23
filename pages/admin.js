@@ -281,7 +281,24 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
       <style jsx>{`
         .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
         .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
-        .signin-wrap.light { --on-bg: 12,21,48; --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1; --text-primary: #0c1530; --text-secondary: #0c1530; --text-tertiary: #0c1530; --text-muted: #0c1530; background-color: #ffffff; }
+        .signin-wrap.light {
+          --on-bg: 12,21,48;
+          --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1;
+          /* borders were inherited from the dark theme (white on white = invisible) */
+          --border: rgba(12,21,48,0.10); --border-strong: rgba(12,21,48,0.18);
+          /* four distinct steps instead of one flat colour — see globals.css */
+          --text-primary: var(--light-text-1); --text-secondary: var(--light-text-2);
+          --text-tertiary: var(--light-text-3); --text-muted: var(--light-text-4);
+          --shadow-sm: 0 1px 2px rgba(12,21,48,0.08);
+          --shadow-md: 0 6px 20px rgba(12,21,48,0.10);
+          --shadow-lg: 0 24px 60px rgba(12,21,48,0.16);
+          --accent: #4f57d8; --accent-hover: #3d45c4; --accent-fg: #ffffff;
+          --success: #17794a; --success-bg: rgba(23,121,74,0.10); --success-border: rgba(23,121,74,0.24);
+          --warning: #8a5a00; --warning-bg: rgba(138,90,0,0.10); --warning-border: rgba(138,90,0,0.24);
+          --danger: #c0392b; --danger-bg: rgba(192,57,43,0.09); --danger-border: rgba(192,57,43,0.24);
+          --danger-fg: #ffffff;
+          background-color: #ffffff;
+        }
         .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
         .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
         h1 { font-size: 22px; font-weight: 700; }
@@ -350,7 +367,24 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
       <style jsx>{`
         .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
         .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
-        .signin-wrap.light { --on-bg: 12,21,48; --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1; --text-primary: #0c1530; --text-secondary: #0c1530; --text-tertiary: #0c1530; --text-muted: #0c1530; background-color: #ffffff; }
+        .signin-wrap.light {
+          --on-bg: 12,21,48;
+          --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1;
+          /* borders were inherited from the dark theme (white on white = invisible) */
+          --border: rgba(12,21,48,0.10); --border-strong: rgba(12,21,48,0.18);
+          /* four distinct steps instead of one flat colour — see globals.css */
+          --text-primary: var(--light-text-1); --text-secondary: var(--light-text-2);
+          --text-tertiary: var(--light-text-3); --text-muted: var(--light-text-4);
+          --shadow-sm: 0 1px 2px rgba(12,21,48,0.08);
+          --shadow-md: 0 6px 20px rgba(12,21,48,0.10);
+          --shadow-lg: 0 24px 60px rgba(12,21,48,0.16);
+          --accent: #4f57d8; --accent-hover: #3d45c4; --accent-fg: #ffffff;
+          --success: #17794a; --success-bg: rgba(23,121,74,0.10); --success-border: rgba(23,121,74,0.24);
+          --warning: #8a5a00; --warning-bg: rgba(138,90,0,0.10); --warning-border: rgba(138,90,0,0.24);
+          --danger: #c0392b; --danger-bg: rgba(192,57,43,0.09); --danger-border: rgba(192,57,43,0.24);
+          --danger-fg: #ffffff;
+          background-color: #ffffff;
+        }
         .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
         .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
         h1 { font-size: 22px; font-weight: 700; }
@@ -543,7 +577,24 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
       <style jsx>{`
         .dashboard { display: flex; min-height: 100vh; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
         .dashboard.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
-        .dashboard.light { --on-bg: 12,21,48; --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1; --text-primary: #0c1530; --text-secondary: #0c1530; --text-tertiary: #0c1530; --text-muted: #0c1530; background-color: #ffffff; }
+        .dashboard.light {
+          --on-bg: 12,21,48;
+          --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1;
+          /* borders were inherited from the dark theme (white on white = invisible) */
+          --border: rgba(12,21,48,0.10); --border-strong: rgba(12,21,48,0.18);
+          /* four distinct steps instead of one flat colour — see globals.css */
+          --text-primary: var(--light-text-1); --text-secondary: var(--light-text-2);
+          --text-tertiary: var(--light-text-3); --text-muted: var(--light-text-4);
+          --shadow-sm: 0 1px 2px rgba(12,21,48,0.08);
+          --shadow-md: 0 6px 20px rgba(12,21,48,0.10);
+          --shadow-lg: 0 24px 60px rgba(12,21,48,0.16);
+          --accent: #4f57d8; --accent-hover: #3d45c4; --accent-fg: #ffffff;
+          --success: #17794a; --success-bg: rgba(23,121,74,0.10); --success-border: rgba(23,121,74,0.24);
+          --warning: #8a5a00; --warning-bg: rgba(138,90,0,0.10); --warning-border: rgba(138,90,0,0.24);
+          --danger: #c0392b; --danger-bg: rgba(192,57,43,0.09); --danger-border: rgba(192,57,43,0.24);
+          --danger-fg: #ffffff;
+          background-color: #ffffff;
+        }
         .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
         .sidebar-logo { padding: var(--space-2) var(--space-3) 0; display: grid; justify-items: start; }
         .sidebar-logo img { grid-area: 1 / 1; height: 26px; width: auto; display: block; opacity: 0; transition: opacity 0.25s ease; }
