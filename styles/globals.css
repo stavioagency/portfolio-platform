@@ -72,19 +72,53 @@
   --danger-bg: rgba(255, 128, 128, 0.12);
   --danger-border: rgba(255, 128, 128, 0.28);
 
-  /* ---- Light-mode text ramp --------------------------------------------
-     The admin's `.light` overrides previously set primary/secondary/tertiary/
-     muted to the SAME colour, collapsing all hierarchy. These four steps mirror
-     the dark ramp's contrast ratios (1 / .72 / .5 / .36) and are referenced by
-     every `.light` block so the ramp is defined in exactly one place.        */
-  --light-text-1: #0c1530;
-  --light-text-2: rgba(12, 21, 48, 0.72);
-  --light-text-3: rgba(12, 21, 48, 0.50);
-  --light-text-4: rgba(12, 21, 48, 0.36);
-
   /* ---- Layering --------------------------------------------------------- */
   --z-modal: 400;
   --z-toast: 500;
+}
+
+/* ---- Admin light theme ---------------------------------------------------
+   Set on <html> by pages/admin.js. It lives at the root (not on .dashboard) so
+   overlays rendered outside the dashboard subtree — toasts, confirm dialogs —
+   inherit the same tokens instead of falling back to the dark palette.
+   Previously the admin's `.light` block set primary/secondary/tertiary/muted to
+   the SAME colour, collapsing all text hierarchy, and left the dark theme's
+   white borders invisible on a white page. Both are fixed here, once.       */
+[data-admin-theme='light'] {
+  --on-bg: 12, 21, 48;
+
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f5fb;
+  --bg-elevated: #e9edf7;
+  --bg-hover: #dfe4f1;
+
+  --border: rgba(12, 21, 48, 0.10);
+  --border-strong: rgba(12, 21, 48, 0.18);
+
+  /* four distinct steps, mirroring the dark ramp's 1 / .72 / .5 / .36 */
+  --text-primary: #0c1530;
+  --text-secondary: rgba(12, 21, 48, 0.72);
+  --text-tertiary: rgba(12, 21, 48, 0.50);
+  --text-muted: rgba(12, 21, 48, 0.36);
+
+  --accent: #4f57d8;
+  --accent-hover: #3d45c4;
+  --accent-fg: #ffffff;
+
+  --shadow-sm: 0 1px 2px rgba(12, 21, 48, 0.08);
+  --shadow-md: 0 6px 20px rgba(12, 21, 48, 0.10);
+  --shadow-lg: 0 24px 60px rgba(12, 21, 48, 0.16);
+
+  --success: #17794a;
+  --success-bg: rgba(23, 121, 74, 0.10);
+  --success-border: rgba(23, 121, 74, 0.24);
+  --warning: #8a5a00;
+  --warning-bg: rgba(138, 90, 0, 0.10);
+  --warning-border: rgba(138, 90, 0, 0.24);
+  --danger: #c0392b;
+  --danger-bg: rgba(192, 57, 43, 0.09);
+  --danger-border: rgba(192, 57, 43, 0.24);
+  --danger-fg: #ffffff;
 }
 
 /* ---- Breakpoint convention (CSS vars can't be used in @media) ------------

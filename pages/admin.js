@@ -6,8 +6,39 @@ import { normalizeHost } from '../lib/tenant';
 import { getTranslator } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
+import { ToastProvider, useToast, ConfirmProvider, useConfirm } from '../components/ui';
 
 function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
+
+// Shared ConfirmDialog shapes, so every destructive action is worded the same way
+// in both locales. These replace the old bare confirm(t('...')) strings.
+function unsavedDialog(t) {
+  return {
+    title: t('unsaved_title'),
+    description: t('unsaved_switch'),
+    confirmLabel: t('discard_changes'),
+    cancelLabel: t('keep_editing'),
+    tone: 'danger',
+  };
+}
+function removeDialog(t) {
+  return {
+    title: t('confirm_remove'),
+    description: t('action_undone'),
+    confirmLabel: t('remove'),
+    cancelLabel: t('cancel'),
+    tone: 'danger',
+  };
+}
+function deleteDialog(t, title, description) {
+  return {
+    title,
+    description: description || t('action_undone'),
+    confirmLabel: t('delete'),
+    cancelLabel: t('cancel'),
+    tone: 'danger',
+  };
+}
 
 // Canonical admin URL for auth redirects (password reset + invites). Using ONE fixed
 // origin — instead of window.location.origin — means only this URL needs to be in the
@@ -112,20 +143,30 @@ export default function Admin() {
     const c = theme === 'light' ? '#ffffff' : '#060912';
     document.body.style.background = c;
     document.documentElement.style.background = c;
-    return () => { document.body.style.background = ''; document.documentElement.style.background = ''; };
+    // Drives the light-theme tokens in globals.css. Set at the root so overlays
+    // rendered outside .dashboard (toasts, confirm dialogs) are themed too.
+    document.documentElement.setAttribute('data-admin-theme', theme || 'dark');
+    return () => {
+      document.body.style.background = '';
+      document.documentElement.style.background = '';
+      document.documentElement.removeAttribute('data-admin-theme');
+    };
   }, [theme]);
 
   if (loading) return <div style={{ padding: 40, color: 'var(--text-secondary)' }}>{t('loading')}</div>;
 
+  // Toast + Confirm are mounted here (not in _app) so only the admin carries them.
   return (
-    <>
+    <ToastProvider>
+    <ConfirmProvider>
       <Head><title>{t('head_title_admin')}</title></Head>
       {recoveryMode
         ? <SetNewPassword lang={lang} toggleLang={toggleLang} theme={theme} toggleTheme={toggleTheme} onDone={() => setRecoveryMode(false)} />
         : session
           ? <Dashboard session={session} lang={lang} toggleLang={toggleLang} setLang={setLang} theme={theme} toggleTheme={toggleTheme} />
           : <SignIn lang={lang} toggleLang={toggleLang} theme={theme} toggleTheme={toggleTheme} />}
-    </>
+    </ConfirmProvider>
+    </ToastProvider>
   );
 }
 
@@ -281,24 +322,8 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
       <style jsx>{`
         .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
         .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
-        .signin-wrap.light {
-          --on-bg: 12,21,48;
-          --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1;
-          /* borders were inherited from the dark theme (white on white = invisible) */
-          --border: rgba(12,21,48,0.10); --border-strong: rgba(12,21,48,0.18);
-          /* four distinct steps instead of one flat colour — see globals.css */
-          --text-primary: var(--light-text-1); --text-secondary: var(--light-text-2);
-          --text-tertiary: var(--light-text-3); --text-muted: var(--light-text-4);
-          --shadow-sm: 0 1px 2px rgba(12,21,48,0.08);
-          --shadow-md: 0 6px 20px rgba(12,21,48,0.10);
-          --shadow-lg: 0 24px 60px rgba(12,21,48,0.16);
-          --accent: #4f57d8; --accent-hover: #3d45c4; --accent-fg: #ffffff;
-          --success: #17794a; --success-bg: rgba(23,121,74,0.10); --success-border: rgba(23,121,74,0.24);
-          --warning: #8a5a00; --warning-bg: rgba(138,90,0,0.10); --warning-border: rgba(138,90,0,0.24);
-          --danger: #c0392b; --danger-bg: rgba(192,57,43,0.09); --danger-border: rgba(192,57,43,0.24);
-          --danger-fg: #ffffff;
-          background-color: #ffffff;
-        }
+        /* tokens come from [data-admin-theme='light'] in globals.css */
+        .signin-wrap.light { background-color: #ffffff; }
         .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
         .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
         h1 { font-size: 22px; font-weight: 700; }
@@ -367,24 +392,8 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
       <style jsx>{`
         .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
         .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
-        .signin-wrap.light {
-          --on-bg: 12,21,48;
-          --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1;
-          /* borders were inherited from the dark theme (white on white = invisible) */
-          --border: rgba(12,21,48,0.10); --border-strong: rgba(12,21,48,0.18);
-          /* four distinct steps instead of one flat colour — see globals.css */
-          --text-primary: var(--light-text-1); --text-secondary: var(--light-text-2);
-          --text-tertiary: var(--light-text-3); --text-muted: var(--light-text-4);
-          --shadow-sm: 0 1px 2px rgba(12,21,48,0.08);
-          --shadow-md: 0 6px 20px rgba(12,21,48,0.10);
-          --shadow-lg: 0 24px 60px rgba(12,21,48,0.16);
-          --accent: #4f57d8; --accent-hover: #3d45c4; --accent-fg: #ffffff;
-          --success: #17794a; --success-bg: rgba(23,121,74,0.10); --success-border: rgba(23,121,74,0.24);
-          --warning: #8a5a00; --warning-bg: rgba(138,90,0,0.10); --warning-border: rgba(138,90,0,0.24);
-          --danger: #c0392b; --danger-bg: rgba(192,57,43,0.09); --danger-border: rgba(192,57,43,0.24);
-          --danger-fg: #ffffff;
-          background-color: #ffffff;
-        }
+        /* tokens come from [data-admin-theme='light'] in globals.css */
+        .signin-wrap.light { background-color: #ffffff; }
         .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
         .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
         h1 { font-size: 22px; font-weight: 700; }
@@ -415,6 +424,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   const TENANT_LS_KEY = 'admin_selected_tenant';
   const t = getTranslator(lang);
   const ar = lang === 'ar';
+  const confirm = useConfirm();
 
   // Detect platform-owner status from the database (is_platform_owner). This only
   // decides which UI is shown; every privileged action is still enforced by RLS.
@@ -441,9 +451,9 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
     analytics: t('nav_analytics'), account: t('nav_account'),
   };
 
-  function navigate(tab) {
+  async function navigate(tab) {
     if (tab === activeTab) { setSidebarOpen(false); return; }
-    if (dirtyRef.current && !window.confirm(t('unsaved_switch'))) return;
+    if (dirtyRef.current && !(await confirm(unsavedDialog(t)))) return;
     dirtyRef.current = false;
     setActiveTab(tab);
     setSidebarOpen(false); // auto-close drawer on mobile after picking a tab
@@ -486,10 +496,10 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
   // Switching tenant remounts the editors (via key), discarding unsaved edits —
   // so guard it the same way tab switches are guarded. The choice is remembered.
-  function switchTenant(id) {
+  async function switchTenant(id) {
     const next = tenants.find(x => String(x.id) === String(id));
     if (!next || next.id === tenant?.id) return;
-    if (dirtyRef.current && !window.confirm(t('unsaved_switch'))) return;
+    if (dirtyRef.current && !(await confirm(unsavedDialog(t)))) return;
     dirtyRef.current = false;
     setTenant(next);
     try { localStorage.setItem(TENANT_LS_KEY, String(next.id)); } catch (_) {}
@@ -577,24 +587,8 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
       <style jsx>{`
         .dashboard { display: flex; min-height: 100vh; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
         .dashboard.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
-        .dashboard.light {
-          --on-bg: 12,21,48;
-          --bg-primary: #ffffff; --bg-secondary: #f3f5fb; --bg-elevated: #e9edf7; --bg-hover: #dfe4f1;
-          /* borders were inherited from the dark theme (white on white = invisible) */
-          --border: rgba(12,21,48,0.10); --border-strong: rgba(12,21,48,0.18);
-          /* four distinct steps instead of one flat colour — see globals.css */
-          --text-primary: var(--light-text-1); --text-secondary: var(--light-text-2);
-          --text-tertiary: var(--light-text-3); --text-muted: var(--light-text-4);
-          --shadow-sm: 0 1px 2px rgba(12,21,48,0.08);
-          --shadow-md: 0 6px 20px rgba(12,21,48,0.10);
-          --shadow-lg: 0 24px 60px rgba(12,21,48,0.16);
-          --accent: #4f57d8; --accent-hover: #3d45c4; --accent-fg: #ffffff;
-          --success: #17794a; --success-bg: rgba(23,121,74,0.10); --success-border: rgba(23,121,74,0.24);
-          --warning: #8a5a00; --warning-bg: rgba(138,90,0,0.10); --warning-border: rgba(138,90,0,0.24);
-          --danger: #c0392b; --danger-bg: rgba(192,57,43,0.09); --danger-border: rgba(192,57,43,0.24);
-          --danger-fg: #ffffff;
-          background-color: #ffffff;
-        }
+        /* tokens come from [data-admin-theme='light'] in globals.css */
+        .dashboard.light { background-color: #ffffff; }
         .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
         .sidebar-logo { padding: var(--space-2) var(--space-3) 0; display: grid; justify-items: start; }
         .sidebar-logo img { grid-area: 1 / 1; height: 26px; width: auto; display: block; opacity: 0; transition: opacity 0.25s ease; }
@@ -871,6 +865,8 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
 // Profile Editor — single-lang inputs (uses chrome lang)
 // =========================================================
 function ProfileEditor({ t, lang }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [profile, setProfile] = useState({ name: emptyBilingual(), tagline: emptyBilingual(), bio: emptyBilingual(), profile_image: '', default_lang: 'ar', custom_fields: [], sections: { bio: true, custom_fields: true, projects: true, links: true, lang_switcher: true }, seo: { title: emptyBilingual(), description: emptyBilingual(), og_image: '' } });
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
@@ -914,19 +910,19 @@ function ProfileEditor({ t, lang }) {
     const { error } = await persistProfile(tenant, profile);
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); }
-    else { console.error(error); alert(t('save_failed')); }
+    else { console.error(error); toast.error(t('save_failed')); }
   }
   async function uploadImage(file) {
     const path = tenantStoragePath(tenant, `profile-${Date.now()}.${file.name.split('.').pop()}`);
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
-    if (error) { console.error(error); alert(t('upload_failed')); return; }
+    if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     patch({ profile_image: data.publicUrl });
   }
   async function uploadOgImage(file) {
     const path = tenantStoragePath(tenant, `og-${Date.now()}.${file.name.split('.').pop()}`);
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
-    if (error) { console.error(error); alert(t('upload_failed')); return; }
+    if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     patch({ seo: { ...profile.seo, og_image: data.publicUrl } });
   }
@@ -934,7 +930,7 @@ function ProfileEditor({ t, lang }) {
 
   function addCustomField() { patch({ custom_fields: [...(profile.custom_fields || []), { id: newId(), label: emptyBilingual(), value: emptyBilingual() }] }); }
   function updateCustomField(id, updates) { patch({ custom_fields: profile.custom_fields.map(f => f.id === id ? { ...f, ...updates } : f) }); }
-  function removeCustomField(id) { if (!confirm(t('confirm_remove'))) return; patch({ custom_fields: profile.custom_fields.filter(f => f.id !== id) }); }
+  async function removeCustomField(id) { if (!(await confirm(removeDialog(t)))) return; patch({ custom_fields: profile.custom_fields.filter(f => f.id !== id) }); }
   function moveCustomField(id, dir) {
     const arr = [...profile.custom_fields]; const i = arr.findIndex(f => f.id === id); const j = i + dir;
     if (j < 0 || j >= arr.length) return;
@@ -1041,6 +1037,8 @@ function ProfileEditor({ t, lang }) {
 // Card Editor
 // =========================================================
 function CardEditor({ t, lang }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [profile, setProfile] = useState({
     banners: [], stats: [], cta_buttons: [], brand_logo: '', favicon_url: '',
     top_ticker: { enabled: false, text: emptyBilingual(), bg_color: '#9FA7FF', text_color: '#0a0a0c', speed: 'medium' },
@@ -1082,12 +1080,12 @@ function CardEditor({ t, lang }) {
     const { error } = await persistProfile(tenant, profile);
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); }
-    else { console.error(error); alert(t('save_failed')); }
+    else { console.error(error); toast.error(t('save_failed')); }
   }
   async function uploadAsset(prefix, file) {
     const path = tenantStoragePath(tenant, `${prefix}-${Date.now()}.${file.name.split('.').pop()}`);
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
-    if (error) { console.error(error); alert(t('upload_failed')); return null; }
+    if (error) { console.error(error); toast.error(t('upload_failed')); return null; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     return data.publicUrl;
   }
@@ -1096,18 +1094,18 @@ function CardEditor({ t, lang }) {
 
   function addBanner() { if ((profile.banners?.length || 0) >= 5) return; patch({ banners: [...(profile.banners || []), { id: newId(), type: 'text', text: emptyBilingual(), subtitle: emptyBilingual(), bg: 'purple', image_url: '' }] }); }
   function updateBanner(id, u) { patch({ banners: profile.banners.map(b => b.id === id ? { ...b, ...u } : b) }); }
-  function removeBanner(id) { if (!confirm(t('confirm_remove'))) return; patch({ banners: profile.banners.filter(b => b.id !== id) }); }
+  async function removeBanner(id) { if (!(await confirm(removeDialog(t)))) return; patch({ banners: profile.banners.filter(b => b.id !== id) }); }
   function moveBanner(id, dir) { const a = [...profile.banners]; const i = a.findIndex(b => b.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ banners: a }); }
   async function uploadBannerImage(bannerId, file) { const url = await uploadAsset(`banner-${bannerId}`, file); if (url) updateBanner(bannerId, { image_url: url }); }
 
   function addStat() { if ((profile.stats?.length || 0) >= 3) return; patch({ stats: [...(profile.stats || []), { id: newId(), label: emptyBilingual(), value: emptyBilingual() }] }); }
   function updateStat(id, u) { patch({ stats: profile.stats.map(s => s.id === id ? { ...s, ...u } : s) }); }
-  function removeStat(id) { if (!confirm(t('confirm_remove'))) return; patch({ stats: profile.stats.filter(s => s.id !== id) }); }
+  async function removeStat(id) { if (!(await confirm(removeDialog(t)))) return; patch({ stats: profile.stats.filter(s => s.id !== id) }); }
   function moveStat(id, dir) { const a = [...profile.stats]; const i = a.findIndex(s => s.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ stats: a }); }
 
   function addButton() { patch({ cta_buttons: [...(profile.cta_buttons || []), { id: newId(), icon: 'whatsapp', label: emptyBilingual(), action: 'link', href: '' }] }); }
   function updateButton(id, u) { patch({ cta_buttons: profile.cta_buttons.map(b => b.id === id ? { ...b, ...u } : b) }); }
-  function removeButton(id) { if (!confirm(t('confirm_remove'))) return; patch({ cta_buttons: profile.cta_buttons.filter(b => b.id !== id) }); }
+  async function removeButton(id) { if (!(await confirm(removeDialog(t)))) return; patch({ cta_buttons: profile.cta_buttons.filter(b => b.id !== id) }); }
   function moveButton(id, dir) { const a = [...profile.cta_buttons]; const i = a.findIndex(b => b.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ cta_buttons: a }); }
 
   return (
@@ -1303,6 +1301,8 @@ function ButtonRow({ btn, lang, onChange, onRemove, onUp, onDown, canUp, canDown
 // Projects Editor
 // =========================================================
 function ProjectsEditor({ t, lang }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [projects, setProjects] = useState([]);
   const [editing, setEditing] = useState(null);
   const { tenant } = useTenant();
@@ -1322,7 +1322,7 @@ function ProjectsEditor({ t, lang }) {
     if (tenant) row.tenant_id = tenant.id; // stamp new projects with the active tenant
     const { data, error } = await supabase.from('projects').insert(row).select().single();
     if (data) { setProjects([...projects, data]); setEditing(data); }
-    if (error) { console.error(error); alert(t('save_failed')); }
+    if (error) { console.error(error); toast.error(t('save_failed')); }
   }
   async function updateProject(updated) {
     await supabase.from('projects').update(updated).eq('id', updated.id);
@@ -1330,7 +1330,7 @@ function ProjectsEditor({ t, lang }) {
     setEditing(updated);
   }
   async function deleteProject(id) {
-    if (!confirm(t('delete_project_confirm'))) return;
+    if (!(await confirm(deleteDialog(t, t('delete_project_confirm'))))) return;
     await supabase.from('projects').delete().eq('id', id);
     setProjects(projects.filter(p => p.id !== id));
     if (editing?.id === id) setEditing(null);
@@ -1414,6 +1414,7 @@ function ProjectsEditor({ t, lang }) {
 }
 
 function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
+  const toast = useToast();
   const [data, setData] = useState(project);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
@@ -1432,14 +1433,14 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
   async function uploadCover(file) {
     const path = tenantStoragePath(tenant, `project-${data.id}-cover-${Date.now()}.${file.name.split('.').pop()}`);
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
-    if (error) { console.error(error); return alert(t('upload_failed')); }
+    if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
     patch({ cover_image: urlData.publicUrl });
   }
   async function uploadGalleryImage(file) {
     const path = tenantStoragePath(tenant, `project-${data.id}-${Date.now()}.${file.name.split('.').pop()}`);
     const { error } = await supabase.storage.from('media').upload(path, file);
-    if (error) { console.error(error); return alert(t('upload_failed')); }
+    if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
     patch({ images: [...(data.images || []), urlData.publicUrl] });
   }
@@ -1510,6 +1511,8 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
 // Links Editor
 // =========================================================
 function LinksEditor({ t, lang }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [links, setLinks] = useState([]);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
@@ -1528,11 +1531,11 @@ function LinksEditor({ t, lang }) {
     const { error } = await persistProfile(tenant, { custom_links: links });
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); }
-    else { console.error(error); alert(t('save_failed')); }
+    else { console.error(error); toast.error(t('save_failed')); }
   }
   function add() { patch([...links, { id: newId(), icon: 'website', label: emptyBilingual(), href: '' }]); }
   function update(id, u) { patch(links.map(l => l.id === id ? { ...l, ...u } : l)); }
-  function remove(id) { if (!confirm(t('confirm_remove'))) return; patch(links.filter(l => l.id !== id)); }
+  async function remove(id) { if (!(await confirm(removeDialog(t)))) return; patch(links.filter(l => l.id !== id)); }
   function move(id, dir) { const a = [...links]; const i = a.findIndex(l => l.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch(a); }
 
   return (
@@ -1641,6 +1644,7 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
 // Appearance Editor
 // =========================================================
 function AppearanceEditor({ t, lang }) {
+  const toast = useToast();
   const [appearance, setAppearance] = useState({ theme: 'midnight', tokens: { ...THEME_PRESETS.midnight.tokens }, font_body: 'manrope', density: 'comfortable', radius: 'soft' });
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
@@ -1669,7 +1673,7 @@ function AppearanceEditor({ t, lang }) {
     const { error } = await persistProfile(tenant, { appearance });
     setSaving(false);
     if (!error) { setSavedMsg(t('saved')); setDirty(false); }
-    else { console.error(error); alert(t('save_failed')); }
+    else { console.error(error); toast.error(t('save_failed')); }
   }
 
   const deviceWidth = device === 'mobile' ? 360 : device === 'tablet' ? 640 : '100%';
@@ -2095,6 +2099,7 @@ function DnsInstructions({ domain, ar, isOwner }) {
 
 // Client-friendly domain setup: add -> DNS instructions -> verify -> active.
 function DomainManager({ lang, isOwner }) {
+  const confirm = useConfirm();
   const { tenant } = useTenant();
   const ar = lang === 'ar';
   const [domains, setDomains] = useState([]);
@@ -2153,7 +2158,16 @@ function DomainManager({ lang, isOwner }) {
   }
 
   async function removeDomain(id) {
-    if (!confirm(ar ? 'حذف النطاق؟' : 'Remove domain?')) return;
+    const ok = await confirm({
+      title: ar ? 'حذف النطاق؟' : 'Remove domain?',
+      description: ar
+        ? 'سيتوقف هذا النطاق عن عرض المعرض. يمكنك إضافته مرة أخرى لاحقًا.'
+        : 'This domain will stop serving the portfolio. You can add it again later.',
+      confirmLabel: ar ? 'حذف' : 'Remove',
+      cancelLabel: ar ? 'إلغاء' : 'Cancel',
+      tone: 'danger',
+    });
+    if (!ok) return;
     const { error } = await supabase.from('tenant_domains').delete().eq('id', id);
     if (error) setErr(error.message || String(error)); else load();
   }
@@ -2237,6 +2251,7 @@ function DomainManager({ lang, isOwner }) {
 }
 
 function TenantAdminSection({ session, lang }) {
+  const confirm = useConfirm();
   const { tenant, setTenant, reloadTenants, isOwner } = useTenant();
   const ar = lang === 'ar';
 
@@ -2351,7 +2366,16 @@ function TenantAdminSection({ session, lang }) {
     const warn = ar
       ? 'تعليق هذه المساحة سيجعل موقع العميل غير متاح (404). متابعة؟'
       : "Suspending this workspace makes the client's site unavailable (404). Continue?";
-    if (disabling && !confirm(warn)) return;
+    if (disabling) {
+      const ok = await confirm({
+        title: ar ? 'تعليق مساحة العمل؟' : 'Suspend workspace?',
+        description: warn,
+        confirmLabel: ar ? 'تعليق' : 'Suspend',
+        cancelLabel: ar ? 'إلغاء' : 'Cancel',
+        tone: 'danger',
+      });
+      if (!ok) return;
+    }
     setWsErr(''); setWsMsg(''); setWsBusy(true);
     const { error } = await supabase.from('tenants')
       .update({ status: disabling ? 'disabled' : 'active' }).eq('id', tenant.id);
@@ -2702,6 +2726,8 @@ function OwnerClientsOverview({ lang, onOpen }) {
 }
 
 function AccountEditor({ t, lang, session, setChromeLang }) {
+  const toast = useToast();
+  const confirm = useConfirm();
   const [username, setUsername] = useState('');
   const [defaultLang, setDefaultLang] = useState('ar');
   const [savingLang, setSavingLang] = useState(false);
@@ -2750,8 +2776,18 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
   }
 
   async function deletePortfolio() {
-    const typed = prompt(t('delete_portfolio_confirm'));
-    if (typed !== t('delete_portfolio_keyword')) return;
+    // Same guard as before — the keyword must be typed exactly — but in-app.
+    const keyword = t('delete_portfolio_keyword');
+    const ok = await confirm({
+      title: t('delete_portfolio'),
+      description: t('delete_portfolio_warning'),
+      requireText: keyword,
+      requireTextLabel: t('type_to_confirm').replace('{word}', keyword),
+      confirmLabel: t('delete'),
+      cancelLabel: t('cancel'),
+      tone: 'danger',
+    });
+    if (!ok) return;
 
     // Reset ONLY the currently selected tenant. In legacy mode (tenant = null) this
     // falls through to the singleton branch and behaves exactly as it does today.
@@ -2777,7 +2813,7 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
       await supabase.from('profile').update(reset).eq('id', 1);
     }
 
-    alert(t('delete_done'));
+    toast.success(t('delete_done'));
     window.location.reload();
   }
 
@@ -2867,25 +2903,23 @@ function Field({ id, label, children }) {
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
 
-function validateUpload(file, t) {
-  if (!file.type || !file.type.startsWith('image/')) {
-    alert(t('upload_not_image'));
-    return false;
-  }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    alert(t('upload_too_large'));
-    return false;
-  }
-  return true;
+// Returns the failing translation key, or null when the file is acceptable.
+// (A module-level function can't call the toast hook, so the CALLER reports it.)
+function uploadError(file) {
+  if (!file.type || !file.type.startsWith('image/')) return 'upload_not_image';
+  if (file.size > MAX_UPLOAD_BYTES) return 'upload_too_large';
+  return null;
 }
 
 function ImageUpload({ value, onUpload, onClear, aspect, hint, t }) {
   const [uploading, setUploading] = useState(false);
   const [cropFile, setCropFile] = useState(null);
+  const toast = useToast();
   async function handleFile(e) {
     const file = e.target.files?.[0]; if (!file) return;
     e.target.value = '';
-    if (!validateUpload(file, t)) return;
+    const bad = uploadError(file);
+    if (bad) { toast.error(t(bad)); return; }
     if (aspect) {
       setCropFile(file);
       return;
@@ -3016,10 +3050,13 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
 
 function MultiImageUpload({ images, onUpload, onRemove, hint, t }) {
   const [uploading, setUploading] = useState(false);
+  const toast = useToast();
   async function handleFiles(e) {
     const files = Array.from(e.target.files || []);
     e.target.value = '';
-    const valid = files.filter(f => validateUpload(f, t));
+    const valid = files.filter(f => !uploadError(f));
+    // one toast per distinct reason, instead of one alert per rejected file
+    [...new Set(files.map(uploadError).filter(Boolean))].forEach(k => toast.error(t(k)));
     if (valid.length === 0) return;
     setUploading(true); for (const f of valid) await onUpload(f); setUploading(false);
   }
