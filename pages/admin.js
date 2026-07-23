@@ -6,12 +6,14 @@ import { normalizeHost } from '../lib/tenant';
 import { getTranslator } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
+import { navGroups } from '../lib/admin-nav';
 import {
-  Button, Card, CardHeader, Badge, EmptyState,
+  Button, Card, CardHeader, Badge, EmptyState, Icon,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
 } from '../components/ui';
 
 function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
+
 
 // Shared ConfirmDialog shapes, so every destructive action is worded the same way
 // in both locales. These replace the old bare confirm(t('...')) strings.
@@ -155,6 +157,7 @@ export default function Admin() {
       document.documentElement.removeAttribute('data-admin-theme');
     };
   }, [theme]);
+
 
   if (loading) return <div style={{ padding: 40, color: 'var(--text-secondary)' }}>{t('loading')}</div>;
 
@@ -448,11 +451,14 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
     if (isOwner === false) setActiveTab((prev) => (prev === 'profile' ? 'home' : prev));
   }, [isOwner]);
 
-  const TAB_LABELS = {
-    profile: t('nav_profile'), card: t('nav_card'), projects: t('nav_projects'),
-    links: t('nav_links'), appearance: t('nav_appearance'),
-    analytics: t('nav_analytics'), account: t('nav_account'),
-  };
+  // The grouped nav is the single source of truth for tab labels, so the mobile
+  // bar and the page header can never drift from the sidebar.
+  const navSections = useMemo(() => navGroups({ isOwner, ar, t }), [isOwner, ar, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  const TAB_LABELS = useMemo(() => {
+    const out = {};
+    navSections.forEach(g => g.items.forEach(i => { out[i.id] = i.label; }));
+    return out;
+  }, [navSections]);
 
   async function navigate(tab) {
     if (tab === activeTab) { setSidebarOpen(false); return; }
@@ -517,6 +523,12 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
   const tenantKey = tenant?.id ?? 'single'; // remount editors on tenant switch -> reload scoped data
 
+  // Website identity shown in the sidebar. In legacy single-profile mode
+  // (tenant === null) this is the platform's own site at "/", exactly as before.
+  const siteName = tenant?.name || tenant?.slug || t('sidebar_title');
+  const sitePath = tenant?.slug ? `/${tenant.slug}` : '/';
+  const siteHref = sitePath;
+
   return (
     <DirtyContext.Provider value={dirtyRef}>
     <TenantContext.Provider value={{ tenant, tenants, setTenant, reloadTenants: loadTenants, isOwner }}>
@@ -530,7 +542,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
             <line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
         </button>
-        <span className="mobile-tab-label">{TAB_LABELS[activeTab]}</span>
+        <span className="mobile-tab-label">{TAB_LABELS[activeTab] || t('sidebar_title')}</span>
         <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
       </header>
 
@@ -540,34 +552,53 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
           <img className={theme === 'light' ? 'on' : ''} src="/logo-light.png" alt="" aria-hidden="true" />
         </div>
         <div className="sidebar-header">
-          <div className="sidebar-title">⚙️ {t('sidebar_title')}</div>
+          <div className="sidebar-title">{t('sidebar_title')}</div>
           <div className="sidebar-header-right">
             <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
-            <button type="button" className="drawer-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">×</button>
+            <button type="button" className="drawer-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
+              <Icon name="close" size={18} />
+            </button>
           </div>
         </div>
 
-        <a href="/" target="_blank" rel="noopener noreferrer" className="view-site-btn">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          {t('view_live_site')}
-        </a>
+        {/* Which website am I editing right now? Previously the sidebar showed a
+            generic title and a "view site" link that always pointed at "/". */}
+        <div className="site-card">
+          <div className="site-line">
+            <span className="site-name">{siteName}</span>
+            {tenant?.status === 'disabled' && (
+              <Badge tone="warning">{ar ? 'معلّقة' : 'Suspended'}</Badge>
+            )}
+          </div>
+          <div className="site-slug">{sitePath}</div>
+          <a href={siteHref} target="_blank" rel="noopener noreferrer" className="view-site-btn">
+            <Icon name="external" size={13} mirror />
+            {t('view_live_site')}
+          </a>
+        </div>
 
-        <nav className="nav">
-          {isOwner === false && <NavItem icon="🏠" label={ar ? 'الرئيسية' : 'Home'} active={activeTab === 'home'} onClick={() => navigate('home')} />}
-          {isOwner === true && <NavItem icon="👥" label={ar ? 'العملاء' : 'Clients'} active={activeTab === 'clients'} onClick={() => navigate('clients')} />}
-          <NavItem icon="👤" label={t('nav_profile')}    active={activeTab === 'profile'}    onClick={() => navigate('profile')} />
-          <NavItem icon="🪪" label={t('nav_card')}       active={activeTab === 'card'}       onClick={() => navigate('card')} />
-          <NavItem icon="📁" label={t('nav_projects')}   active={activeTab === 'projects'}   onClick={() => navigate('projects')} />
-          <NavItem icon="🔗" label={t('nav_links')}      active={activeTab === 'links'}      onClick={() => navigate('links')} />
-          <NavItem icon="🎨" label={t('nav_appearance')} active={activeTab === 'appearance'} onClick={() => navigate('appearance')} />
-          <div className="nav-sep" aria-hidden="true" />
-          <NavItem icon="📊" label={t('nav_analytics')}  active={activeTab === 'analytics'}  onClick={() => navigate('analytics')} />
-          <NavItem icon="⚙️" label={t('nav_account')}    active={activeTab === 'account'}    onClick={() => navigate('account')} />
+        <nav className="nav" aria-label={ar ? 'التنقّل' : 'Main'}>
+          {navSections.map(group => (
+            <NavGroup key={group.id} label={group.label}>
+              {group.items.map(item => (
+                <NavItem
+                  key={item.id}
+                  icon={item.icon}
+                  label={item.label}
+                  active={activeTab === item.id}
+                  onClick={() => navigate(item.id)}
+                />
+              ))}
+            </NavGroup>
+          ))}
         </nav>
 
         <div className="sidebar-footer">
-          <SidebarUser session={session} t={t} />
-          <button onClick={signOut} className="signout-btn">{t('sign_out')}</button>
+          <SidebarUser session={session} t={t} isOwner={isOwner} ar={ar} />
+          <button onClick={signOut} className="signout-btn" type="button">
+            <Icon name="logout" size={14} mirror />
+            {t('sign_out')}
+          </button>
         </div>
       </aside>
 
@@ -576,6 +607,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
       <main className="content">
         {isOwner && <TenantSelector tenants={tenants} tenant={tenant} onChange={switchTenant} lang={lang} />}
+
         {activeTab === 'home'       && isOwner === false && <ClientHome key={tenantKey} lang={lang} onNavigate={navigate} />}
         {activeTab === 'clients'    && isOwner === true  && <OwnerClientsOverview lang={lang} onOpen={(id) => { switchTenant(id); navigate('profile'); }} />}
         {activeTab === 'profile'    && <ProfileEditor    key={tenantKey} t={t} lang={lang} />}
@@ -584,6 +616,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         {activeTab === 'links'      && <LinksEditor      key={tenantKey} t={t} lang={lang} />}
         {activeTab === 'appearance' && <AppearanceEditor key={tenantKey} t={t} lang={lang} />}
         {activeTab === 'analytics'  && <AnalyticsEditor  key={tenantKey} t={t} lang={lang} />}
+        {activeTab === 'domains'    && <TenantAdminSection key={tenantKey} session={session} lang={lang} part="domains" />}
         {activeTab === 'account'    && <AccountEditor    key={tenantKey} t={t} lang={lang} session={session} setChromeLang={setLang} />}
       </main>
 
@@ -596,18 +629,56 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         .sidebar-logo { padding: var(--space-2) var(--space-3) 0; display: grid; justify-items: start; }
         .sidebar-logo img { grid-area: 1 / 1; height: 26px; width: auto; display: block; opacity: 0; transition: opacity 0.25s ease; }
         .sidebar-logo img.on { opacity: 1; }
-        .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-3) var(--space-5); gap: 8px; }
+        .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-3) var(--space-4); gap: 8px; }
         .sidebar-header-right { display: flex; align-items: center; gap: 6px; }
-        .sidebar-title { font-size: 14px; font-weight: 700; }
-        .drawer-close { display: none; width: 32px; height: 32px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); font-size: 20px; cursor: pointer; font-family: inherit; align-items: center; justify-content: center; }
-        .nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-        .nav-sep { height: 1px; background: var(--border); margin: 8px 8px; }
+        .sidebar-title { font-size: var(--text-sm); font-weight: 700; color: var(--text-tertiary); letter-spacing: 0.04em; text-transform: uppercase; }
+        :global(html[dir="rtl"]) .sidebar-title { letter-spacing: normal; text-transform: none; }
+        .drawer-close { display: none; width: 32px; height: 32px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); cursor: pointer; font-family: inherit; align-items: center; justify-content: center; }
+
+        /* Website identity — what am I editing, and where does it live? */
+        .site-card { padding: var(--space-3); margin-bottom: var(--space-5); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); }
+        .site-line { display: flex; align-items: center; gap: var(--space-2); }
+        .site-name { flex: 1; min-width: 0; font-size: var(--text-md); font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .site-slug { margin-top: 2px; font-size: var(--text-xs); color: var(--text-tertiary); direction: ltr; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .nav { display: flex; flex-direction: column; gap: var(--space-4); flex: 1; }
         .sidebar-footer { padding: var(--space-3); border-top: 1px solid var(--border); }
-        .view-site-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; margin-bottom: 10px; background: linear-gradient(180deg, rgba(79,110,242,0.12), rgba(79,110,242,0.04)); border: 1px solid rgba(79,110,242,0.25); border-radius: var(--radius-md); color: var(--text-primary); font-size: 12px; font-weight: 500; text-decoration: none; transition: var(--transition); }
-        .view-site-btn:hover { background: rgba(79,110,242,0.18); }
-        .signout-btn { font-size: 12px; color: var(--text-tertiary); padding: 6px 0; background: none; border: none; cursor: pointer; font-family: inherit; }
+        .view-site-btn { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: var(--space-3); padding: 7px 12px; background: var(--bg-hover); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-sm); font-weight: 600; text-decoration: none; transition: var(--transition); }
+        .view-site-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+        .signout-btn { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--text-tertiary); padding: 6px 0; background: none; border: none; cursor: pointer; font-family: inherit; }
         .signout-btn:hover { color: var(--text-primary); }
         .content { flex: 1; padding: var(--space-6) var(--space-8); overflow-y: auto; max-height: 100vh; }
+
+        /* Page title area. Every screen already renders its own <h1> and intro
+           paragraph, each styling them slightly differently. The shell now owns
+           that typography so the title area is identical on every tab — rather
+           than adding a second title above the one that is already there. */
+        .content :global(h1) {
+          font-family: var(--font-heading);
+          font-size: var(--text-2xl);
+          font-weight: 700;
+          line-height: 1.25;
+          color: var(--text-primary);
+          margin-bottom: var(--space-2);
+        }
+        .content :global(h1 + .hint) {
+          max-width: 68ch;
+          margin-bottom: var(--space-6);
+          padding-bottom: var(--space-4);
+          border-bottom: 1px solid var(--border);
+          font-size: var(--text-md);
+          line-height: 1.6;
+          color: var(--text-tertiary);
+        }
+
+        /* Desktop (>=1024px) — more room for the grouped sidebar and the page head.
+           The drawer breakpoint below is deliberately left at 720px: tablet and
+           mobile behaviour is unchanged in this phase. */
+        @media (min-width: 1024px) {
+          .sidebar { width: 264px; padding: var(--space-4) var(--space-4) var(--space-5); }
+          .content { padding: var(--space-8) var(--space-8); }
+          .page-head { margin-bottom: var(--space-6); }
+        }
 
         /* Mobile-only elements hidden by default */
         .mobile-bar { display: none; }
@@ -687,9 +758,10 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
           .backdrop.show { opacity: 1; pointer-events: auto; }
 
           .content { padding: var(--space-4) var(--space-4); max-height: none; }
-
-          /* Bigger tap targets on mobile */
-          .nav-item { padding: 12px 14px; font-size: 14px; min-height: 44px; }
+          .page-head { margin-bottom: var(--space-4); padding-bottom: var(--space-3); }
+          /* NOTE: the tap-target rule for .nav-item used to live here, where it
+             could never match — NavItem is a component, so it carries its own
+             styled-jsx scope. It now lives inside NavItem itself. */
         }
       `}</style>
     </div>
@@ -734,20 +806,92 @@ function TenantSelector({ tenants, tenant, onChange, lang }) {
 
 function NavItem({ icon, label, active, onClick }) {
   return (
-    <button className={`nav-item ${active ? 'active' : ''}`} onClick={onClick}>
-      <span className="nav-icon">{icon}</span>
-      <span>{label}</span>
+    <button
+      type="button"
+      className={`nav-item ${active ? 'active' : ''}`}
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+    >
+      {/* the active marker is an inset bar, so it flips sides automatically in RTL */}
+      <span className="marker" aria-hidden="true" />
+      <Icon name={icon} size={16} />
+      <span className="nav-label">{label}</span>
       <style jsx>{`
-        .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px; color: var(--text-secondary); transition: var(--transition); text-align: start; background: none; border: none; cursor: pointer; font-family: inherit; }
+        .nav-item {
+          position: relative;
+          display: flex;
+          align-items: center;
+          gap: var(--space-3);
+          inline-size: 100%;
+          min-block-size: 36px;
+          padding: var(--space-2) var(--space-3);
+          border: none;
+          border-radius: var(--radius-sm);
+          background: none;
+          font-family: inherit;
+          font-size: var(--text-md);
+          color: var(--text-secondary);
+          text-align: start;
+          cursor: pointer;
+          transition: background var(--transition), color var(--transition);
+        }
         .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .nav-item.active { background: linear-gradient(180deg, rgba(79,110,242,0.12), rgba(79,110,242,0.04)); color: var(--text-primary); font-weight: 500; box-shadow: inset 0 0 0 1px rgba(79,110,242,0.18); }
-        .nav-icon { font-size: 14px; }
+        .nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+        .nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .marker {
+          position: absolute;
+          inset-inline-start: 0;
+          inset-block: 6px;
+          inline-size: 2px;
+          border-radius: 2px;
+          background: var(--accent);
+          opacity: 0;
+          transition: opacity var(--transition);
+        }
+        .nav-item.active {
+          background: var(--bg-hover);
+          color: var(--text-primary);
+          font-weight: 600;
+        }
+        .nav-item.active .marker { opacity: 1; }
+        .nav-item.active :global(.ui-icon) { color: var(--accent); }
+
+        /* touch targets — the drawer is the only way to navigate on a phone */
+        @media (max-width: 640px) {
+          .nav-item { min-block-size: 44px; padding: var(--space-3); }
+        }
       `}</style>
     </button>
   );
 }
 
-function SidebarUser({ session, t }) {
+// A labelled block of nav items. The label is a quiet section heading, not a
+// control — grouping is the point, collapsing is not.
+function NavGroup({ label, children }) {
+  return (
+    <div className="nav-group" role="group" aria-label={label}>
+      <div className="nav-group-label">{label}</div>
+      {children}
+      <style jsx>{`
+        .nav-group-label {
+          padding: 0 var(--space-3) var(--space-2);
+          font-size: var(--text-xs);
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--text-muted);
+        }
+        :global(html[dir='rtl']) .nav-group-label {
+          letter-spacing: normal;
+          text-transform: none;
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function SidebarUser({ session, t, isOwner, ar }) {
   const [username, setUsername] = useState('');
   useEffect(() => {
     (async () => {
@@ -761,7 +905,10 @@ function SidebarUser({ session, t }) {
       <div className="avatar">{initial}</div>
       <div className="user-meta">
         <div className="user-name">{username || session.user.email.split('@')[0]}</div>
-        <div className="user-status"><span className="dot" />{t('status_live')}</div>
+        {/* which hat am I wearing — platform owner, or this website's admin? */}
+        {isOwner === true
+          ? <div className="user-role">{ar ? 'مالك المنصّة' : 'Platform owner'}</div>
+          : <div className="user-status"><span className="dot" />{t('status_live')}</div>}
       </div>
       <style jsx>{`
         .user-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -769,6 +916,7 @@ function SidebarUser({ session, t }) {
         .user-meta { min-width: 0; flex: 1; }
         .user-name { font-size: 12px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .user-status { font-size: 10px; color: #7DD37D; display: flex; align-items: center; gap: 4px; }
+        .user-role { font-size: 10px; font-weight: 600; color: var(--accent); }
         .dot { width: 6px; height: 6px; border-radius: 50%; background: #7DD37D; box-shadow: 0 0 6px #7DD37D; }
       `}</style>
     </div>
@@ -1359,7 +1507,7 @@ function ProjectsEditor({ t, lang }) {
 
       {projects.length === 0 ? (
         <EmptyState
-          icon="📁"
+          icon={<Icon name="folder" size={24} />}
           title={t('no_projects')}
           description={lang === 'ar' ? 'أعمالك هي ما يقنع الزوار. أضِف أول مشروع لعرض ما تبرع فيه.' : 'Your projects are what convince visitors. Add your first one to show what you do best.'}
           action={<Button size="sm" onClick={addProject}>+ {t('no_projects_yet_cta')}</Button>}
@@ -1539,7 +1687,7 @@ function LinksEditor({ t, lang }) {
 
       {links.length === 0 && (
         <EmptyState
-          icon="🔗"
+          icon={<Icon name="link" size={24} />}
           title={lang === 'ar' ? 'لا توجد روابط بعد' : 'No links yet'}
           description={lang === 'ar' ? 'أضِف حساباتك (إنستغرام، بيهانس، لينكدإن…) ليتواصل معك الزوار.' : 'Add your socials (Instagram, Behance, LinkedIn…) so visitors can reach you.'}
           action={<Button size="sm" onClick={add}>+ {lang === 'ar' ? 'أضف رابطًا' : 'Add a link'}</Button>}
@@ -1881,7 +2029,7 @@ function AnalyticsEditor({ t, lang }) {
       {loading ? (
         <p className="hint">{t('loading')}</p>
       ) : events.length === 0 ? (
-        <EmptyState icon="📊" title={t('no_data_yet')} compact />
+        <EmptyState icon={<Icon name="chart" size={24} />} title={t('no_data_yet')} compact />
       ) : (
         <>
           <div className="stat-grid">
@@ -2049,9 +2197,9 @@ async function checkDomainDns(domain) {
 // `tone` maps onto the Badge primitive; `dot` is kept for the couple of places
 // that render the status inline inside a sentence rather than as a pill.
 function domainStatusMeta(status, ar) {
-  if (status === 'active') return { tone: 'success', dot: '🟢', label: ar ? 'نشط' : 'Active' };
-  if (status === 'error') return { tone: 'danger', dot: '🔴', label: ar ? 'فشل' : 'Failed' };
-  return { tone: 'warning', dot: '🟡', label: ar ? 'بانتظار DNS' : 'Waiting for DNS' };
+  if (status === 'active') return { tone: 'success', label: ar ? 'نشط' : 'Active' };
+  if (status === 'error') return { tone: 'danger', label: ar ? 'فشل' : 'Failed' };
+  return { tone: 'warning', label: ar ? 'بانتظار DNS' : 'Waiting for DNS' };
 }
 
 function DomainStatusBadge({ status, ar }) {
@@ -2183,7 +2331,7 @@ function DomainManager({ lang, isOwner }) {
     <div className="dm">
       {loading ? <div className="hint">…</div> : domains.length === 0 ? (
         <EmptyState
-          icon="🌐"
+          icon={<Icon name="globe" size={24} />}
           title={ar ? 'لا يوجد نطاق مخصص بعد' : 'No custom domain yet'}
           description={ar ? `موقعك متاح الآن على /${tenant.slug}. اربط نطاقك الخاص ليبدو احترافيًا أكثر.`
                           : `Your site is live at /${tenant.slug}. Connect your own domain to make it feel truly yours.`}
@@ -2239,7 +2387,11 @@ function DomainManager({ lang, isOwner }) {
   );
 }
 
-function TenantAdminSection({ session, lang }) {
+// `part` splits this in two so the IA can put them on different screens:
+//   'workspace' — owner-only client administration (stays under Account)
+//   'domains'   — the tenant's own website + custom domain (its own Settings tab)
+// Default 'all' keeps the original combined rendering.
+function TenantAdminSection({ session, lang, part = 'all' }) {
   const confirm = useConfirm();
   const { tenant, setTenant, reloadTenants, isOwner } = useTenant();
   const ar = lang === 'ar';
@@ -2399,7 +2551,7 @@ function TenantAdminSection({ session, lang }) {
 
   return (
     <>
-      {isOwner && (
+      {isOwner && part !== 'domains' && (
       <>
       <h2>{ar ? 'المساحات (العملاء)' : 'Workspaces (clients)'}</h2>
       <p className="hint">{ar
@@ -2480,11 +2632,15 @@ function TenantAdminSection({ session, lang }) {
       </>
       )}
 
+      {part !== 'workspace' && (
+      <>
       <h2>{ar ? 'موقعك والنطاق' : 'Your website & domain'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
         ? `موقعك متاح دائمًا على /${tenant?.slug || 'slug'}. اربط نطاقك المخصص في ثلاث خطوات: أضِف النطاق، أضِف سجل DNS، ثم تحقّق.`
         : `Your site is always live at /${tenant?.slug || 'slug'}. Connect a custom domain in three steps: add it, add the DNS record, then verify.`}</p>
       <DomainManager lang={lang} isOwner={isOwner} />
+      </>
+      )}
 
       <style jsx>{`
         .ts-err { padding: 8px 12px; background: rgba(255,80,80,0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
@@ -2690,7 +2846,13 @@ function OwnerClientsOverview({ lang, onOpen }) {
               <div className="cl-main">
                 <div className="cl-name">{r.name}</div>
                 <div className="cl-domain" dir="ltr">
-                  {r.domainStatus ? `${domainStatusMeta(r.domainStatus, ar).dot} ` : ''}{r.domain}{r.isPrimary ? ' ★' : ''}
+                  {r.domainStatus && (
+                    <span
+                      className={`dotmark ${domainStatusMeta(r.domainStatus, ar).tone}`}
+                      title={domainStatusMeta(r.domainStatus, ar).label}
+                    />
+                  )}
+                  {r.domain}{r.isPrimary ? ' ★' : ''}
                 </div>
               </div>
               <Badge tone={r.status === 'disabled' ? 'danger' : 'success'}>
@@ -2709,6 +2871,11 @@ function OwnerClientsOverview({ lang, onOpen }) {
         .cl-main { flex: 1; min-width: 0; }
         .cl-name { font-size: 14px; font-weight: 600; }
         .cl-domain { font-size: 12px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* status dot — replaces the 🟢/🟡/🔴 emoji, which rendered differently per OS */
+        .dotmark { display: inline-block; width: 7px; height: 7px; margin-inline-end: 6px; border-radius: 50%; vertical-align: middle; }
+        .dotmark.success { background: var(--success); }
+        .dotmark.warning { background: var(--warning); }
+        .dotmark.danger { background: var(--danger); }
         .cl-pct { font-size: 13px; font-weight: 700; color: var(--accent); min-width: 42px; text-align: end; flex-shrink: 0; }
       `}</style>
     </div>
@@ -2833,7 +3000,7 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
       {savingLang && <span className="hint">...</span>}
       {savedLangMsg && <span className="saved-indicator">{savedLangMsg} ✓</span>}
 
-      <TenantAdminSection session={session} lang={lang} />
+      <TenantAdminSection session={session} lang={lang} part="workspace" />
 
       <h2>{t('change_password')}</h2>
       <form onSubmit={updatePassword} style={{ maxWidth: 500 }}>

@@ -4,6 +4,7 @@
 export { default as Button } from './Button';
 export { default as Card, CardHeader } from './Card';
 export { default as Badge } from './Badge';
+export { default as Icon, ICON_NAMES } from './Icon';
 export { default as Input, Hint } from './Input';
 export { default as EmptyState } from './EmptyState';
 export { default as Skeleton, SkeletonText } from './Skeleton';
