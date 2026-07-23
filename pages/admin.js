@@ -1973,6 +1973,218 @@ function TableCard({ title, headLabel, headValue, rows }) {
 // tenant_domains write policies + grants, and Section C so a new profile row can exist).
 // Until that migration is applied these calls surface a clear error instead of failing
 // silently; nothing here runs against or breaks the current single-tenant database.
+// ---- Custom domains (Phase 4) -------------------------------------------------
+// DNS targets for the Portfolio Platform Vercel project. Apex domains need an A
+// record; subdomains use a CNAME. We do NOT automate Vercel — instructions only.
+const VERCEL_A_RECORD = '76.76.21.21';
+const VERCEL_CNAME = 'cname.vercel-dns.com';
+
+function isApexDomain(d) {
+  return String(d || '').split('.').filter(Boolean).length <= 2;
+}
+
+// Verify DNS straight from the browser via public DNS-over-HTTPS — no backend needed.
+// IMPORTANT: distinguish "lookup failed" from "no records". If the DNS API is
+// unreachable (offline, blocked by an extension/network), we must NOT treat that as
+// "no DNS" — otherwise Verify would downgrade a perfectly working domain.
+async function checkDomainDns(domain) {
+  const q = async (type) => {
+    const r = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`);
+    if (!r.ok) throw new Error(`dns http ${r.status}`);
+    const j = await r.json();
+    return (j.Answer || []).map((a) => String(a.data || '').replace(/\.$/, '').toLowerCase());
+  };
+  try {
+    const [cname, a] = await Promise.all([q('CNAME'), q('A')]);
+    const ok = cname.some((v) => v.includes('vercel-dns.com')) || a.includes(VERCEL_A_RECORD);
+    return { reachable: true, ok, hasAnyRecord: cname.length > 0 || a.length > 0 };
+  } catch (_) {
+    return { reachable: false, ok: false, hasAnyRecord: false };
+  }
+}
+
+function domainStatusMeta(status, ar) {
+  if (status === 'active') return { dot: '🟢', label: ar ? 'نشط' : 'Active' };
+  if (status === 'error') return { dot: '🔴', label: ar ? 'فشل' : 'Failed' };
+  return { dot: '🟡', label: ar ? 'بانتظار DNS' : 'Waiting for DNS' };
+}
+
+function DnsInstructions({ domain, ar, isOwner }) {
+  const apex = isApexDomain(domain);
+  const host = apex ? '@' : domain.split('.')[0];
+  return (
+    <div className="dns">
+      <div className="dns-title">{ar ? 'أضف هذا السجل عند مزوّد النطاق:' : 'Add this record at your domain provider:'}</div>
+      <div className="dns-grid">
+        <div><span>{ar ? 'النوع' : 'Type'}</span><strong dir="ltr">{apex ? 'A' : 'CNAME'}</strong></div>
+        <div><span>{ar ? 'الاسم' : 'Host'}</span><strong dir="ltr">{host}</strong></div>
+        <div><span>{ar ? 'القيمة' : 'Value'}</span><strong dir="ltr">{apex ? VERCEL_A_RECORD : VERCEL_CNAME}</strong></div>
+      </div>
+      <p className="hint" style={{ marginTop: 8 }}>
+        {ar ? 'أضِف السجل ثم ارجع واضغط «تحقّق». قد يستغرق انتشار DNS حتى 48 ساعة.'
+            : 'Add the record, then come back and press Verify. DNS propagation can take up to 48 hours.'}
+      </p>
+      <p className="hint">
+        {isOwner
+          ? (ar ? 'ملاحظة للمالك: أضِف النطاق أيضًا في مشروع Vercel.' : 'Owner note: also add this domain in the Vercel project.')
+          : (ar ? 'سنكمل ربط النطاق من جهتنا بعد نجاح التحقق.' : 'We’ll finish connecting it on our side once verification passes.')}
+      </p>
+      <style jsx>{`
+        .dns { margin-top: 10px; padding: 12px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); }
+        .dns-title { font-size: 12px; font-weight: 600; margin-bottom: 10px; color: var(--text-secondary); }
+        .dns-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+        .dns-grid > div { display: flex; flex-direction: column; gap: 3px; }
+        .dns-grid span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+        :global(html[dir="rtl"]) .dns-grid span { text-transform: none; letter-spacing: normal; }
+        .dns-grid strong { font-size: 13px; font-weight: 700; word-break: break-all; }
+      `}</style>
+    </div>
+  );
+}
+
+// Client-friendly domain setup: add -> DNS instructions -> verify -> active.
+function DomainManager({ lang, isOwner }) {
+  const { tenant } = useTenant();
+  const ar = lang === 'ar';
+  const [domains, setDomains] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newDomain, setNewDomain] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [openDns, setOpenDns] = useState(null);
+  const [verifying, setVerifying] = useState(null);
+  const [verifyMsg, setVerifyMsg] = useState({});
+
+  const load = useCallback(async () => {
+    if (!tenant) { setDomains([]); setLoading(false); return; }
+    setLoading(true);
+    const { data } = await supabase.from('tenant_domains').select('*').eq('tenant_id', tenant.id).order('created_at');
+    setDomains(data || []); setLoading(false);
+  }, [tenant]);
+  useEffect(() => { load(); }, [load]);
+
+  async function addDomain(e) {
+    e.preventDefault(); setErr('');
+    if (!tenant) { setErr(ar ? 'اختر مساحة أولًا' : 'Select a workspace first'); return; }
+    const d = normalizeDomain(newDomain);
+    if (!d || !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d)) {
+      setErr(ar ? 'أدخل نطاقًا صالحًا مثل example.com' : 'Enter a valid domain like example.com'); return;
+    }
+    if (domains.some((x) => x.domain === d)) { setErr(ar ? 'هذا النطاق مضاف بالفعل' : 'That domain is already added'); return; }
+    setBusy(true);
+    const { error } = await supabase.from('tenant_domains')
+      .insert({ tenant_id: tenant.id, domain: d, is_primary: domains.length === 0, status: 'pending' });
+    setBusy(false);
+    if (error) { setErr(error.message || String(error)); return; }
+    setNewDomain(''); await load(); setOpenDns(d);
+  }
+
+  async function verify(row) {
+    setVerifying(row.id);
+    const res = await checkDomainDns(row.domain);
+    if (!res.reachable) {
+      // Couldn't reach the DNS checker — leave status untouched rather than lie.
+      setVerifyMsg((m) => ({ ...m, [row.id]: ar
+        ? 'تعذّر التحقق الآن (تعذّر الوصول لخدمة DNS). لم يتغيّر الحالة — حاول مرة أخرى.'
+        : 'Could not run the check right now (DNS service unreachable). Status unchanged — please try again.' }));
+      setVerifying(null);
+      return;
+    }
+    const next = res.ok ? 'active' : (res.hasAnyRecord ? 'error' : 'pending');
+    await supabase.from('tenant_domains').update({ status: next }).eq('id', row.id);
+    setVerifyMsg((m) => ({ ...m, [row.id]: res.ok
+      ? (ar ? 'تم التحقق ✓ النطاق يشير إلينا.' : 'Verified ✓ your domain points to us.')
+      : res.hasAnyRecord
+        ? (ar ? 'يوجد سجل DNS لكنه لا يشير إلينا بعد.' : 'A DNS record exists but doesn’t point to us yet.')
+        : (ar ? 'لم نجد سجل DNS بعد — قد يستغرق الانتشار حتى 48 ساعة.' : 'No DNS record found yet — propagation can take up to 48 hours.') }));
+    setVerifying(null);
+    await load();
+  }
+
+  async function removeDomain(id) {
+    if (!confirm(ar ? 'حذف النطاق؟' : 'Remove domain?')) return;
+    const { error } = await supabase.from('tenant_domains').delete().eq('id', id);
+    if (error) setErr(error.message || String(error)); else load();
+  }
+  // Clear the flag tenant-wide FIRST — a partial unique index allows one primary.
+  async function makePrimary(id) {
+    if (!tenant) return; setErr('');
+    const { error: clearErr } = await supabase.from('tenant_domains').update({ is_primary: false }).eq('tenant_id', tenant.id);
+    if (clearErr) { setErr(clearErr.message || String(clearErr)); return; }
+    const { error } = await supabase.from('tenant_domains').update({ is_primary: true }).eq('id', id);
+    if (error) setErr(error.message || String(error)); else load();
+  }
+
+  if (!tenant) {
+    return <div className="hint">{ar ? 'اختر مساحة من الأعلى لإدارة نطاقاتها.' : 'Select a workspace above to manage its domains.'}</div>;
+  }
+
+  return (
+    <div className="dm">
+      {loading ? <div className="hint">…</div> : domains.length === 0 ? (
+        <div className="empty-cta">
+          <div className="empty-icon">🌐</div>
+          <div className="empty-title">{ar ? 'لا يوجد نطاق مخصص بعد' : 'No custom domain yet'}</div>
+          <p className="hint" style={{ maxWidth: 380, margin: '0 auto 14px', textAlign: 'center' }}>
+            {ar ? `موقعك متاح الآن على /${tenant.slug}. اربط نطاقك الخاص ليبدو احترافيًا أكثر.`
+                : `Your site is live at /${tenant.slug}. Connect your own domain to make it feel truly yours.`}
+          </p>
+        </div>
+      ) : (
+        <div className="dm-list">
+          {domains.map((d) => {
+            const meta = domainStatusMeta(d.status, ar);
+            return (
+              <div key={d.id} className="dm-row">
+                <div className="dm-head">
+                  <span className="dm-name" dir="ltr">{d.domain}</span>
+                  {d.is_primary && <span className="dm-star" title={ar ? 'أساسي' : 'Primary'}>★</span>}
+                  <span className="dm-status">{meta.dot} {meta.label}</span>
+                </div>
+                <div className="dm-actions">
+                  <button type="button" className="btn-add" onClick={() => verify(d)} disabled={verifying === d.id}>
+                    {verifying === d.id ? '…' : (ar ? 'تحقّق' : 'Verify')}
+                  </button>
+                  <button type="button" className="btn-add" onClick={() => setOpenDns(openDns === d.domain ? null : d.domain)}>
+                    {ar ? 'تعليمات DNS' : 'DNS instructions'}
+                  </button>
+                  {!d.is_primary && <button type="button" className="btn-add" onClick={() => makePrimary(d.id)}>{ar ? 'اجعله أساسيًا' : 'Make primary'}</button>}
+                  <button type="button" className="x-small" onClick={() => removeDomain(d.id)} aria-label="remove">×</button>
+                </div>
+                {verifyMsg[d.id] && <div className="dm-msg">{verifyMsg[d.id]}</div>}
+                {openDns === d.domain && <DnsInstructions domain={d.domain} ar={ar} isOwner={isOwner} />}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <form onSubmit={addDomain} className="dm-add">
+        <input type="text" dir="ltr" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} placeholder="example.com" />
+        <button type="submit" className="ts-primary" disabled={busy}>{busy ? '…' : (ar ? 'ربط نطاق' : 'Connect domain')}</button>
+      </form>
+      {err && <div className="ts-err">{err}</div>}
+
+      <style jsx>{`
+        .dm { max-width: 640px; }
+        .dm-list { display: flex; flex-direction: column; gap: 10px; }
+        .dm-row { padding: 12px 14px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); }
+        .dm-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .dm-name { font-size: 14px; font-weight: 600; word-break: break-all; }
+        .dm-star { color: var(--accent); }
+        .dm-status { font-size: 12px; color: var(--text-tertiary); margin-inline-start: auto; white-space: nowrap; }
+        .dm-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+        .dm-msg { margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+        .dm-add { display: flex; gap: 8px; margin-top: 12px; align-items: flex-start; flex-wrap: wrap; }
+        .dm-add input { flex: 1; min-width: 180px; }
+        .ts-primary { padding: 10px 18px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; min-height: 44px; }
+        .ts-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        .ts-err { padding: 8px 12px; background: rgba(255,80,80,0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
+      `}</style>
+    </div>
+  );
+}
+
 function TenantAdminSection({ session, lang }) {
   const { tenant, setTenant, reloadTenants, isOwner } = useTenant();
   const ar = lang === 'ar';
@@ -2120,46 +2332,6 @@ function TenantAdminSection({ session, lang }) {
     setAssignMsg(ar ? 'تم منح الوصول' : 'Access granted');
   }
 
-  const [domains, setDomains] = useState([]);
-  const [newDomain, setNewDomain] = useState('');
-  const [domErr, setDomErr] = useState('');
-  const [domBusy, setDomBusy] = useState(false);
-
-  const loadDomains = useCallback(async () => {
-    if (!tenant) { setDomains([]); return; }
-    const { data } = await supabase.from('tenant_domains').select('*').eq('tenant_id', tenant.id).order('created_at');
-    setDomains(data || []);
-  }, [tenant]);
-  useEffect(() => { loadDomains(); }, [loadDomains]);
-
-  async function addDomain(e) {
-    e.preventDefault(); setDomErr('');
-    if (!tenant) { setDomErr(ar ? 'اختر مساحة أولًا' : 'Select a workspace first'); return; }
-    const d = normalizeDomain(newDomain);
-    if (!d) { setDomErr(ar ? 'أدخل نطاقًا صالحًا' : 'Enter a valid domain'); return; }
-    setDomBusy(true);
-    const { error } = await supabase.from('tenant_domains')
-      .insert({ tenant_id: tenant.id, domain: d, is_primary: domains.length === 0, status: 'pending' });
-    setDomBusy(false);
-    if (error) { setDomErr(error.message || String(error)); return; }
-    setNewDomain(''); loadDomains();
-  }
-  async function removeDomain(id) {
-    if (!confirm(ar ? 'حذف النطاق؟' : 'Remove domain?')) return;
-    const { error } = await supabase.from('tenant_domains').delete().eq('id', id);
-    if (error) setDomErr(error.message || String(error)); else loadDomains();
-  }
-  // Clear the flag across the tenant FIRST — a partial unique index allows only one
-  // primary domain per tenant, so setting the new one first would violate it.
-  async function makePrimary(id) {
-    if (!tenant) return;
-    setDomErr('');
-    const { error: clearErr } = await supabase.from('tenant_domains')
-      .update({ is_primary: false }).eq('tenant_id', tenant.id);
-    if (clearErr) { setDomErr(clearErr.message || String(clearErr)); return; }
-    const { error } = await supabase.from('tenant_domains').update({ is_primary: true }).eq('id', id);
-    if (error) setDomErr(error.message || String(error)); else loadDomains();
-  }
 
   return (
     <>
@@ -2244,46 +2416,17 @@ function TenantAdminSection({ session, lang }) {
       </>
       )}
 
-      <h2>{ar ? 'النطاقات المخصصة' : 'Custom domains'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
+      <h2>{ar ? 'موقعك والنطاق' : 'Your website & domain'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
-        ? `أضف نطاقك هنا، ثم أضِف نفس النطاق في Vercel ووجّه DNS. حتى ذلك الحين يعمل الرابط عبر المعرّف: /${tenant?.slug || 'slug'}`
-        : `Add your custom domain here, then add the same domain in Vercel and point DNS. Until then the slug URL works: /${tenant?.slug || 'slug'}`}</p>
-      {tenant ? (
-        <>
-          <div className="domain-list">
-            {domains.length === 0 && <div className="hint">{ar ? 'لا توجد نطاقات بعد' : 'No domains yet'}</div>}
-            {domains.map(d => (
-              <div key={d.id} className="domain-row">
-                <span dir="ltr" className="domain-name">{d.domain}{d.is_primary ? ' ★' : ''}</span>
-                <span className="domain-status">{d.status}</span>
-                {!d.is_primary && (
-                  <button type="button" className="btn-add" onClick={() => makePrimary(d.id)}>
-                    {ar ? 'أساسي' : 'Make primary'}
-                  </button>
-                )}
-                <button type="button" className="x-small" onClick={() => removeDomain(d.id)} aria-label="remove">×</button>
-              </div>
-            ))}
-          </div>
-          <form onSubmit={addDomain} style={{ display: 'flex', gap: 8, maxWidth: 500, marginTop: 10, alignItems: 'flex-start' }}>
-            <input type="text" dir="ltr" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} placeholder="client.com" />
-            <button type="submit" className="btn-add" disabled={domBusy}>{domBusy ? '...' : (ar ? 'إضافة' : 'Add')}</button>
-          </form>
-          {domErr && <div className="ts-err">{domErr}</div>}
-        </>
-      ) : (
-        <div className="hint">{ar ? 'اختر مساحة من الأعلى لإدارة نطاقاتها.' : 'Select a workspace at the top to manage its domains.'}</div>
-      )}
+        ? `موقعك متاح دائمًا على /${tenant?.slug || 'slug'}. اربط نطاقك المخصص في ثلاث خطوات: أضِف النطاق، أضِف سجل DNS، ثم تحقّق.`
+        : `Your site is always live at /${tenant?.slug || 'slug'}. Connect a custom domain in three steps: add it, add the DNS record, then verify.`}</p>
+      <DomainManager lang={lang} isOwner={isOwner} />
 
       <style jsx>{`
         .ts-primary { padding: 10px 18px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(79,110,242,0.25); font-family: inherit; }
         .ts-primary:disabled { opacity: 0.6; cursor: not-allowed; }
         .ts-err { padding: 8px 12px; background: rgba(255,80,80,0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
         .ts-ok { padding: 8px 12px; background: rgba(125,211,125,0.1); color: #7dd37d; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
-        .domain-list { display: flex; flex-direction: column; gap: 6px; max-width: 500px; }
-        .domain-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); }
-        .domain-name { font-size: 13px; font-weight: 600; }
-        .domain-status { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; margin-inline-start: auto; }
       `}</style>
     </>
   );
@@ -2386,6 +2529,13 @@ function ClientHome({ lang, onNavigate }) {
         <div className="ch-card">
           <div className="ch-label">{ar ? 'رابط موقعك' : 'Your website'}</div>
           <a className="ch-url" href={publicUrl} target="_blank" rel="noopener noreferrer" dir="ltr">{primary ? primary.domain : slugUrl}</a>
+          {primary ? (
+            <div className="ch-sub">{domainStatusMeta(primary.status, ar).dot} {domainStatusMeta(primary.status, ar).label}</div>
+          ) : (
+            <button type="button" className="ch-link" onClick={() => onNavigate('account')}>
+              {ar ? 'اربط نطاقك المخصص ←' : 'Connect a custom domain →'}
+            </button>
+          )}
         </div>
         <div className="ch-card">
           <div className="ch-label">{ar ? 'الاكتمال' : 'Completion'}</div>
@@ -2413,6 +2563,8 @@ function ClientHome({ lang, onNavigate }) {
         :global(html[dir="rtl"]) .ch-label { text-transform: none; letter-spacing: normal; }
         .ch-status { font-size: 18px; font-weight: 700; }
         .ch-url { font-size: 14px; font-weight: 600; color: var(--accent); text-decoration: none; word-break: break-all; }
+        .ch-sub { font-size: 12px; color: var(--text-tertiary); margin-top: 4px; }
+        .ch-link { margin-top: 6px; padding: 0; background: none; border: none; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: start; }
         .ch-bar { height: 6px; background: var(--bg-elevated); border-radius: 999px; margin-top: 8px; overflow: hidden; }
         .ch-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s ease; }
         .ch-actions { display: flex; flex-wrap: wrap; gap: 8px; max-width: 640px; margin-bottom: var(--space-4); }
@@ -2447,7 +2599,12 @@ function OwnerClientsOverview({ lang, onOpen }) {
       const out = tenants.map((x) => {
         const s = computeSetup({ profile: pmap[x.id], projectCount: pcount[x.id] || 0, domainCount: (dmap[x.id] || []).length });
         const dom = (dmap[x.id] || []).find((d) => d.is_primary) || (dmap[x.id] || [])[0];
-        return { id: x.id, name: x.name || x.slug, status: x.status, domain: dom?.domain || `/${x.slug}`, percent: s.percent };
+        return {
+          id: x.id, name: x.name || x.slug, status: x.status, percent: s.percent,
+          domain: dom?.domain || `/${x.slug}`,
+          domainStatus: dom ? dom.status : null,
+          isPrimary: !!dom?.is_primary,
+        };
       }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
       if (!cancelled) { setRows(out); setLoading(false); }
     })();
@@ -2466,7 +2623,9 @@ function OwnerClientsOverview({ lang, onOpen }) {
             <button key={r.id} type="button" className="cl-row" onClick={() => onOpen(r.id)}>
               <div className="cl-main">
                 <div className="cl-name">{r.name}</div>
-                <div className="cl-domain" dir="ltr">{r.domain}</div>
+                <div className="cl-domain" dir="ltr">
+                  {r.domainStatus ? `${domainStatusMeta(r.domainStatus, ar).dot} ` : ''}{r.domain}{r.isPrimary ? ' ★' : ''}
+                </div>
               </div>
               <span className={`cl-badge ${r.status === 'disabled' ? 'off' : 'on'}`}>{r.status === 'disabled' ? (ar ? 'معلّق' : 'Suspended') : (ar ? 'نشط' : 'Active')}</span>
               <span className="cl-pct">{r.percent}%</span>
