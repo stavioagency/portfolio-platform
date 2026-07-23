@@ -178,6 +178,12 @@ export default function Home({ slug = null } = {}) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (loading || pageViewLogged.current) return;
+    // The admin's live-preview iframe loads this page with ?preview=1. Skip
+    // analytics for it so an owner's editing session never inflates the
+    // tenant's own page_view count. This suppresses a side-effect only; the
+    // page renders identically. (Also guards any nested-iframe embedding.)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('preview') === '1' || window.self !== window.top) return;
     pageViewLogged.current = true;
     const row = {
       event_type: 'page_view',

@@ -11,6 +11,7 @@ import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
 } from '../components/ui';
+import PreviewPane from '../components/PreviewPane';
 
 function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
 
@@ -529,9 +530,21 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   const sitePath = tenant?.slug ? `/${tenant.slug}` : '/';
   const siteHref = sitePath;
 
+  // Live preview: the iframe shows the real public site for the active tenant.
+  // Origin is read from the browser (never hardcoded); the same Next app serves
+  // both /admin and the public routes, so its own origin is always correct.
+  const [previewOrigin, setPreviewOrigin] = useState('');
+  useEffect(() => { setPreviewOrigin(window.location.origin); }, []);
+  const [previewToken, setPreviewToken] = useState(0);
+  const refreshPreview = useCallback(() => setPreviewToken(n => n + 1), []);
+  const [previewOpen, setPreviewOpen] = useState(false); // tablet toggle only
+  const PREVIEW_TABS = { profile: true, card: true, appearance: true };
+  const showPreview = !!PREVIEW_TABS[activeTab];
+
   return (
     <DirtyContext.Provider value={dirtyRef}>
     <TenantContext.Provider value={{ tenant, tenants, setTenant, reloadTenants: loadTenants, isOwner }}>
+    <PreviewContext.Provider value={{ refresh: refreshPreview }}>
     <div className={`dashboard ${theme || 'dark'}`}>
       {/* MOBILE TOP BAR — only visible <720px */}
       <header className="mobile-bar">
@@ -608,16 +621,36 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
       <main className="content">
         {isOwner && <TenantSelector tenants={tenants} tenant={tenant} onChange={switchTenant} lang={lang} />}
 
-        {activeTab === 'home'       && isOwner === false && <ClientHome key={tenantKey} lang={lang} onNavigate={navigate} />}
-        {activeTab === 'clients'    && isOwner === true  && <OwnerClientsOverview lang={lang} onOpen={(id) => { switchTenant(id); navigate('profile'); }} />}
-        {activeTab === 'profile'    && <ProfileEditor    key={tenantKey} t={t} lang={lang} />}
-        {activeTab === 'card'       && <CardEditor       key={tenantKey} t={t} lang={lang} />}
-        {activeTab === 'projects'   && <ProjectsEditor   key={tenantKey} t={t} lang={lang} />}
-        {activeTab === 'links'      && <LinksEditor      key={tenantKey} t={t} lang={lang} />}
-        {activeTab === 'appearance' && <AppearanceEditor key={tenantKey} t={t} lang={lang} />}
-        {activeTab === 'analytics'  && <AnalyticsEditor  key={tenantKey} t={t} lang={lang} />}
-        {activeTab === 'domains'    && <TenantAdminSection key={tenantKey} session={session} lang={lang} part="domains" />}
-        {activeTab === 'account'    && <AccountEditor    key={tenantKey} t={t} lang={lang} session={session} setChromeLang={setLang} />}
+        <div className={`work ${showPreview ? 'has-preview' : ''} ${previewOpen ? 'preview-open' : ''}`}>
+          <div className="work-editor">
+            {showPreview && (
+              // Tablet-only toggle; hidden on desktop (preview always shown) and
+              // on mobile (no preview yet). See the responsive rules below.
+              <button type="button" className="preview-toggle" onClick={() => setPreviewOpen(v => !v)}>
+                <Icon name="external" size={14} mirror />
+                {previewOpen
+                  ? (ar ? 'إخفاء المعاينة' : 'Hide preview')
+                  : (ar ? 'معاينة مباشرة' : 'Live preview')}
+              </button>
+            )}
+            {activeTab === 'home'       && isOwner === false && <ClientHome key={tenantKey} lang={lang} onNavigate={navigate} />}
+            {activeTab === 'clients'    && isOwner === true  && <OwnerClientsOverview lang={lang} onOpen={(id) => { switchTenant(id); navigate('profile'); }} />}
+            {activeTab === 'profile'    && <ProfileEditor    key={tenantKey} t={t} lang={lang} />}
+            {activeTab === 'card'       && <CardEditor       key={tenantKey} t={t} lang={lang} />}
+            {activeTab === 'projects'   && <ProjectsEditor   key={tenantKey} t={t} lang={lang} />}
+            {activeTab === 'links'      && <LinksEditor      key={tenantKey} t={t} lang={lang} />}
+            {activeTab === 'appearance' && <AppearanceEditor key={tenantKey} t={t} lang={lang} />}
+            {activeTab === 'analytics'  && <AnalyticsEditor  key={tenantKey} t={t} lang={lang} />}
+            {activeTab === 'domains'    && <TenantAdminSection key={tenantKey} session={session} lang={lang} part="domains" />}
+            {activeTab === 'account'    && <AccountEditor    key={tenantKey} t={t} lang={lang} session={session} setChromeLang={setLang} />}
+          </div>
+
+          {showPreview && previewOrigin && (
+            <aside className="work-preview" aria-label={ar ? 'معاينة الموقع المباشرة' : 'Live website preview'}>
+              <PreviewPane origin={previewOrigin} slug={tenant?.slug || null} reloadToken={previewToken} lang={lang} />
+            </aside>
+          )}
+        </div>
       </main>
 
       <style jsx>{`
@@ -671,13 +704,52 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
           color: var(--text-tertiary);
         }
 
-        /* Desktop (>=1024px) — more room for the grouped sidebar and the page head.
-           The drawer breakpoint below is deliberately left at 720px: tablet and
-           mobile behaviour is unchanged in this phase. */
+        /* ---- Editor / live-preview split ------------------------------------
+           Base (mobile + tablet): a single column. The preview is hidden and the
+           editor renders exactly as it did before this feature. A tablet-only
+           toggle reveals the preview stacked below the editor. At >=1024px the
+           row becomes two columns with the preview pinned on the right. */
+        .work { min-width: 0; }
+        .work-editor { min-width: 0; }
+        .work-preview { display: none; }
+        .preview-toggle {
+          display: none;
+          align-items: center; gap: var(--space-2);
+          margin-bottom: var(--space-4); padding: 8px 14px;
+          background: var(--bg-elevated); border: 1px solid var(--border-strong);
+          border-radius: var(--radius-sm); color: var(--text-secondary);
+          font-family: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
+          transition: background var(--transition), color var(--transition);
+        }
+        .preview-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .preview-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        /* Tablet (721px–1023px): show the toggle; reveal preview stacked when open. */
+        @media (min-width: 721px) and (max-width: 1023px) {
+          .work.has-preview .preview-toggle { display: inline-flex; }
+          .work.has-preview.preview-open .work-preview { display: block; height: 70vh; margin-top: var(--space-5); }
+        }
+
+        /* Desktop (>=1024px) — more room for the grouped sidebar and the page head. */
         @media (min-width: 1024px) {
           .sidebar { width: 264px; padding: var(--space-4) var(--space-4) var(--space-5); }
           .content { padding: var(--space-8) var(--space-8); }
           .page-head { margin-bottom: var(--space-6); }
+
+          /* Two columns: editor scrolls, preview stays pinned in view. */
+          .work.has-preview {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) clamp(360px, 34vw, 460px);
+            gap: var(--space-6);
+            align-items: start;
+          }
+          .work.has-preview .work-preview {
+            display: block;
+            position: sticky;
+            top: 0;
+            height: calc(100vh - var(--space-8) * 2);
+          }
+          .work.has-preview .preview-toggle { display: none; }
         }
 
         /* Mobile-only elements hidden by default */
@@ -765,6 +837,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         }
       `}</style>
     </div>
+    </PreviewContext.Provider>
     </TenantContext.Provider>
     </DirtyContext.Provider>
   );
@@ -934,6 +1007,12 @@ const DirtyContext = createContext(null);
 const TenantContext = createContext({ tenant: null, tenants: [], setTenant: () => {}, reloadTenants: async () => {}, isOwner: false });
 function useTenant() { return useContext(TenantContext); }
 
+// Lets the shared SaveBar tell the live PreviewPane to refresh after a save,
+// without any editor knowing the preview exists. Default is a no-op so editors
+// on screens with no preview (and legacy usages) are unaffected.
+const PreviewContext = createContext({ refresh: () => {} });
+function usePreview() { return useContext(PreviewContext); }
+
 // Tenant-scoped data helpers. When a tenant is selected we scope by tenant_id;
 // with no tenant we fall back to the legacy single-profile (id = 1) row so an
 // un-migrated / unmapped database behaves exactly as it does today.
@@ -974,11 +1053,22 @@ function normalizeDomain(v) {
 
 function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
   const dirtyRef = useContext(DirtyContext);
+  const { refresh: refreshPreview } = usePreview();
   useEffect(() => {
     if (!dirtyRef) return;
     dirtyRef.current = dirty;
     return () => { dirtyRef.current = false; };
   }, [dirty, dirtyRef]);
+
+  // Detect a successful save and refresh the live preview — without any editor
+  // being aware of it. A save resolves as: saving true -> false. On success the
+  // editor clears `dirty`; on error it leaves `dirty` true and shows a toast.
+  // So a false-and-clean transition is exactly a successful save.
+  const wasSaving = useRef(false);
+  useEffect(() => {
+    if (wasSaving.current && !saving && !dirty) refreshPreview();
+    wasSaving.current = saving;
+  }, [saving, dirty, refreshPreview]);
   return (
     <div className={`actions ${dirty ? 'sticky-save' : ''}`}>
       <Button onClick={onSave} loading={saving}>
