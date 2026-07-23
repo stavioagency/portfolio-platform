@@ -20,8 +20,15 @@
 
   --accent: #9FA7FF;
   --accent-hover: #b5bcff;
-  /* foreground to place ON a filled accent/danger surface — flips in light mode */
-  --accent-fg: #0b0b12;
+  /* The admin's primary button has always been this blue gradient (it existed in
+     four copies as .btn-primary-inline / .ts-primary). It is a token now so the
+     Button primitive reproduces it exactly, in both themes. */
+  --accent-gradient: linear-gradient(180deg, #6d86ff, #4f6ef2);
+  --accent-gradient-hover: linear-gradient(180deg, #8098ff, #5f7cf5);
+  --accent-glow: 0 4px 14px rgba(79, 110, 242, 0.25);
+
+  /* foreground to place ON a filled accent/danger surface */
+  --accent-fg: #ffffff;
   --danger-fg: #240b0b;
 
   --radius-sm: 8px;

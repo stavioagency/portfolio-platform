@@ -1,6 +1,9 @@
 // Card — the standard elevated surface (settings blocks, list rows, panels).
 // pad: none | sm | md | lg
+// `as` exists because several of the admin's card surfaces are clickable rows —
+// real <button>s, not divs — and they should keep that semantics.
 export default function Card({
+  as: Tag = 'div',
   pad = 'md',
   elevated = false,
   interactive = false,
@@ -9,8 +12,9 @@ export default function Card({
   ...rest
 }) {
   return (
-    <div
+    <Tag
       className={`ui-card pad-${pad} ${elevated ? 'elev' : ''} ${interactive ? 'act' : ''} ${className}`}
+      {...(Tag === 'button' ? { type: 'button' } : {})}
       {...rest}
     >
       {children}
@@ -29,8 +33,10 @@ export default function Card({
         .act { cursor: pointer; }
         .act:hover { border-color: var(--border-strong); background: var(--bg-hover); }
         .act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        /* when rendered as a button, drop the UA chrome the reset does not cover */
+        button.ui-card { inline-size: 100%; text-align: start; font-family: inherit; color: inherit; }
       `}</style>
-    </div>
+    </Tag>
   );
 }
 

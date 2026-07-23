@@ -31,7 +31,7 @@ export default function Button({
           line-height: 1;
           white-space: nowrap;
           border: 1px solid transparent;
-          border-radius: var(--radius-sm);
+          border-radius: var(--radius-md);
           cursor: pointer;
           transition: background var(--transition), border-color var(--transition),
                       color var(--transition), opacity var(--transition);
@@ -43,12 +43,20 @@ export default function Button({
         .ui-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .block { width: 100%; }
 
-        /* sizes — md meets the 44px mobile tap target */
-        .sm { min-height: 34px; padding: 0 var(--space-3); font-size: var(--text-sm); }
+        /* sizes — md meets the 44px mobile tap target everywhere; sm is compact on
+           desktop and grows to 44px on phones, matching the admin's existing rule */
+        .sm { min-height: 34px; padding: 0 var(--space-3); font-size: 13px; }
         .md { min-height: 44px; padding: 0 var(--space-4); font-size: var(--text-md); }
+        @media (max-width: 640px) {
+          .sm { min-height: 44px; padding: 0 var(--space-4); font-size: var(--text-md); }
+        }
 
-        .primary { background: var(--accent); color: var(--accent-fg); }
-        .primary:hover:not(:disabled) { background: var(--accent-hover); }
+        .primary {
+          background: var(--accent-gradient);
+          color: var(--accent-fg);
+          box-shadow: var(--accent-glow);
+        }
+        .primary:hover:not(:disabled) { background: var(--accent-gradient-hover); }
 
         .secondary {
           background: var(--bg-elevated);

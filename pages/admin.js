@@ -6,7 +6,10 @@ import { normalizeHost } from '../lib/tenant';
 import { getTranslator } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
-import { ToastProvider, useToast, ConfirmProvider, useConfirm } from '../components/ui';
+import {
+  Button, Card, CardHeader, Badge, EmptyState,
+  ToastProvider, useToast, ConfirmProvider, useConfirm,
+} from '../components/ui';
 
 function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
 
@@ -284,13 +287,11 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
   const isForgot = mode === 'forgot';
 
   return (
-    <div className={`signin-wrap ${theme || 'dark'}`}>
-      <form className="signin-card" onSubmit={isForgot ? handleForgotSubmit : handleSubmit}>
-        <div className="signin-top">
-          <h1>{isForgot ? t('forgot_password_heading') : t('sign_in_heading')}</h1>
-          <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
-        </div>
-
+    <AuthShell
+      theme={theme} lang={lang} toggleLang={toggleLang} toggleTheme={toggleTheme}
+      title={isForgot ? t('forgot_password_heading') : t('sign_in_heading')}
+      onSubmit={isForgot ? handleForgotSubmit : handleSubmit}
+    >
         {isForgot ? (
           forgotDone ? (
             <>
@@ -302,7 +303,7 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
               <p className="signin-hint">{t('forgot_password_hint')}</p>
               <label htmlFor="forgot-identifier">{t('username_or_email')}</label>
               <input id="forgot-identifier" name="forgot-identifier" type="text" dir="ltr" value={forgotIdentifier} onChange={(e) => setForgotIdentifier(e.target.value)} required autoFocus autoComplete="username" spellCheck="false" autoCapitalize="off" />
-              <button type="submit" disabled={forgotLoading || !forgotIdentifier.trim()}>{forgotLoading ? t('sending') : t('send_reset_link')}</button>
+              <Button type="submit" block loading={forgotLoading} disabled={!forgotIdentifier.trim()}>{forgotLoading ? t('sending') : t('send_reset_link')}</Button>
               <button type="button" className="link-btn" onClick={backToSignIn}>{t('back_to_sign_in')}</button>
             </>
           )
@@ -314,32 +315,55 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
             <label htmlFor="signin-password">{t('password')}</label>
             <input id="signin-password" name="password" type="password" dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
             {error && <div className="error">{error}</div>}
-            <button type="submit" disabled={loading}>{loading ? t('signing_in') : t('sign_in')}</button>
+            <Button type="submit" block loading={loading}>{loading ? t('signing_in') : t('sign_in')}</Button>
             <button type="button" className="link-btn" onClick={() => setMode('forgot')}>{t('forgot_password_link')}</button>
           </>
         )}
+    </AuthShell>
+  );
+}
+
+// Shared chrome for the two signed-out screens (SignIn + SetNewPassword). Both
+// previously carried a byte-identical 18-line style block; it now lives once in
+// AuthStyles below.
+function AuthShell({ theme, lang, toggleLang, toggleTheme, title, onSubmit, children }) {
+  return (
+    <div className={`signin-wrap ${theme || 'dark'}`}>
+      <form className="signin-card" onSubmit={onSubmit}>
+        <div className="signin-top">
+          <h1>{title}</h1>
+          <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
+        </div>
+        {children}
       </form>
-      <style jsx>{`
-        .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
-        .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
-        /* tokens come from [data-admin-theme='light'] in globals.css */
-        .signin-wrap.light { background-color: #ffffff; }
-        .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
-        .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
-        h1 { font-size: 22px; font-weight: 700; }
-        .signin-hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-5); }
-        label { display: block; font-size: 12px; font-weight: 500; color: var(--text-tertiary); margin: var(--space-4) 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
-        :global(html[dir="rtl"]) label { text-transform: none; letter-spacing: normal; }
-        input { width: 100%; padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; transition: var(--transition); font-family: inherit; }
-        input:focus { outline: none; border-color: var(--accent); }
-        button[type="submit"] { width: 100%; padding: 12px; background: var(--accent); color: #fff; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; margin-top: var(--space-5); transition: var(--transition); border: none; cursor: pointer; }
-        button[type="submit"]:hover:not(:disabled) { background: var(--accent-hover); }
-        button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
-        .link-btn { width: 100%; background: none; border: none; padding: 0; margin-top: 12px; font-size: 12px; color: var(--text-tertiary); cursor: pointer; font-family: inherit; text-align: center; text-decoration: underline; }
-        .link-btn:hover { color: var(--text-primary); }
-        .error { margin-top: var(--space-4); padding: 10px 12px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 13px; }
-      `}</style>
+      <AuthStyles />
     </div>
+  );
+}
+
+// Global, but every selector is scoped under .signin-wrap / .signin-card so it
+// cannot leak into the dashboard.
+function AuthStyles() {
+  return (
+    <style jsx global>{`
+      .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --accent-fg: #ffffff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
+      .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
+      /* tokens come from [data-admin-theme='light'] in globals.css */
+      .signin-wrap.light { background-color: #ffffff; }
+      .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
+      .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
+      .signin-card h1 { font-size: var(--text-xl); font-weight: 700; }
+      .signin-hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-5); }
+      .signin-card label { display: block; font-size: 12px; font-weight: 500; color: var(--text-tertiary); margin: var(--space-4) 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+      html[dir="rtl"] .signin-card label { text-transform: none; letter-spacing: normal; }
+      .signin-card input { width: 100%; padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; transition: var(--transition); font-family: inherit; }
+      .signin-card input:focus { outline: none; border-color: var(--accent); }
+      /* the submit button is the Button primitive now — only its spacing is local */
+      .signin-card .ui-btn { margin-top: var(--space-5); border-radius: var(--radius-md); }
+      .link-btn { width: 100%; background: none; border: none; padding: 0; margin-top: 12px; font-size: 12px; color: var(--text-tertiary); cursor: pointer; font-family: inherit; text-align: center; text-decoration: underline; }
+      .link-btn:hover { color: var(--text-primary); }
+      .signin-card .error { margin-top: var(--space-4); padding: 10px 12px; background: var(--danger-bg); color: var(--danger); border-radius: var(--radius-md); font-size: 13px; }
+    `}</style>
   );
 }
 
@@ -369,12 +393,10 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
   }
 
   return (
-    <div className={`signin-wrap ${theme || 'dark'}`}>
-      <form className="signin-card" onSubmit={handleSubmit}>
-        <div className="signin-top">
-          <h1>{t('set_new_password_heading')}</h1>
-          <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
-        </div>
+    <AuthShell
+      theme={theme} lang={lang} toggleLang={toggleLang} toggleTheme={toggleTheme}
+      title={t('set_new_password_heading')} onSubmit={handleSubmit}
+    >
         {done ? (
           <p className="signin-hint">{t('password_updated')}</p>
         ) : (
@@ -385,29 +407,10 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
             <label htmlFor="confirm-pwd">{t('confirm_new_password')}</label>
             <input id="confirm-pwd" name="confirm-pwd" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} required autoComplete="new-password" />
             {error && <div className="error">{error}</div>}
-            <button type="submit" disabled={loading}>{loading ? t('saving') : t('set_new_password_button')}</button>
+            <Button type="submit" block loading={loading}>{loading ? t('saving') : t('set_new_password_button')}</Button>
           </>
         )}
-      </form>
-      <style jsx>{`
-        .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
-        .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
-        /* tokens come from [data-admin-theme='light'] in globals.css */
-        .signin-wrap.light { background-color: #ffffff; }
-        .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
-        .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
-        h1 { font-size: 22px; font-weight: 700; }
-        .signin-hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-5); }
-        label { display: block; font-size: 12px; font-weight: 500; color: var(--text-tertiary); margin: var(--space-4) 0 6px; text-transform: uppercase; letter-spacing: 0.05em; }
-        :global(html[dir="rtl"]) label { text-transform: none; letter-spacing: normal; }
-        input { width: 100%; padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; transition: var(--transition); font-family: inherit; }
-        input:focus { outline: none; border-color: var(--accent); }
-        button[type="submit"] { width: 100%; padding: 12px; background: var(--accent); color: #fff; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; margin-top: var(--space-5); transition: var(--transition); border: none; cursor: pointer; }
-        button[type="submit"]:hover:not(:disabled) { background: var(--accent-hover); }
-        button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
-        .error { margin-top: var(--space-4); padding: 10px 12px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 13px; }
-      `}</style>
-    </div>
+    </AuthShell>
   );
 }
 
@@ -830,19 +833,19 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
   }, [dirty, dirtyRef]);
   return (
     <div className={`actions ${dirty ? 'sticky-save' : ''}`}>
-      <button className="primary" onClick={onSave} disabled={saving}>
+      <Button onClick={onSave} loading={saving}>
         {saving ? t('saving') : t('save')}
         {dirty && <span className="unsaved-dot" />}
-      </button>
+      </Button>
       {dirty && !saving && <span className="hint">{t('unsaved_changes')}</span>}
       {savedMsg && !dirty && <span className="saved-indicator">{savedMsg} ✓</span>}
-      {extra}
+      {/* the delete action sits at the far end of the row (start of it on mobile) */}
+      {extra && <span className="extra">{extra}</span>}
       <style jsx>{`
         .actions { display: flex; gap: 10px; align-items: center; margin-top: var(--space-6); padding-top: var(--space-5); border-top: 1px solid var(--border); flex-wrap: wrap; }
-        .primary { padding: 10px 20px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border-radius: var(--radius-md); font-weight: 600; font-size: 14px; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(79,110,242,0.25), inset 0 1px 0 rgba(var(--on-bg),0.3); position: relative; font-family: inherit; }
-        .primary:disabled { opacity: 0.5; cursor: not-allowed; }
-        .unsaved-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ffb845; margin-inline-start: 6px; box-shadow: 0 0 6px #ffb845; vertical-align: middle; }
-        .hint { font-size: 12px; color: var(--text-tertiary); }
+        .extra { margin-inline-start: auto; }
+        .unsaved-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--warning); margin-inline-start: 6px; box-shadow: 0 0 6px var(--warning); vertical-align: middle; }
+        .hint { font-size: var(--text-sm); color: var(--text-tertiary); }
         .saved-indicator { font-size: 13px; color: var(--accent); }
         /* On phones, pin the save row to the bottom while there are unsaved changes so it's always reachable */
         @media (max-width: 720px) {
@@ -855,6 +858,8 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
             box-shadow: 0 -6px 16px rgba(0,0,0,0.28);
             z-index: 20;
           }
+          /* keep the destructive action off the same edge as Save on phones */
+          .extra { margin-inline-start: 0; }
         }
       `}</style>
     </div>
@@ -1006,7 +1011,7 @@ function ProfileEditor({ t, lang }) {
           </div>
         </div>
       ))}
-      <button className="btn-add" onClick={addCustomField}>+ {t('add_custom_field')}</button>
+      <Button variant="secondary" size="sm" onClick={addCustomField}>+ {t('add_custom_field')}</Button>
 
       <h2>{t('sections_title')}</h2>
       <p className="hint">{t('sections_sub')}</p>
@@ -1026,9 +1031,7 @@ function ProfileEditor({ t, lang }) {
       </div>
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
-      <EditorStyles />
-      <CardEditorStyles />
-      <SharedAdminStyles />
+      <AdminStyles />
     </div>
   );
 }
@@ -1162,19 +1165,19 @@ function CardEditor({ t, lang }) {
       {profile.banners?.map((b, i) => (
         <BannerRow key={b.id} banner={b} lang={lang} onChange={(u) => updateBanner(b.id, u)} onRemove={() => removeBanner(b.id)} onUp={() => moveBanner(b.id, -1)} onDown={() => moveBanner(b.id, 1)} canUp={i > 0} canDown={i < profile.banners.length - 1} uploadImage={(f) => uploadBannerImage(b.id, f)} t={t} />
       ))}
-      {(profile.banners?.length || 0) < 5 && <button className="btn-add" onClick={addBanner}>+ {t('banner_add')}</button>}
+      {(profile.banners?.length || 0) < 5 && <Button variant="secondary" size="sm" onClick={addBanner}>+ {t('banner_add')}</Button>}
 
       <h2>{t('stats_title')} <span className="meta">· {t('stats_sub')} · {(profile.stats?.length || 0)}/3</span></h2>
       {profile.stats?.map((s, i) => (
         <StatRow key={s.id} stat={s} lang={lang} onChange={(u) => updateStat(s.id, u)} onRemove={() => removeStat(s.id)} onUp={() => moveStat(s.id, -1)} onDown={() => moveStat(s.id, 1)} canUp={i > 0} canDown={i < profile.stats.length - 1} t={t} />
       ))}
-      {(profile.stats?.length || 0) < 3 && <button className="btn-add" onClick={addStat}>+ {t('stat_add')}</button>}
+      {(profile.stats?.length || 0) < 3 && <Button variant="secondary" size="sm" onClick={addStat}>+ {t('stat_add')}</Button>}
 
       <h2>{t('buttons_title')} <span className="meta">· {t('buttons_sub')}</span></h2>
       {profile.cta_buttons?.map((b, i) => (
         <ButtonRow key={b.id} btn={b} lang={lang} onChange={(u) => updateButton(b.id, u)} onRemove={() => removeButton(b.id)} onUp={() => moveButton(b.id, -1)} onDown={() => moveButton(b.id, 1)} canUp={i > 0} canDown={i < profile.cta_buttons.length - 1} t={t} />
       ))}
-      <button className="btn-add" onClick={addButton}>+ {t('button_add')}</button>
+      <Button variant="secondary" size="sm" onClick={addButton}>+ {t('button_add')}</Button>
 
       <h2>{t('footer_title')} <span className="meta">· {t('footer_sub')} · {t('optional')}</span></h2>
       <div className="card-row" style={{ maxWidth: 640 }}>
@@ -1187,7 +1190,7 @@ function CardEditor({ t, lang }) {
       </div>
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
-      <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
+      <AdminStyles />
     </div>
   );
 }
@@ -1350,19 +1353,17 @@ function ProjectsEditor({ t, lang }) {
     <div className="editor">
       <div className="editor-header">
         <h1>{t('nav_projects')}</h1>
-        <button className="btn-primary-inline" onClick={addProject}>+ {t('add_project')}</button>
+        <Button size="sm" onClick={addProject}>+ {t('add_project')}</Button>
       </div>
       <p className="hint">{t('empty_rows_note')}</p>
 
       {projects.length === 0 ? (
-        <div className="empty-cta">
-          <div className="empty-icon">📁</div>
-          <div className="empty-title">{t('no_projects')}</div>
-          <p className="hint" style={{ maxWidth: 360, margin: '0 auto 14px', textAlign: 'center' }}>
-            {lang === 'ar' ? 'أعمالك هي ما يقنع الزوار. أضِف أول مشروع لعرض ما تبرع فيه.' : 'Your projects are what convince visitors. Add your first one to show what you do best.'}
-          </p>
-          <button className="btn-primary-inline" onClick={addProject}>+ {t('no_projects_yet_cta')}</button>
-        </div>
+        <EmptyState
+          icon="📁"
+          title={t('no_projects')}
+          description={lang === 'ar' ? 'أعمالك هي ما يقنع الزوار. أضِف أول مشروع لعرض ما تبرع فيه.' : 'Your projects are what convince visitors. Add your first one to show what you do best.'}
+          action={<Button size="sm" onClick={addProject}>+ {t('no_projects_yet_cta')}</Button>}
+        />
       ) : (
         <div className="project-list">
           {projects.map((p, i) => {
@@ -1374,7 +1375,7 @@ function ProjectsEditor({ t, lang }) {
                   <button type="button" className="x-small" disabled={i === 0} onClick={() => move(p.id, -1)}>↑</button>
                   <button type="button" className="x-small" disabled={i === projects.length - 1} onClick={() => move(p.id, 1)}>↓</button>
                 </div>
-                <button className="prow-main" onClick={() => setEditing(p)}>
+                <Card as="button" interactive pad="sm" className="prow-main" onClick={() => setEditing(p)}>
                   {p.cover_image
                     ? <img src={p.cover_image} alt="" />
                     : <div className="prow-cover-empty" />}
@@ -1383,31 +1384,27 @@ function ProjectsEditor({ t, lang }) {
                     {desc && <div className="prow-desc">{desc}</div>}
                   </div>
                   <span className="chevron">›</span>
-                </button>
+                </Card>
               </div>
             );
           })}
         </div>
       )}
 
-      <EditorStyles /><SharedAdminStyles /><CardEditorStyles />
+      <AdminStyles />
       <style jsx>{`
         .editor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-5); }
-        .btn-primary-inline { padding: 8px 16px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(79,110,242,0.25); font-family: inherit; }
         .project-list { display: flex; flex-direction: column; gap: 6px; }
         .project-row { display: flex; align-items: center; gap: 6px; }
         .prow-actions { display: flex; flex-direction: column; gap: 2px; }
-        .prow-main { flex: 1; display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3); background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); text-align: start; transition: var(--transition); cursor: pointer; font-family: inherit; }
-        .prow-main:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+        /* surface comes from Card; only the row layout is local */
+        .prow-main { flex: 1; display: flex; align-items: center; gap: var(--space-4); }
         .prow-main img, .prow-cover-empty { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; }
         .prow-cover-empty { background: linear-gradient(135deg, #3a3a52, #1a1a22); }
         .prow-meta { flex: 1; min-width: 0; }
-        .prow-title { font-size: 14px; font-weight: 600; }
-        .prow-desc { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .prow-title { font-size: var(--text-md); font-weight: 600; }
+        .prow-desc { font-size: var(--text-sm); color: var(--text-tertiary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .chevron { color: var(--text-muted); font-size: 18px; }
-        .empty-cta { padding: 48px 24px; text-align: center; border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); background: linear-gradient(180deg, rgba(79,110,242,0.04), transparent); }
-        .empty-icon { font-size: 32px; margin-bottom: 8px; }
-        .empty-title { font-size: 14px; color: var(--text-tertiary); margin-bottom: 16px; }
       `}</style>
     </div>
   );
@@ -1489,18 +1486,15 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
       <MultiImageUpload images={data.images || []} onUpload={uploadGalleryImage} onRemove={removeImage} hint={t('img_hint_gallery')} t={t} />
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty}
-        extra={<button className="danger-btn" onClick={() => onDelete(data.id)} type="button">{t('delete')}</button>}
+        extra={<Button variant="danger" size="sm" onClick={() => onDelete(data.id)}>{t('delete')}</Button>}
       />
-      <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
+      <AdminStyles />
       <style jsx>{`
         .back-btn { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-4); padding: 4px 0; background: none; border: none; cursor: pointer; font-family: inherit; }
         .back-btn:hover { color: var(--text-primary); }
         .row-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-        .danger-btn { padding: 8px 14px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border: 1px solid rgba(255,80,80,0.3); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; margin-inline-start: auto; font-family: inherit; }
-        .danger-btn:hover { background: rgba(255, 80, 80, 0.18); }
         @media (max-width: 720px) {
           .row-grid-3 { grid-template-columns: 1fr; }
-          .danger-btn { margin-inline-start: 0; }
         }
       `}</style>
     </div>
@@ -1544,14 +1538,12 @@ function LinksEditor({ t, lang }) {
       <p className="hint">{t('links_sub')}</p>
 
       {links.length === 0 && (
-        <div className="empty-cta">
-          <div className="empty-icon">🔗</div>
-          <div className="empty-title">{lang === 'ar' ? 'لا توجد روابط بعد' : 'No links yet'}</div>
-          <p className="hint" style={{ maxWidth: 360, margin: '0 auto 14px', textAlign: 'center' }}>
-            {lang === 'ar' ? 'أضِف حساباتك (إنستغرام، بيهانس، لينكدإن…) ليتواصل معك الزوار.' : 'Add your socials (Instagram, Behance, LinkedIn…) so visitors can reach you.'}
-          </p>
-          <button type="button" className="btn-primary-inline" onClick={add}>+ {lang === 'ar' ? 'أضف رابطًا' : 'Add a link'}</button>
-        </div>
+        <EmptyState
+          icon="🔗"
+          title={lang === 'ar' ? 'لا توجد روابط بعد' : 'No links yet'}
+          description={lang === 'ar' ? 'أضِف حساباتك (إنستغرام، بيهانس، لينكدإن…) ليتواصل معك الزوار.' : 'Add your socials (Instagram, Behance, LinkedIn…) so visitors can reach you.'}
+          action={<Button size="sm" onClick={add}>+ {lang === 'ar' ? 'أضف رابطًا' : 'Add a link'}</Button>}
+        />
       )}
 
       {links.map((l, i) => {
@@ -1571,12 +1563,12 @@ function LinksEditor({ t, lang }) {
           </div>
         );
       })}
-      <button className="btn-add" onClick={add}>+ {t('add_link')}</button>
+      <Button variant="secondary" size="sm" onClick={add}>+ {t('add_link')}</Button>
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
       {pickerForId && <IconPickerModal selected={links.find(l => l.id === pickerForId)?.icon} onPick={(k) => { update(pickerForId, { icon: k }); setPickerForId(null); }} onClose={() => setPickerForId(null)} t={t} />}
 
-      <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
+      <AdminStyles />
       <style jsx>{`
         .link-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; max-width: 720px; flex-wrap: wrap; }
         .link-actions { display: flex; flex-direction: column; gap: 2px; }
@@ -1732,7 +1724,7 @@ function AppearanceEditor({ t, lang }) {
       </div>
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
-      <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
+      <AdminStyles />
       <style jsx>{`
         .preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: var(--space-5); max-width: 640px; }
         .preset { background: var(--bg-secondary); border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: 12px; cursor: pointer; text-align: center; transition: var(--transition); font-family: inherit; }
@@ -1889,10 +1881,7 @@ function AnalyticsEditor({ t, lang }) {
       {loading ? (
         <p className="hint">{t('loading')}</p>
       ) : events.length === 0 ? (
-        <div className="empty-cta">
-          <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
-          <p className="hint" style={{ marginBottom: 0 }}>{t('no_data_yet')}</p>
-        </div>
+        <EmptyState icon="📊" title={t('no_data_yet')} compact />
       ) : (
         <>
           <div className="stat-grid">
@@ -1935,7 +1924,7 @@ function AnalyticsEditor({ t, lang }) {
         </>
       )}
 
-      <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
+      <AdminStyles />
       <style jsx>{`
         .range-pills { direction: ltr; display: inline-flex; gap: 4px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; margin-bottom: var(--space-5); }
         .range-pills button { padding: 6px 12px; font-size: 12px; color: var(--text-tertiary); border-radius: 6px; background: none; border: none; cursor: pointer; font-family: inherit; }
@@ -1946,7 +1935,6 @@ function AnalyticsEditor({ t, lang }) {
         .chart-axis { direction: ltr; display: flex; justify-content: space-between; margin-top: 8px; font-size: 10px; color: var(--text-tertiary); }
         .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: var(--space-4); }
         @media (max-width: 720px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } .twocol { grid-template-columns: 1fr; } }
-        .empty-cta { padding: 48px 24px; text-align: center; border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); background: linear-gradient(180deg, rgba(79,110,242,0.04), transparent); max-width: 560px; }
       `}</style>
     </div>
   );
@@ -2058,10 +2046,17 @@ async function checkDomainDns(domain) {
   }
 }
 
+// `tone` maps onto the Badge primitive; `dot` is kept for the couple of places
+// that render the status inline inside a sentence rather than as a pill.
 function domainStatusMeta(status, ar) {
-  if (status === 'active') return { dot: '🟢', label: ar ? 'نشط' : 'Active' };
-  if (status === 'error') return { dot: '🔴', label: ar ? 'فشل' : 'Failed' };
-  return { dot: '🟡', label: ar ? 'بانتظار DNS' : 'Waiting for DNS' };
+  if (status === 'active') return { tone: 'success', dot: '🟢', label: ar ? 'نشط' : 'Active' };
+  if (status === 'error') return { tone: 'danger', dot: '🔴', label: ar ? 'فشل' : 'Failed' };
+  return { tone: 'warning', dot: '🟡', label: ar ? 'بانتظار DNS' : 'Waiting for DNS' };
+}
+
+function DomainStatusBadge({ status, ar }) {
+  const meta = domainStatusMeta(status, ar);
+  return <Badge tone={meta.tone} dot>{meta.label}</Badge>;
 }
 
 function DnsInstructions({ domain, ar, isOwner }) {
@@ -2187,64 +2182,58 @@ function DomainManager({ lang, isOwner }) {
   return (
     <div className="dm">
       {loading ? <div className="hint">…</div> : domains.length === 0 ? (
-        <div className="empty-cta">
-          <div className="empty-icon">🌐</div>
-          <div className="empty-title">{ar ? 'لا يوجد نطاق مخصص بعد' : 'No custom domain yet'}</div>
-          <p className="hint" style={{ maxWidth: 380, margin: '0 auto 14px', textAlign: 'center' }}>
-            {ar ? `موقعك متاح الآن على /${tenant.slug}. اربط نطاقك الخاص ليبدو احترافيًا أكثر.`
-                : `Your site is live at /${tenant.slug}. Connect your own domain to make it feel truly yours.`}
-          </p>
-        </div>
+        <EmptyState
+          icon="🌐"
+          title={ar ? 'لا يوجد نطاق مخصص بعد' : 'No custom domain yet'}
+          description={ar ? `موقعك متاح الآن على /${tenant.slug}. اربط نطاقك الخاص ليبدو احترافيًا أكثر.`
+                          : `Your site is live at /${tenant.slug}. Connect your own domain to make it feel truly yours.`}
+        />
       ) : (
         <div className="dm-list">
-          {domains.map((d) => {
-            const meta = domainStatusMeta(d.status, ar);
-            return (
-              <div key={d.id} className="dm-row">
-                <div className="dm-head">
-                  <span className="dm-name" dir="ltr">{d.domain}</span>
-                  {d.is_primary && <span className="dm-star" title={ar ? 'أساسي' : 'Primary'}>★</span>}
-                  <span className="dm-status">{meta.dot} {meta.label}</span>
-                </div>
-                <div className="dm-actions">
-                  <button type="button" className="btn-add" onClick={() => verify(d)} disabled={verifying === d.id}>
-                    {verifying === d.id ? '…' : (ar ? 'تحقّق' : 'Verify')}
-                  </button>
-                  <button type="button" className="btn-add" onClick={() => setOpenDns(openDns === d.domain ? null : d.domain)}>
-                    {ar ? 'تعليمات DNS' : 'DNS instructions'}
-                  </button>
-                  {!d.is_primary && <button type="button" className="btn-add" onClick={() => makePrimary(d.id)}>{ar ? 'اجعله أساسيًا' : 'Make primary'}</button>}
-                  <button type="button" className="x-small" onClick={() => removeDomain(d.id)} aria-label="remove">×</button>
-                </div>
-                {verifyMsg[d.id] && <div className="dm-msg">{verifyMsg[d.id]}</div>}
-                {openDns === d.domain && <DnsInstructions domain={d.domain} ar={ar} isOwner={isOwner} />}
+          {domains.map((d) => (
+            <Card key={d.id} pad="sm">
+              <div className="dm-head">
+                <span className="dm-name" dir="ltr">{d.domain}</span>
+                {d.is_primary && <span className="dm-star" title={ar ? 'أساسي' : 'Primary'}>★</span>}
+                <span className="dm-status"><DomainStatusBadge status={d.status} ar={ar} /></span>
               </div>
-            );
-          })}
+              <div className="dm-actions">
+                <Button variant="secondary" size="sm" onClick={() => verify(d)} loading={verifying === d.id}>
+                  {ar ? 'تحقّق' : 'Verify'}
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setOpenDns(openDns === d.domain ? null : d.domain)}>
+                  {ar ? 'تعليمات DNS' : 'DNS instructions'}
+                </Button>
+                {!d.is_primary && (
+                  <Button variant="secondary" size="sm" onClick={() => makePrimary(d.id)}>{ar ? 'اجعله أساسيًا' : 'Make primary'}</Button>
+                )}
+                <button type="button" className="x-small" onClick={() => removeDomain(d.id)} aria-label="remove">×</button>
+              </div>
+              {verifyMsg[d.id] && <div className="dm-msg">{verifyMsg[d.id]}</div>}
+              {openDns === d.domain && <DnsInstructions domain={d.domain} ar={ar} isOwner={isOwner} />}
+            </Card>
+          ))}
         </div>
       )}
 
       <form onSubmit={addDomain} className="dm-add">
         <input type="text" dir="ltr" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} placeholder="example.com" />
-        <button type="submit" className="ts-primary" disabled={busy}>{busy ? '…' : (ar ? 'ربط نطاق' : 'Connect domain')}</button>
+        <Button type="submit" loading={busy}>{ar ? 'ربط نطاق' : 'Connect domain'}</Button>
       </form>
       {err && <div className="ts-err">{err}</div>}
 
       <style jsx>{`
         .dm { max-width: 640px; }
         .dm-list { display: flex; flex-direction: column; gap: 10px; }
-        .dm-row { padding: 12px 14px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); }
         .dm-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .dm-name { font-size: 14px; font-weight: 600; word-break: break-all; }
+        .dm-name { font-size: var(--text-md); font-weight: 600; word-break: break-all; }
         .dm-star { color: var(--accent); }
-        .dm-status { font-size: 12px; color: var(--text-tertiary); margin-inline-start: auto; white-space: nowrap; }
+        .dm-status { margin-inline-start: auto; white-space: nowrap; }
         .dm-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
-        .dm-msg { margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+        .dm-msg { margin-top: 8px; font-size: var(--text-sm); color: var(--text-secondary); }
         .dm-add { display: flex; gap: 8px; margin-top: 12px; align-items: flex-start; flex-wrap: wrap; }
         .dm-add input { flex: 1; min-width: 180px; }
-        .ts-primary { padding: 10px 18px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; min-height: 44px; }
-        .ts-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-        .ts-err { padding: 8px 12px; background: rgba(255,80,80,0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
+        .ts-err { padding: 8px 12px; background: var(--danger-bg); color: var(--danger); border-radius: var(--radius-md); font-size: var(--text-sm); margin-top: 8px; }
       `}</style>
     </div>
   );
@@ -2425,9 +2414,9 @@ function TenantAdminSection({ session, lang }) {
         </Field>
         {createErr && <div className="ts-err">{createErr}</div>}
         {createMsg && <div className="ts-ok">{createMsg} ✓</div>}
-        <button type="submit" className="ts-primary" disabled={creating} style={{ marginTop: 12 }}>
-          {creating ? '...' : (ar ? 'إنشاء مساحة' : 'Create workspace')}
-        </button>
+        <Button type="submit" loading={creating} style={{ marginTop: 12 }}>
+          {ar ? 'إنشاء مساحة' : 'Create workspace'}
+        </Button>
       </form>
 
       {tenant && (
@@ -2441,10 +2430,10 @@ function TenantAdminSection({ session, lang }) {
               <input id="ws-slug" type="text" dir="ltr" value={wsSlug} onChange={(e) => setWsSlug(e.target.value)} />
             </Field>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
-              <button type="submit" className="ts-primary" disabled={wsBusy}>{wsBusy ? '...' : (ar ? 'حفظ' : 'Save')}</button>
-              <button type="button" className="btn-add" onClick={toggleStatus} disabled={wsBusy}>
+              <Button type="submit" loading={wsBusy}>{ar ? 'حفظ' : 'Save'}</Button>
+              <Button variant="secondary" size="sm" onClick={toggleStatus} disabled={wsBusy}>
                 {tenant.status === 'disabled' ? (ar ? 'إعادة التفعيل' : 'Reactivate') : (ar ? 'تعليق المساحة' : 'Suspend workspace')}
-              </button>
+              </Button>
             </div>
           </form>
           {wsErr && <div className="ts-err">{wsErr}</div>}
@@ -2466,9 +2455,9 @@ function TenantAdminSection({ session, lang }) {
           </Field>
           {invErr && <div className="ts-err">{invErr}</div>}
           {invMsg && <div className="ts-ok">{invMsg} ✓</div>}
-          <button type="submit" className="ts-primary" disabled={invBusy} style={{ marginTop: 12 }}>
-            {invBusy ? '...' : (ar ? 'إرسال الدعوة' : 'Send invite')}
-          </button>
+          <Button type="submit" loading={invBusy} style={{ marginTop: 12 }}>
+            {ar ? 'إرسال الدعوة' : 'Send invite'}
+          </Button>
         </form>
       ) : (
         <div className="hint">{ar ? 'اختر مساحة من الأعلى.' : 'Select a workspace at the top.'}</div>
@@ -2481,7 +2470,7 @@ function TenantAdminSection({ session, lang }) {
       {tenant ? (
         <form onSubmit={assignAdmin} style={{ display: 'flex', gap: 8, maxWidth: 500, alignItems: 'flex-start' }}>
           <input type="text" dir="ltr" value={adminUser} onChange={(e) => setAdminUser(e.target.value)} placeholder={ar ? 'اسم المستخدم' : 'username'} />
-          <button type="submit" className="btn-add" disabled={assigning}>{assigning ? '...' : (ar ? 'منح' : 'Grant')}</button>
+          <Button type="submit" variant="secondary" size="sm" loading={assigning}>{ar ? 'منح' : 'Grant'}</Button>
         </form>
       ) : (
         <div className="hint">{ar ? 'اختر مساحة من الأعلى.' : 'Select a workspace at the top.'}</div>
@@ -2498,8 +2487,6 @@ function TenantAdminSection({ session, lang }) {
       <DomainManager lang={lang} isOwner={isOwner} />
 
       <style jsx>{`
-        .ts-primary { padding: 10px 18px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(79,110,242,0.25); font-family: inherit; }
-        .ts-primary:disabled { opacity: 0.6; cursor: not-allowed; }
         .ts-err { padding: 8px 12px; background: rgba(255,80,80,0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
         .ts-ok { padding: 8px 12px; background: rgba(125,211,125,0.1); color: #7dd37d; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
       `}</style>
@@ -2529,16 +2516,16 @@ function ClientOnboardingChecklist({ items, labels, onNavigate, ar }) {
   return (
     <div className="ck">
       {items.map((it) => (
-        <button key={it.key} type="button" className={`ck-item ${it.done ? 'done' : ''}`} onClick={() => onNavigate(it.tab)}>
+        <Card key={it.key} as="button" interactive pad="none" className={`ck-item ${it.done ? 'done' : ''}`} onClick={() => onNavigate(it.tab)}>
           <span className="ck-box">{it.done ? '✓' : ''}</span>
           <span className="ck-label">{labels[it.key]}</span>
           <span className="ck-arrow">{ar ? '‹' : '›'}</span>
-        </button>
+        </Card>
       ))}
       <style jsx>{`
         .ck { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
-        .ck-item { display: flex; align-items: center; gap: 12px; width: 100%; text-align: start; padding: 13px 14px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; font-family: inherit; font-size: 14px; color: var(--text-primary); transition: var(--transition); min-height: 48px; }
-        .ck-item:hover { border-color: var(--border-strong); }
+        /* surface comes from Card; only the row layout is local */
+        .ck-item { display: flex; align-items: center; gap: 12px; padding: 13px 14px; font-size: var(--text-md); min-height: 48px; }
         .ck-box { width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; border: 1.5px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font-size: 13px; color: #fff; }
         .ck-item.done .ck-box { background: var(--accent); border-color: var(--accent); }
         .ck-item.done .ck-label { color: var(--text-tertiary); text-decoration: line-through; }
@@ -2597,26 +2584,30 @@ function ClientHome({ lang, onNavigate }) {
       <p className="hint">{ar ? 'موقعك جاهز ومباشر. أكمل الخطوات التالية لجعله رائعًا.' : 'Your website is ready and live. Complete the steps below to make it shine.'}</p>
 
       <div className="ch-grid">
-        <div className="ch-card">
+        <Card pad="sm" className="ch-card">
           <div className="ch-label">{ar ? 'حالة الموقع' : 'Website status'}</div>
-          <div className="ch-status">{active ? '🟢' : '🔴'} {active ? (ar ? 'مباشر' : 'Active') : (ar ? 'معلّق' : 'Suspended')}</div>
-        </div>
-        <div className="ch-card">
+          <div className="ch-status">
+            <Badge tone={active ? 'success' : 'danger'} dot>
+              {active ? (ar ? 'مباشر' : 'Active') : (ar ? 'معلّق' : 'Suspended')}
+            </Badge>
+          </div>
+        </Card>
+        <Card pad="sm" className="ch-card">
           <div className="ch-label">{ar ? 'رابط موقعك' : 'Your website'}</div>
           <a className="ch-url" href={publicUrl} target="_blank" rel="noopener noreferrer" dir="ltr">{primary ? primary.domain : slugUrl}</a>
           {primary ? (
-            <div className="ch-sub">{domainStatusMeta(primary.status, ar).dot} {domainStatusMeta(primary.status, ar).label}</div>
+            <div className="ch-sub"><DomainStatusBadge status={primary.status} ar={ar} /></div>
           ) : (
             <button type="button" className="ch-link" onClick={() => onNavigate('account')}>
               {ar ? 'اربط نطاقك المخصص ←' : 'Connect a custom domain →'}
             </button>
           )}
-        </div>
-        <div className="ch-card">
+        </Card>
+        <Card pad="sm" className="ch-card">
           <div className="ch-label">{ar ? 'الاكتمال' : 'Completion'}</div>
           <div className="ch-status">{loading ? '—' : `${setup.percent}%`}</div>
           <div className="ch-bar"><div className="ch-bar-fill" style={{ width: `${loading ? 0 : setup.percent}%` }} /></div>
-        </div>
+        </Card>
       </div>
 
       <h2>{ar ? 'إجراءات سريعة' : 'Quick actions'}</h2>
@@ -2630,10 +2621,10 @@ function ClientHome({ lang, onNavigate }) {
       <h2>{ar ? 'أكمل موقعك' : 'Complete your website'} <span className="meta">· {loading ? '…' : `${setup.done}/${setup.total}`}</span></h2>
       {!loading && <ClientOnboardingChecklist items={setup.items} labels={LABELS} onNavigate={onNavigate} ar={ar} />}
 
-      <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
+      <AdminStyles />
       <style jsx>{`
         .ch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; max-width: 640px; margin-bottom: var(--space-5); }
-        .ch-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; }
+        /* surface comes from Card */
         .ch-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 6px; }
         :global(html[dir="rtl"]) .ch-label { text-transform: none; letter-spacing: normal; }
         .ch-status { font-size: 18px; font-weight: 700; }
@@ -2695,30 +2686,29 @@ function OwnerClientsOverview({ lang, onOpen }) {
       ) : (
         <div className="cl-list">
           {rows.map((r) => (
-            <button key={r.id} type="button" className="cl-row" onClick={() => onOpen(r.id)}>
+            <Card key={r.id} as="button" interactive pad="none" className="cl-row" onClick={() => onOpen(r.id)}>
               <div className="cl-main">
                 <div className="cl-name">{r.name}</div>
                 <div className="cl-domain" dir="ltr">
                   {r.domainStatus ? `${domainStatusMeta(r.domainStatus, ar).dot} ` : ''}{r.domain}{r.isPrimary ? ' ★' : ''}
                 </div>
               </div>
-              <span className={`cl-badge ${r.status === 'disabled' ? 'off' : 'on'}`}>{r.status === 'disabled' ? (ar ? 'معلّق' : 'Suspended') : (ar ? 'نشط' : 'Active')}</span>
+              <Badge tone={r.status === 'disabled' ? 'danger' : 'success'}>
+                {r.status === 'disabled' ? (ar ? 'معلّق' : 'Suspended') : (ar ? 'نشط' : 'Active')}
+              </Badge>
               <span className="cl-pct">{r.percent}%</span>
-            </button>
+            </Card>
           ))}
         </div>
       )}
-      <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
+      <AdminStyles />
       <style jsx>{`
         .cl-list { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
-        .cl-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: start; padding: 14px 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; font-family: inherit; color: var(--text-primary); transition: var(--transition); min-height: 56px; }
-        .cl-row:hover { border-color: var(--border-strong); }
+        /* surface comes from Card; only the row layout is local */
+        .cl-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; min-height: 56px; }
         .cl-main { flex: 1; min-width: 0; }
         .cl-name { font-size: 14px; font-weight: 600; }
         .cl-domain { font-size: 12px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .cl-badge { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; flex-shrink: 0; }
-        .cl-badge.on { background: rgba(125,211,125,0.14); color: #7dd37d; }
-        .cl-badge.off { background: rgba(255,80,80,0.14); color: #ff8080; }
         .cl-pct { font-size: 13px; font-weight: 700; color: var(--accent); min-width: 42px; text-align: end; flex-shrink: 0; }
       `}</style>
     </div>
@@ -2858,25 +2848,22 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
         </Field>
         {pwdErr && <div className="err">{pwdErr}</div>}
         {pwdMsg && <div className="ok">{pwdMsg} ✓</div>}
-        <button type="submit" className="btn-primary-inline" disabled={pwdLoading} style={{ marginTop: 12 }}>{pwdLoading ? '...' : t('update_password')}</button>
+        <Button type="submit" loading={pwdLoading} style={{ marginTop: 12 }}>{t('update_password')}</Button>
       </form>
 
       <h2 style={{ color: '#ff8080', marginTop: 48 }}>{t('danger_zone')}</h2>
       <div className="danger-card">
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>{t('delete_portfolio_desc')}</div>
-        <button type="button" className="danger-btn" onClick={deletePortfolio}>{t('delete_portfolio')}</button>
+        <Button variant="danger" size="sm" onClick={deletePortfolio}>{t('delete_portfolio')}</Button>
       </div>
 
-      <EditorStyles /><CardEditorStyles /><SharedAdminStyles />
+      <AdminStyles />
       <style jsx>{`
         .user-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); max-width: 500px; margin-bottom: var(--space-5); }
         .avatar-lg { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #4f6ef2, #2d47a8); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #fff; }
         .user-name { font-size: 14px; font-weight: 600; }
         .user-email { font-size: 12px; color: var(--text-tertiary); }
-        .btn-primary-inline { padding: 10px 18px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border: none; border-radius: var(--radius-md); font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(79,110,242,0.25); font-family: inherit; }
         .danger-card { padding: 16px; background: rgba(255,80,80,0.05); border: 1px solid rgba(255,80,80,0.2); border-radius: var(--radius-md); max-width: 500px; }
-        .danger-btn { padding: 8px 14px; background: rgba(255, 80, 80, 0.1); color: #ff8080; border: 1px solid rgba(255,80,80,0.3); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; font-family: inherit; }
-        .danger-btn:hover { background: rgba(255, 80, 80, 0.18); }
         .err { padding: 8px 12px; background: rgba(255,80,80,0.1); color: #ff8080; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
         .ok { padding: 8px 12px; background: rgba(125,211,125,0.1); color: #7dd37d; border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
       `}</style>
@@ -2955,7 +2942,6 @@ function ImageUpload({ value, onUpload, onClear, aspect, hint, t }) {
         .upload { display: inline-flex; align-items: center; padding: 10px 16px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; transition: var(--transition); }
         .upload:hover { border-color: var(--border-strong); background: var(--bg-hover); }
         .upload input { display: none; }
-        .img-hint { font-size: 11px; color: var(--text-muted); line-height: 1.5; max-width: 360px; text-align: start; }
       `}</style>
     </div>
   );
@@ -3084,15 +3070,18 @@ function MultiImageUpload({ images, onUpload, onRemove, hint, t }) {
         .add { width: 90px; height: 90px; background: var(--bg-elevated); border: 1.5px dashed var(--border-strong); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--text-tertiary); cursor: pointer; transition: var(--transition); }
         .add:hover { border-color: var(--accent); color: var(--accent); }
         input { display: none; }
-        .img-hint { font-size: 11px; color: var(--text-muted); line-height: 1.5; max-width: 360px; text-align: start; }
       `}</style>
     </div>
   );
 }
 
-function EditorStyles() {
+// One global stylesheet for the admin. Previously EditorStyles +
+// CardEditorStyles + SharedAdminStyles, which were always mounted together at
+// all 10 render sites — so they were three components doing one component's job.
+function AdminStyles() {
   return (
     <style jsx global>{`
+      /* ---- Editor chrome — headings, inputs, the "start here" callout ---- */
       .editor h1 { font-size: 24px; font-weight: 700; margin-bottom: var(--space-5); letter-spacing: -0.01em; }
       .start-here { position: relative; margin: 0 0 var(--space-6); padding: 16px 18px; background: linear-gradient(180deg, rgba(79,110,242,0.12), rgba(79,110,242,0.04)); border: 1px solid rgba(79,110,242,0.3); border-radius: var(--radius-md); max-width: 520px; }
       .start-here strong { display: block; font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
@@ -3113,13 +3102,8 @@ function EditorStyles() {
           max-width: 100%; padding: 12px 14px; font-size: 16px; /* 16px prevents iOS zoom on focus */
         }
       }
-    `}</style>
-  );
-}
-
-function CardEditorStyles() {
-  return (
-    <style jsx global>{`
+      /* ---- Repeating row/card patterns shared by the list editors ---- */
+      .img-hint { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.5; max-width: 360px; text-align: start; }
       .editor .hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-4); max-width: 560px; line-height: 1.5; }
       .editor .meta { font-size: 11px; color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-inline-start: 6px; }
       .editor h2 { margin-top: var(--space-6); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: var(--space-3); }
@@ -3141,7 +3125,6 @@ function CardEditorStyles() {
         .row-grid-2 { grid-template-columns: 1fr; }
         .card-row { padding: var(--space-3); }
         .card-row .x-small, .x-small { width: 36px; height: 36px; font-size: 14px; }
-        .btn-add { padding: 12px 16px; font-size: 14px; min-height: 44px; }
       }
       .banner-preview { margin-top: var(--space-3); border-radius: var(--radius-md); padding: 28px 20px; text-align: center; min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
       .banner-text { font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif; font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 4px; line-height: 1.2; }
@@ -3149,15 +3132,7 @@ function CardEditorStyles() {
       .brand-mini { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: rgba(var(--on-bg),0.92); background: rgba(var(--on-bg),0.05); border: 1px solid rgba(var(--on-bg),0.07); border-radius: 7px; cursor: pointer; font-family: inherit; }
       .brand-mini svg { width: 15px; height: 15px; fill: currentColor; }
       .brand-mini:hover { background: rgba(var(--on-bg),0.08); }
-      .btn-add { padding: 8px 14px; background: var(--bg-elevated); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; font-family: inherit; }
-      .btn-add:hover { border-color: var(--border-strong); }
-    `}</style>
-  );
-}
-
-function SharedAdminStyles() {
-  return (
-    <style jsx global>{`
+      /* ---- Toggle rows + switches ---- */
       .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
       .toggle-row:last-child { border-bottom: none; }
       .switch { width: 36px; height: 20px; background: var(--bg-elevated); border-radius: 20px; position: relative; cursor: pointer; border: 1px solid var(--border); flex-shrink: 0; padding: 0; transition: var(--transition); }

@@ -213,8 +213,8 @@ export function ConfirmProvider({ children }) {
               border-color: var(--border-strong);
             }
             .cancel:hover { background: var(--bg-hover); color: var(--text-primary); }
-            .ok { background: var(--accent); color: var(--accent-fg); }
-            .ok:hover:not(:disabled) { background: var(--accent-hover); }
+            .ok { background: var(--accent-gradient); color: var(--accent-fg); }
+            .ok:hover:not(:disabled) { background: var(--accent-gradient-hover); }
             .danger .ok { background: var(--danger); color: var(--danger-fg); }
             .danger .ok:hover:not(:disabled) { background: #ff9a9a; }
 
