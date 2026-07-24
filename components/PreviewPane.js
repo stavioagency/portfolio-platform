@@ -40,16 +40,29 @@ export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en'
     const stage = stageRef.current;
     if (!stage) return;
     const avail = stage.clientWidth - 24; // breathing room inside the stage padding
-    const next = Math.min(1, avail / DEVICES[device].w);
-    setScale(next > 0 ? next : 1);
+    // While the pane is display:none (below the desktop breakpoint) clientWidth is
+    // 0. Bail instead of computing a bogus scale — otherwise crossing into the
+    // two-column layout leaves the frame at scale(1) and the preview looks cropped.
+    if (avail <= 0) return;
+    setScale(Math.min(1, avail / DEVICES[device].w));
   }, [device]);
 
-  useLayoutEffect(() => { measure(); }, [measure]);
+  // Re-measure on every state transition too (loading -> ready -> error swaps the
+  // stage contents), so the frame can never be left at a stale scale.
+  useLayoutEffect(() => { measure(); }, [measure, status, src]);
   useEffect(() => {
-    if (typeof ResizeObserver === 'undefined' || !stageRef.current) return undefined;
-    const ro = new ResizeObserver(measure);
-    ro.observe(stageRef.current);
-    return () => ro.disconnect();
+    // Window resize is the fallback: a ResizeObserver does not report elements
+    // that are display:none, so crossing the breakpoint needs an explicit re-measure.
+    window.addEventListener('resize', measure);
+    let ro;
+    if (typeof ResizeObserver !== 'undefined' && stageRef.current) {
+      ro = new ResizeObserver(measure);
+      ro.observe(stageRef.current);
+    }
+    return () => {
+      window.removeEventListener('resize', measure);
+      if (ro) ro.disconnect();
+    };
   }, [measure]);
 
   // Whenever the target changes (save bump, retry, or tenant slug change), show the

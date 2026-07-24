@@ -1254,9 +1254,9 @@ function ProfileEditor({ t, lang }) {
           <div className="row-head">
             <span className="row-tag">{t('item_field')}</span>
             <div className="row-actions">
-              <button type="button" className="x-small" disabled={i === 0} onClick={() => moveCustomField(f.id, -1)}>↑</button>
-              <button type="button" className="x-small" disabled={i === profile.custom_fields.length - 1} onClick={() => moveCustomField(f.id, 1)}>↓</button>
-              <button type="button" className="x-small" onClick={() => removeCustomField(f.id)}>×</button>
+              <button type="button" className="x-small" aria-label={t('move_up')} disabled={i === 0} onClick={() => moveCustomField(f.id, -1)}>↑</button>
+              <button type="button" className="x-small" aria-label={t('move_down')} disabled={i === profile.custom_fields.length - 1} onClick={() => moveCustomField(f.id, 1)}>↓</button>
+              <button type="button" className="x-small" aria-label={t('remove')} onClick={() => removeCustomField(f.id)}>×</button>
             </div>
           </div>
           <div className="row-grid-2">
@@ -1467,9 +1467,9 @@ function BannerRow({ banner, lang, onChange, onRemove, onUp, onDown, canUp, canD
           <button type="button" className={banner.type === 'image' ? 'active' : ''} onClick={() => onChange({ type: 'image' })}>{t('banner_type_image')}</button>
         </div>
         <div className="row-actions">
-          <button type="button" className="x-small" disabled={!canUp} onClick={onUp}>↑</button>
-          <button type="button" className="x-small" disabled={!canDown} onClick={onDown}>↓</button>
-          <button type="button" className="x-small" onClick={onRemove}>×</button>
+          <button type="button" className="x-small" disabled={!canUp} onClick={onUp} aria-label={t('move_up')}>↑</button>
+          <button type="button" className="x-small" disabled={!canDown} onClick={onDown} aria-label={t('move_down')}>↓</button>
+          <button type="button" className="x-small" onClick={onRemove} aria-label={t('remove')}>×</button>
         </div>
       </div>
       {banner.type === 'text' ? (
@@ -1507,9 +1507,9 @@ function StatRow({ stat, lang, onChange, onRemove, onUp, onDown, canUp, canDown,
       <div className="row-head">
         <span className="row-tag">{t('item_stat')}</span>
         <div className="row-actions">
-          <button type="button" className="x-small" disabled={!canUp} onClick={onUp}>↑</button>
-          <button type="button" className="x-small" disabled={!canDown} onClick={onDown}>↓</button>
-          <button type="button" className="x-small" onClick={onRemove}>×</button>
+          <button type="button" className="x-small" disabled={!canUp} onClick={onUp} aria-label={t('move_up')}>↑</button>
+          <button type="button" className="x-small" disabled={!canDown} onClick={onDown} aria-label={t('move_down')}>↓</button>
+          <button type="button" className="x-small" onClick={onRemove} aria-label={t('remove')}>×</button>
         </div>
       </div>
       <div className="row-grid-2">
@@ -1530,14 +1530,14 @@ function ButtonRow({ btn, lang, onChange, onRemove, onUp, onDown, canUp, canDown
   return (
     <div className="card-row">
       <div className="row-head">
-        <button type="button" className="brand-mini" onClick={() => setPickerOpen(true)} title={t('pick_icon')}>
+        <button type="button" className="brand-mini" onClick={() => setPickerOpen(true)} title={t('pick_icon')} aria-label={t('pick_icon')}>
           {icon ? <svg viewBox="0 0 24 24"><path d={icon.path} /></svg> : '?'}
         </button>
         <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{icon?.label || t('pick_icon')}</span>
         <div className="row-actions">
-          <button type="button" className="x-small" disabled={!canUp} onClick={onUp}>↑</button>
-          <button type="button" className="x-small" disabled={!canDown} onClick={onDown}>↓</button>
-          <button type="button" className="x-small" onClick={onRemove}>×</button>
+          <button type="button" className="x-small" disabled={!canUp} onClick={onUp} aria-label={t('move_up')}>↑</button>
+          <button type="button" className="x-small" disabled={!canDown} onClick={onDown} aria-label={t('move_down')}>↓</button>
+          <button type="button" className="x-small" onClick={onRemove} aria-label={t('remove')}>×</button>
         </div>
       </div>
       <div className="row-grid-2">
@@ -1650,8 +1650,8 @@ function ProjectsEditor({ t, lang }) {
             return (
               <div key={p.id} className="project-row">
                 <div className="prow-actions">
-                  <button type="button" className="x-small" disabled={i === 0} onClick={() => move(p.id, -1)}>↑</button>
-                  <button type="button" className="x-small" disabled={i === projects.length - 1} onClick={() => move(p.id, 1)}>↓</button>
+                  <button type="button" className="x-small" aria-label={t('move_up')} disabled={i === 0} onClick={() => move(p.id, -1)}>↑</button>
+                  <button type="button" className="x-small" aria-label={t('move_down')} disabled={i === projects.length - 1} onClick={() => move(p.id, 1)}>↓</button>
                 </div>
                 <Card as="button" interactive pad="sm" className="prow-main" onClick={() => setEditing(p)}>
                   {p.cover_image
@@ -1850,19 +1850,23 @@ function LinksEditor({ t, lang }) {
         return (
           <div key={l.id} className="link-row">
             <div className="link-actions">
-              <button type="button" className="x-small" disabled={i === 0} onClick={() => move(l.id, -1)}>↑</button>
-              <button type="button" className="x-small" disabled={i === links.length - 1} onClick={() => move(l.id, 1)}>↓</button>
+              <button type="button" className="x-small" aria-label={t('move_up')} disabled={i === 0} onClick={() => move(l.id, -1)}>↑</button>
+              <button type="button" className="x-small" aria-label={t('move_down')} disabled={i === links.length - 1} onClick={() => move(l.id, 1)}>↓</button>
             </div>
-            <button type="button" className="brand" onClick={() => setPickerForId(l.id)} title={t('pick_icon')}>
+            <button type="button" className="brand" onClick={() => setPickerForId(l.id)} title={t('pick_icon')} aria-label={t('pick_icon')}>
               <svg viewBox="0 0 24 24"><path d={icon.path} /></svg>
             </button>
             <input className="input-sm" placeholder={icon.label} value={pick(l.label, lang)} onChange={(e) => update(l.id, { label: setLangValue(l.label, lang, e.target.value) })} style={{ width: 160 }} />
             <input className="input-sm" type="text" dir="ltr" placeholder="https://..." value={l.href || ''} onChange={(e) => update(l.id, { href: e.target.value })} style={{ flex: 1 }} />
-            <button type="button" className="x-small" onClick={() => remove(l.id)}>×</button>
+            <button type="button" className="x-small" aria-label={t('remove')} onClick={() => remove(l.id)}>×</button>
           </div>
         );
       })}
-      <Button variant="secondary" size="sm" onClick={add}>+ {t('add_link')}</Button>
+      {/* The empty state already offers "add a link", so this would sit right
+          underneath it as a duplicate control. Only show it once a list exists. */}
+      {!loading && links.length > 0 && (
+        <Button variant="secondary" size="sm" onClick={add}>+ {t('add_link')}</Button>
+      )}
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
       {pickerForId && <IconPickerModal selected={links.find(l => l.id === pickerForId)?.icon} onPick={(k) => { update(pickerForId, { icon: k }); setPickerForId(null); }} onClose={() => setPickerForId(null)} t={t} />}
@@ -1894,12 +1898,24 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
   const [q, setQ] = useState('');
   const filtered = BRAND_KEYS.filter(k => BRAND_ICONS[k].label.toLowerCase().includes(q.toLowerCase()) || k.includes(q.toLowerCase()));
   useEffect(() => { document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = ''; }; }, []);
+  // Escape must close the picker — it was mouse-only before.
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
   return (
     <div className="picker-bg" onClick={onClose}>
-      <div className="picker" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="picker"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('icon_picker_title')}
+      >
         <div className="picker-head">
           <h3>{t('icon_picker_title')}</h3>
-          <button onClick={onClose} className="picker-close" type="button">×</button>
+          <button onClick={onClose} className="picker-close" type="button" aria-label={t('close')}>×</button>
         </div>
         <input autoFocus placeholder={t('icon_picker_search')} value={q} onChange={(e) => setQ(e.target.value)} className="picker-search" />
         <div className="picker-grid">
@@ -2535,7 +2551,7 @@ function DomainManager({ lang, isOwner }) {
                 {!d.is_primary && (
                   <Button variant="secondary" size="sm" onClick={() => makePrimary(d.id)}>{ar ? 'اجعله أساسيًا' : 'Make primary'}</Button>
                 )}
-                <button type="button" className="x-small" onClick={() => removeDomain(d.id)} aria-label="remove">×</button>
+                <button type="button" className="x-small" onClick={() => removeDomain(d.id)} aria-label={ar ? 'إزالة النطاق' : 'Remove domain'}>×</button>
               </div>
               {verifyMsg[d.id] && <div className="dm-msg">{verifyMsg[d.id]}</div>}
               {openDns === d.domain && <DnsInstructions domain={d.domain} ar={ar} isOwner={isOwner} />}
@@ -3331,6 +3347,13 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
+  // Escape cancels the crop — it was mouse-only before.
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); onCancel(); } }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
   function onImageLoad(e) {
     const { naturalWidth, naturalHeight } = e.currentTarget;
     const c = centerCrop(makeAspectCrop({ unit: '%', width: 90 }, aspect || 1, naturalWidth, naturalHeight), naturalWidth, naturalHeight);
@@ -3363,10 +3386,16 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
 
   return (
     <div className="cm-bg" onClick={onCancel}>
-      <div className="cm" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="cm"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('crop_image')}
+      >
         <div className="cm-head">
           <h3>{t('crop_image')}</h3>
-          <button onClick={onCancel} className="cm-close" type="button">×</button>
+          <button onClick={onCancel} className="cm-close" type="button" aria-label={t('close')}>×</button>
         </div>
         <div className="cm-body">
           {src && (
