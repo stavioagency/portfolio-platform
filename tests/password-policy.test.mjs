@@ -12,6 +12,7 @@ import {
   passwordPolicyError,
   passwordByteLength,
   PASSWORD_MIN,
+  PASSWORD_MAX_CHARS,
   PASSWORD_MAX_BYTES,
 } from '../lib/password-policy.js';
 
@@ -39,36 +40,38 @@ test('length is reported before mismatch', () => {
   assert.equal(passwordPolicyError('abc', 'xyz'), 'password_too_short');
 });
 
-test('accepts a long ASCII password up to the bcrypt byte cap', () => {
-  const pwd = 'a'.repeat(PASSWORD_MAX_BYTES);
-  assert.equal(passwordByteLength(pwd), PASSWORD_MAX_BYTES);
+test('accepts exactly the maximum character length', () => {
+  const pwd = 'a'.repeat(PASSWORD_MAX_CHARS);
   assert.equal(passwordPolicyError(pwd, pwd), '');
 });
 
-test('rejects one byte past the bcrypt cap', () => {
-  const pwd = 'a'.repeat(PASSWORD_MAX_BYTES + 1);
+test('rejects one character past the maximum', () => {
+  const pwd = 'a'.repeat(PASSWORD_MAX_CHARS + 1);
   assert.equal(passwordPolicyError(pwd, pwd), 'password_too_long');
 });
 
-test('counts Arabic in BYTES, not characters', () => {
-  // 40 Arabic letters = 80 bytes: comfortably under a 72-CHARACTER cap but over
-  // the real 72-byte bcrypt limit. Counting characters here would let a silently
-  // truncated password through.
-  const arabic = 'ك'.repeat(40);
-  assert.equal(arabic.length, 40);
-  assert.equal(passwordByteLength(arabic), 80);
-  assert.equal(passwordPolicyError(arabic, arabic), 'password_too_long');
+test('a password-manager-length password is now rejected', () => {
+  // Documents the deliberate trade-off of the 20-char cap: generated passwords
+  // no longer fit. If this test ever fails, the cap was raised - that is fine.
+  const generated = 'xK9#mP2$vL7@qR4!wN6&';
+  assert.equal(generated.length, 20);
+  assert.equal(passwordPolicyError(generated, generated), '');
+  assert.equal(passwordPolicyError(generated + 'a', generated + 'a'), 'password_too_long');
 });
 
-test('an Arabic password within the byte cap is accepted', () => {
-  const arabic = 'ك'.repeat(30); // 60 bytes
-  assert.equal(passwordByteLength(arabic), 60);
+test('Arabic is counted in characters for the visible cap', () => {
+  const arabic = '\u0643'.repeat(PASSWORD_MAX_CHARS);
+  assert.equal(arabic.length, PASSWORD_MAX_CHARS);
+  assert.equal(passwordByteLength(arabic), PASSWORD_MAX_CHARS * 2);
   assert.equal(passwordPolicyError(arabic, arabic), '');
 });
 
-test('emoji count as their full byte width', () => {
-  assert.equal(passwordByteLength('😀'), 4);
-  assert.equal(passwordPolicyError('😀'.repeat(19), '😀'.repeat(19)), 'password_too_long');
+test('the bcrypt byte backstop still exists above the char cap', () => {
+  // 20 emoji is only 20 characters but 80 bytes - past bcrypt's 72-byte limit.
+  const emoji = '\u{1F600}'.repeat(20);
+  assert.equal(passwordByteLength(emoji), 80);
+  assert.ok(passwordByteLength(emoji) > PASSWORD_MAX_BYTES);
+  assert.equal(passwordPolicyError(emoji, emoji), 'password_too_long');
 });
 
 test('null and undefined are treated as empty, never throw', () => {

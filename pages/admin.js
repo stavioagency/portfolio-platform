@@ -7,7 +7,8 @@ import { getTranslator } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
 import { navGroups } from '../lib/admin-nav';
-import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_BYTES } from '../lib/password-policy';
+import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_CHARS } from '../lib/password-policy';
+import { parseLoginIdentifier } from '../lib/resolve-login';
 import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
@@ -273,10 +274,22 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
     e.preventDefault();
     setLoading(true); setError('');
     try {
-      const trimmed = username.trim().toLowerCase();
-      const { data: email, error: rpcError } = await supabase.rpc('get_email_for_username', { p_username: trimmed });
-      if (rpcError || !email) { setError(t('invalid_credentials')); return; }
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      const id = parseLoginIdentifier(username);
+      let email = null;
+      if (id.kind === 'email') {
+        email = id.value;
+      } else if (id.kind === 'username') {
+        const { data, error: rpcError } = await supabase.rpc('get_email_for_username', { p_username: id.value });
+        if (!rpcError) email = data || null;
+      }
+      // Always attempt the sign-in, even with no resolved email. Returning early
+      // on an unknown username answered far faster than a real password check,
+      // which leaked whether an account existed; letting Supabase reject it keeps
+      // both paths indistinguishable.
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: email || `${id.value || 'unknown'}@invalid.local`,
+        password,
+      });
       if (authError) setError(t('invalid_credentials'));
     } catch (err) {
       // network / unexpected failure — never leave the button stuck spinning
@@ -345,7 +358,7 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
         ) : (
           <>
             <p className="signin-hint">{t('sign_in_hint')}</p>
-            <label htmlFor="signin-username">{t('username')}</label>
+            <label htmlFor="signin-username">{t('username_or_email')}</label>
             <input id="signin-username" name="username" type="text" dir="ltr" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus autoComplete="username" spellCheck="false" autoCapitalize="off" />
             <label htmlFor="signin-password">{t('password')}</label>
             <input id="signin-password" name="password" type="password" dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
@@ -446,9 +459,9 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
           <>
             <p className="signin-hint">{t('set_new_password_hint')}</p>
             <label htmlFor="new-pwd">{t('new_password')}</label>
-            <input id="new-pwd" name="new-pwd" type="password" dir="ltr" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} required autoFocus autoComplete="new-password" minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_BYTES} />
+            <input id="new-pwd" name="new-pwd" type="password" dir="ltr" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} required autoFocus autoComplete="new-password" minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_CHARS} />
             <label htmlFor="confirm-pwd">{t('confirm_new_password')}</label>
-            <input id="confirm-pwd" name="confirm-pwd" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} required autoComplete="new-password" minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_BYTES} />
+            <input id="confirm-pwd" name="confirm-pwd" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} required autoComplete="new-password" minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_CHARS} />
             {error && <div className="error">{error}</div>}
             <Button type="submit" block loading={loading}>{loading ? t('saving') : t('set_new_password_button')}</Button>
           </>
@@ -3241,10 +3254,10 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
           <input id="pwd-cur" type="password" dir="ltr" value={curPwd} onChange={(e) => setCurPwd(e.target.value)} autoComplete="current-password" required />
         </Field>
         <Field id="pwd-new" label={t('new_password')}>
-          <input id="pwd-new" type="password" dir="ltr" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" required minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_BYTES} />
+          <input id="pwd-new" type="password" dir="ltr" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" required minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_CHARS} />
         </Field>
         <Field id="pwd-conf" label={t('confirm_new_password')}>
-          <input id="pwd-conf" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} autoComplete="new-password" required minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_BYTES} />
+          <input id="pwd-conf" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} autoComplete="new-password" required minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_CHARS} />
         </Field>
         {pwdErr && <div className="err">{pwdErr}</div>}
         {pwdMsg && <div className="ok">{pwdMsg} ✓</div>}
