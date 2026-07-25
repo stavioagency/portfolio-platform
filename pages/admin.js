@@ -7,11 +7,26 @@ import { getTranslator } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
 import { navGroups } from '../lib/admin-nav';
+import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_BYTES } from '../lib/password-policy';
 import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
 } from '../components/ui';
 import PreviewPane from '../components/PreviewPane';
+
+// A recovery link lands as `#...type=recovery...` and supabase-js STRIPS that hash
+// while it exchanges the token — which can happen before our onAuthStateChange
+// listener is subscribed, so the PASSWORD_RECOVERY event is easy to miss. Because
+// the link also creates a real session, missing it drops the user straight into the
+// dashboard and the reset link silently becomes a passwordless login. Read the hash
+// once at module load (before the client's async init clears it) and treat it as a
+// second, independent signal.
+const arrivedViaRecoveryLink = (() => {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hash || '';
+  const q = window.location.search || '';
+  return /(^|[#&?])type=recovery(&|$)/.test(h) || /(^|[&?])type=recovery(&|$)/.test(q);
+})();
 
 function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
 
@@ -111,7 +126,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [lang, setLangState] = useState('ar');
   const [theme, setThemeState] = useState('dark');
-  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(arrivedViaRecoveryLink);
   const t = getTranslator(lang);
 
   useEffect(() => {
@@ -120,10 +135,15 @@ export default function Admin() {
     applyLang(initial);
     try { setThemeState(localStorage.getItem('admin_theme') || 'dark'); } catch (e) {}
 
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
+    // A rejection here used to strand the admin on "Loading…" with no error and no
+    // way forward but a manual reload. Clear the flag either way and fall through
+    // to the sign-in form — the user gets a real error when they try to sign in.
+    // Deliberately no timeout backstop: force-clearing a slow-but-valid session
+    // restore would flash the sign-in form at an already-authenticated user.
+    supabase.auth.getSession()
+      .then(({ data }) => { setSession(data?.session ?? null); })
+      .catch((err) => { console.error('[auth] getSession failed:', err); })
+      .finally(() => { setLoading(false); });
     const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
       setSession(s);
@@ -393,18 +413,20 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+  const doneTimer = useRef(null);
+  useEffect(() => () => clearTimeout(doneTimer.current), []);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    if (newPwd.length < 8) { setError(t('password_too_short')); return; }
-    if (newPwd !== confirmPwd) { setError(t('password_mismatch')); return; }
+    const policyErr = passwordPolicyError(newPwd, confirmPwd);
+    if (policyErr) { setError(t(policyErr)); return; }
     setLoading(true);
     try {
       const { error: updateErr } = await supabase.auth.updateUser({ password: newPwd });
       if (updateErr) { setError(updateErr.message); return; }
       setDone(true);
-      setTimeout(() => onDone && onDone(), 1200);
+      doneTimer.current = setTimeout(() => onDone && onDone(), 1200);
     } catch (err) {
       console.error('[auth] set-password failed:', err);
       setError(t('save_failed'));
@@ -424,9 +446,9 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
           <>
             <p className="signin-hint">{t('set_new_password_hint')}</p>
             <label htmlFor="new-pwd">{t('new_password')}</label>
-            <input id="new-pwd" name="new-pwd" type="password" dir="ltr" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} required autoFocus autoComplete="new-password" />
+            <input id="new-pwd" name="new-pwd" type="password" dir="ltr" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} required autoFocus autoComplete="new-password" minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_BYTES} />
             <label htmlFor="confirm-pwd">{t('confirm_new_password')}</label>
-            <input id="confirm-pwd" name="confirm-pwd" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} required autoComplete="new-password" />
+            <input id="confirm-pwd" name="confirm-pwd" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} required autoComplete="new-password" minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_BYTES} />
             {error && <div className="error">{error}</div>}
             <Button type="submit" block loading={loading}>{loading ? t('saving') : t('set_new_password_button')}</Button>
           </>
@@ -3126,8 +3148,8 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
   async function updatePassword(e) {
     e.preventDefault();
     setPwdErr(''); setPwdMsg('');
-    if (newPwd.length < 8) { setPwdErr(t('password_too_short')); return; }
-    if (newPwd !== confirmPwd) { setPwdErr(t('password_mismatch')); return; }
+    const policyErr = passwordPolicyError(newPwd, confirmPwd);
+    if (policyErr) { setPwdErr(t(policyErr)); return; }
     setPwdLoading(true);
     try {
       const { error: reAuthErr } = await supabase.auth.signInWithPassword({ email: session.user.email, password: curPwd });
@@ -3219,10 +3241,10 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
           <input id="pwd-cur" type="password" dir="ltr" value={curPwd} onChange={(e) => setCurPwd(e.target.value)} autoComplete="current-password" required />
         </Field>
         <Field id="pwd-new" label={t('new_password')}>
-          <input id="pwd-new" type="password" dir="ltr" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" required />
+          <input id="pwd-new" type="password" dir="ltr" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" required minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_BYTES} />
         </Field>
         <Field id="pwd-conf" label={t('confirm_new_password')}>
-          <input id="pwd-conf" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} autoComplete="new-password" required />
+          <input id="pwd-conf" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} autoComplete="new-password" required minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_BYTES} />
         </Field>
         {pwdErr && <div className="err">{pwdErr}</div>}
         {pwdMsg && <div className="ok">{pwdMsg} ✓</div>}

@@ -242,6 +242,17 @@ These are blockers to a *clean* launch but are dashboard/manual steps only.
 
 ## 8. NOT DONE — DEFERRED (safe after launch) & TECH DEBT
 
+- **OPEN SECURITY ISSUE — `get_email_for_username` leaks emails to anonymous callers.**
+  The RPC is `SECURITY DEFINER` and `GRANT EXECUTE ... TO anon`
+  (`supabase-complete.sql:287-304`), so anyone can POST a username to
+  `/rest/v1/rpc/get_email_for_username` and get that account's real email back, with no
+  auth and no rate limit. It also confirms which usernames exist (email vs null). This
+  defeats the generic "invalid credentials" / "if an account exists" wording on the
+  login and forgot-password screens, which is otherwise done correctly. Not fixable by
+  tightening the frontend — the RPC is callable directly. Real fix: move the
+  username→email resolution server-side (an Edge Function that takes username+password
+  and signs in), then revoke `anon` execute. Deferred because it is an auth-flow
+  refactor, not a one-line change. Interim mitigation: Supabase Auth rate limits.
 - **Two loaders lack try/finally** (stuck-on-skeleton if the fetch throws):
   `ClientHome` (~admin.js:2909) and `OwnerClientsOverview` (~admin.js:3012). Both are
   read-only; self-heal on reload. Low risk. Left because Phase 7 brief was blockers-only.
