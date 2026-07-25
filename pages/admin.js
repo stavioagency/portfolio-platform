@@ -1065,27 +1065,36 @@ function useTenant() { return useContext(TenantContext); }
 const PreviewContext = createContext({ refresh: () => {} });
 function usePreview() { return useContext(PreviewContext); }
 
-// Tenant-scoped data helpers. When a tenant is selected we scope by tenant_id;
-// with no tenant we fall back to the legacy single-profile (id = 1) row so an
-// un-migrated / unmapped database behaves exactly as it does today.
+// Tenant-scoped data helpers.
+//
+// These used to fall back to the legacy single-profile (id = 1) row whenever no
+// tenant was selected. Once real clients existed that row belonged to one of
+// them, so "no tenant selected" silently meant "read and write a specific
+// client's live portfolio". Every helper below now REFUSES instead: if we cannot
+// say which tenant is being acted on, we do nothing. This mirrors the same rule
+// the public site follows (lib/tenant.js -> NO_TENANT -> 404).
+const NO_TENANT_ERROR = { message: 'No tenant selected' };
+
 function loadProfile(tenant, columns = '*') {
-  const q = supabase.from('profile').select(columns);
-  return (tenant ? q.eq('tenant_id', tenant.id) : q.eq('id', 1)).maybeSingle();
+  if (!tenant) return Promise.resolve({ data: null, error: NO_TENANT_ERROR });
+  return supabase.from('profile').select(columns).eq('tenant_id', tenant.id).maybeSingle();
 }
 function persistProfile(tenant, fields) {
-  // Update the existing row by tenant_id (no id=1 hardcode) once a tenant is
-  // selected; otherwise keep the legacy upsert. Note: this updates an EXISTING
-  // profile row — creating a brand-new tenant's profile needs Section C.
-  return tenant
-    ? supabase.from('profile').update(fields).eq('tenant_id', tenant.id)
-    : supabase.from('profile').upsert({ id: 1, ...fields });
+  // Updates an EXISTING profile row; creating a brand-new tenant's profile is
+  // part of the create-tenant flow, not this helper.
+  if (!tenant) return Promise.resolve({ data: null, error: NO_TENANT_ERROR });
+  return supabase.from('profile').update(fields).eq('tenant_id', tenant.id);
 }
 
-// Tenant-isolated storage path: a tenant's media lives under `t-<id>/`; legacy
-// (no tenant) keeps the flat filename so existing URLs and singleton mode are
-// unchanged. Files are still timestamped, so no cross-tenant overwrite is possible.
+// Tenant-isolated storage path: a tenant's media lives under `t-<id>/`. Returns
+// null rather than a bare filename when no tenant is selected — a flat path is
+// what the storage policies now refuse to write, and before those policies
+// existed it dropped the file into the shared root next to every other client's
+// images. Callers must check for null; throwing here would surface as an
+// unhandled rejection, since the upload handlers have no try/catch.
 function tenantStoragePath(tenant, name) {
-  return tenant ? `t-${tenant.id}/${name}` : name;
+  if (!tenant) return null;
+  return `t-${tenant.id}/${name}`;
 }
 
 // Slugs that would collide with real routes — a static route always wins over the
@@ -1212,6 +1221,7 @@ function ProfileEditor({ t, lang }) {
   }
   async function uploadImage(file) {
     const path = tenantStoragePath(tenant, `profile-${Date.now()}.${file.name.split('.').pop()}`);
+    if (!path) { toast.error(t('upload_failed')); return; }
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
     if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
@@ -1219,6 +1229,7 @@ function ProfileEditor({ t, lang }) {
   }
   async function uploadOgImage(file) {
     const path = tenantStoragePath(tenant, `og-${Date.now()}.${file.name.split('.').pop()}`);
+    if (!path) { toast.error(t('upload_failed')); return; }
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
     if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
@@ -1383,6 +1394,7 @@ function CardEditor({ t, lang }) {
   }
   async function uploadAsset(prefix, file) {
     const path = tenantStoragePath(tenant, `${prefix}-${Date.now()}.${file.name.split('.').pop()}`);
+    if (!path) { toast.error(t('upload_failed')); return; }
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
     if (error) { console.error(error); toast.error(t('upload_failed')); return null; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
@@ -1745,6 +1757,7 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
   }
   async function uploadCover(file) {
     const path = tenantStoragePath(tenant, `project-${data.id}-cover-${Date.now()}.${file.name.split('.').pop()}`);
+    if (!path) { toast.error(t('upload_failed')); return; }
     const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
     if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
@@ -1752,6 +1765,7 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
   }
   async function uploadGalleryImage(file) {
     const path = tenantStoragePath(tenant, `project-${data.id}-${Date.now()}.${file.name.split('.').pop()}`);
+    if (!path) { toast.error(t('upload_failed')); return; }
     const { error } = await supabase.storage.from('media').upload(path, file);
     if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
@@ -3192,11 +3206,15 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
     });
     if (!ok) return;
 
-    // Reset ONLY the currently selected tenant. In legacy mode (tenant = null) this
-    // falls through to the singleton branch and behaves exactly as it does today.
-    const tenantMode = !!tenant;
+    // Reset ONLY the currently selected tenant. With no tenant selected this used
+    // to run a "singleton" branch that deleted analytics_events and projects with
+    // .neq('id', 0) — a predicate every row matches, so it wiped EVERY tenant's
+    // projects and analytics, not just one profile — then blanked profile.id = 1,
+    // which belongs to a live client. Refuse instead: a destructive reset must
+    // name its target.
+    if (!tenant) { toast.error(t('save_failed')); return; }
 
-    // The fields a "reset" clears — identical in both modes.
+    // The fields a "reset" clears.
     const reset = {
       name: emptyBilingual(), tagline: emptyBilingual(), bio: emptyBilingual(),
       profile_image: '', brand_logo: '',
@@ -3204,17 +3222,10 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
       appearance: {}, sections: { bio: true, custom_fields: true, projects: true, links: true, lang_switcher: true },
     };
 
-    if (tenantMode) {
-      // Future multi-tenant: delete ONLY this tenant's rows. NEVER a global delete.
-      await supabase.from('analytics_events').delete().eq('tenant_id', tenant.id);
-      await supabase.from('projects').delete().eq('tenant_id', tenant.id);
-      await supabase.from('profile').update(reset).eq('tenant_id', tenant.id);
-    } else {
-      // Current singleton behavior — unchanged.
-      await supabase.from('analytics_events').delete().neq('id', 0);
-      await supabase.from('projects').delete().neq('id', 0);
-      await supabase.from('profile').update(reset).eq('id', 1);
-    }
+    // Delete ONLY this tenant's rows. NEVER an unscoped delete.
+    await supabase.from('analytics_events').delete().eq('tenant_id', tenant.id);
+    await supabase.from('projects').delete().eq('tenant_id', tenant.id);
+    await supabase.from('profile').update(reset).eq('tenant_id', tenant.id);
 
     toast.success(t('delete_done'));
     window.location.reload();
