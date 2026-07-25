@@ -2695,12 +2695,21 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
         },
       });
       if (error) {
-        let detail = error.message;
-        try { const b = await error.context?.json?.(); if (b?.error) detail = b.error; } catch (_) {}
-        setInvErr(detail || (ar ? 'فشلت الدعوة' : 'Invite failed'));
+        // The function returns BOTH a machine code ("invite_failed") and a
+        // `detail` carrying the real reason from Supabase. Showing only the code
+        // made every failure read as an unexplained "invite_failed" — including
+        // the email rate limit, which is the most common cause and the one an
+        // owner can actually act on. Prefer detail, fall back to the code.
+        let msg = error.message;
+        try {
+          const b = await error.context?.json?.();
+          if (b?.detail) msg = `${b.error || 'invite_failed'}: ${b.detail}`;
+          else if (b?.error) msg = b.error;
+        } catch (_) {}
+        setInvErr(msg || (ar ? 'فشلت الدعوة' : 'Invite failed'));
         return;
       }
-      if (data?.error) { setInvErr(data.error); return; }
+      if (data?.error) { setInvErr(data.detail ? `${data.error}: ${data.detail}` : data.error); return; }
       setInvEmail(''); setInvUser('');
       setInvMsg((ar ? 'تمت دعوة العميل' : 'Client invited') + (data?.user_created ? '' : ' ✓'));
     } catch (err) {
