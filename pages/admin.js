@@ -9,6 +9,7 @@ import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
 import { navGroups } from '../lib/admin-nav';
 import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_CHARS } from '../lib/password-policy';
 import { parseLoginIdentifier } from '../lib/resolve-login';
+import { compressImage, fileExtension, MAX_AVATAR_DIMENSION } from '../lib/image-compress';
 import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
@@ -1220,17 +1221,19 @@ function ProfileEditor({ t, lang }) {
     } finally { setSaving(false); }
   }
   async function uploadImage(file) {
-    const path = tenantStoragePath(tenant, `profile-${Date.now()}.${file.name.split('.').pop()}`);
+    const img = await compressImage(file, { maxDimension: MAX_AVATAR_DIMENSION });
+    const path = tenantStoragePath(tenant, `profile-${Date.now()}.${fileExtension(img)}`);
     if (!path) { toast.error(t('upload_failed')); return; }
-    const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
+    const { error } = await supabase.storage.from('media').upload(path, img, { upsert: true });
     if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     patch({ profile_image: data.publicUrl });
   }
   async function uploadOgImage(file) {
-    const path = tenantStoragePath(tenant, `og-${Date.now()}.${file.name.split('.').pop()}`);
+    const img = await compressImage(file);
+    const path = tenantStoragePath(tenant, `og-${Date.now()}.${fileExtension(img)}`);
     if (!path) { toast.error(t('upload_failed')); return; }
-    const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
+    const { error } = await supabase.storage.from('media').upload(path, img, { upsert: true });
     if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     patch({ seo: { ...profile.seo, og_image: data.publicUrl } });
@@ -1393,9 +1396,12 @@ function CardEditor({ t, lang }) {
     } finally { setSaving(false); }
   }
   async function uploadAsset(prefix, file) {
-    const path = tenantStoragePath(tenant, `${prefix}-${Date.now()}.${file.name.split('.').pop()}`);
+    // brand logos and favicons render tiny; banners are full-width.
+    const small = prefix === 'brand-logo' || prefix === 'favicon';
+    const img = await compressImage(file, small ? { maxDimension: MAX_AVATAR_DIMENSION } : undefined);
+    const path = tenantStoragePath(tenant, `${prefix}-${Date.now()}.${fileExtension(img)}`);
     if (!path) { toast.error(t('upload_failed')); return; }
-    const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
+    const { error } = await supabase.storage.from('media').upload(path, img, { upsert: true });
     if (error) { console.error(error); toast.error(t('upload_failed')); return null; }
     const { data } = supabase.storage.from('media').getPublicUrl(path);
     return data.publicUrl;
@@ -1756,17 +1762,19 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
     } finally { setSaving(false); }
   }
   async function uploadCover(file) {
-    const path = tenantStoragePath(tenant, `project-${data.id}-cover-${Date.now()}.${file.name.split('.').pop()}`);
+    const img = await compressImage(file);
+    const path = tenantStoragePath(tenant, `project-${data.id}-cover-${Date.now()}.${fileExtension(img)}`);
     if (!path) { toast.error(t('upload_failed')); return; }
-    const { error } = await supabase.storage.from('media').upload(path, file, { upsert: true });
+    const { error } = await supabase.storage.from('media').upload(path, img, { upsert: true });
     if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
     patch({ cover_image: urlData.publicUrl });
   }
   async function uploadGalleryImage(file) {
-    const path = tenantStoragePath(tenant, `project-${data.id}-${Date.now()}.${file.name.split('.').pop()}`);
+    const img = await compressImage(file);
+    const path = tenantStoragePath(tenant, `project-${data.id}-${Date.now()}.${fileExtension(img)}`);
     if (!path) { toast.error(t('upload_failed')); return; }
-    const { error } = await supabase.storage.from('media').upload(path, file);
+    const { error } = await supabase.storage.from('media').upload(path, img);
     if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
     patch({ images: [...(data.images || []), urlData.publicUrl] });
