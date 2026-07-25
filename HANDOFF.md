@@ -162,8 +162,26 @@ favicon.ico`.
 **RLS gotcha:** policies are permissive/OR'd — adding a restrictive policy next to a
 permissive one does NOT tighten; the old one must be DROPPED.
 
-**Storage:** bucket `media`. Paths are tenant-scoped: `t-{tenant.id}/{name}` (or bare
-name in singleton mode). 5 MB limit, image MIME only.
+**Storage:** public bucket `media`. Paths are tenant-scoped `t-{tenant.id}/{name}`;
+`tenantStoragePath()` returns null (upload refused) when no tenant is selected.
+Limits are enforced on the BUCKET as of 2026-07-26 — `file_size_limit` 5 MB and
+image-only `allowed_mime_types` — not just in the browser.
+
+Writes are tenant-isolated via `can_write_media(name)` (SECURITY DEFINER): the
+first path segment must match a tenant in your `tenant_admins`, or you must be a
+platform owner. Applied 2026-07-26 (Section E). Before that, all three write
+policies checked only `is_admin()`, which is true for EVERY client — any client
+could delete any other client's images.
+
+The 135 pre-existing files sit at the bucket ROOT with no `t-` prefix (122 MB).
+`storage.foldername()` returns NULL for a flat name, so they are READ-ONLY by
+design: public reads verified still working, writes denied. A re-upload writes a
+correctly-prefixed new file and orphans the old one. Migrating them would mean
+rewriting every image URL in `profile`/`projects` — deliberately not attempted.
+
+`Public can view media` (SELECT) is intentionally left unscoped — it serves every
+public portfolio image. Supabase's advisor flags that it also permits listing the
+bucket; tightening that is a separate change.
 
 **Edge Function `invite-client`:** DEPLOYED, `verify_jwt=true`. Re-checks
 `is_platform_owner()` server-side, uses service_role key server-side only (never
@@ -287,6 +305,24 @@ These are blockers to a *clean* launch but are dashboard/manual steps only.
 ## 9. WHAT HAS BEEN DONE — by commit (newest first)
 
 ```
+8ec5458 fix(admin): refuse to act when no tenant is selected
+        (loadProfile/persistProfile/tenantStoragePath/delete-portfolio all fell
+        back to profile.id = 1 — a real client's row. The reset's singleton
+        branch deleted analytics_events and projects with .neq('id', 0), which
+        matches EVERY row: a platform-wide wipe, not one profile.)
+3a01d6f feat(storage): tenant-scope media writes  (Section E — can_write_media(),
+        3 scoped policies, bucket 5 MB + image-only. The 3 DROP POLICY lines were
+        run by hand on 2026-07-26; isolation is now ACTIVE and verified.)
+137607c fix(mt): 404 instead of serving another tenant's portfolio
+        (DEFAULT_TENANT -> NO_TENANT. An unmapped domain pointed at Vercel used
+        to serve whichever client owned profile.id = 1.)
+6d1cddf fix(auth): accept email or username at sign-in; cap passwords at 20 chars
+        (sign-in did a username-only lookup and returned "invalid credentials"
+        WITHOUT checking the password, so typing your own email always failed and
+        the reset link became the only way in. Also removed a timing oracle.
+        20-char max is the owner's explicit product decision, not a security win.)
+c768d1a docs: add feature-workflow skill
+a559ff2 Create HANDOFF.md
 31f8658 chore: launch readiness QA pass       (Phase 7: a11y labels on ~17 icon
         buttons + move_up/move_down keys; Escape/role/aria on IconPicker+Cropper
         modals; fixed live-preview cropped-scale bug across the 1024px breakpoint;

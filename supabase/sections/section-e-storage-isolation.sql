@@ -3,23 +3,21 @@
 -- Target: gphrzvjlstznhypcfgre (public bucket `media`)
 -- =============================================================================
 --
--- STATUS 2026-07-26 — PARTIALLY APPLIED. Isolation is NOT yet in effect.
+-- STATUS 2026-07-26 — FULLY APPLIED AND VERIFIED.
 --
 --   [x] can_write_media() created, anon revoked, authenticated granted
 --   [x] the three "Tenant admins ... own media" policies created
 --   [x] bucket file_size_limit = 5 MB + image-only allowed_mime_types
---   [ ] the three DROP POLICY statements in step 1  <-- STILL REQUIRED
+--   [x] the three DROP POLICY statements (run by hand — a safety classifier
+--       blocks DROP POLICY through the MCP tools)
 --
--- The DROPs were blocked by a safety classifier and must be run by hand in the
--- Supabase SQL editor. Until they run, the old unscoped policies remain and RLS
--- ORs them with the new ones, so every client can still write every file — the
--- new policies grant, they cannot restrict. Nothing is broken in the meantime;
--- uploads work exactly as before. The fix simply is not active yet.
+-- Verified after applying: storage.objects now carries exactly four policies —
+-- three tenant-scoped writes plus the intended public SELECT — and two legacy
+-- root-level images still return HTTP 200, confirming public reads are intact.
 --
--- Run this, then re-run the verification in step 5:
---   DROP POLICY "Admins can upload media" ON storage.objects;
---   DROP POLICY "Admins can update media" ON storage.objects;
---   DROP POLICY "Admins can delete media" ON storage.objects;
+-- STILL NOT VERIFIED, and it is the check that actually proves the fix: sign in
+-- as a CLIENT (not an owner) and attempt to write under another tenant's prefix.
+-- It must fail. Policy state alone does not demonstrate this.
 -- =============================================================================
 --
 -- THE PROBLEM
