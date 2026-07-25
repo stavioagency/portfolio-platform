@@ -527,28 +527,45 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   }
   async function signOut() { await supabase.auth.signOut(); }
 
-  // Which tenants may this admin edit? Sourced from tenant_admins for the signed-in
-  // user. If nothing is mapped — or the tenant tables aren't readable — we stay in
-  // legacy single-profile mode (tenant = null), preserving today's behavior.
-  // Which tenants may this admin edit? Sourced from tenant_admins for the signed-in
-  // user. If nothing is mapped — or the tenant tables aren't readable — we stay in
-  // legacy single-profile mode (tenant = null), preserving today's behavior. Exposed
-  // via context so the Create-Tenant flow can refresh the list after onboarding.
+  // Which workspaces may this admin edit? Exposed via context so the Create-Tenant
+  // flow can refresh the list after onboarding.
+  //
+  // A PLATFORM OWNER gets every workspace; a client gets only their own mappings.
+  // The distinction matters because `tenant_admins` is readable ONLY for your own
+  // rows (RLS: tenant_admins_select_own, user_id = auth.uid()). Sourcing an
+  // owner's list from it meant each owner saw just the clients THEY had created —
+  // a co-owner's clients were invisible, which read as the two accounts being out
+  // of sync. `tenants` carries a public read policy, so no schema change is
+  // needed. RLS still governs every write; this only decides what is listed.
   const loadTenants = useCallback(async () => {
     try {
       const uid = session?.user?.id;
       if (!uid) return;
-      const { data, error } = await supabase
-        .from('tenant_admins')
-        .select('tenants ( id, slug, name, status )')
-        .eq('user_id', uid);
-      // A read failure here is a real misconfiguration (missing grant/policy), so keep
-      // it visible — but still fall back to legacy single-profile mode.
-      if (error) { console.error('[tenant] tenant_admins read failed:', error.message || error); return; }
-      if (!data) return;
+      // Ownership decides which query to run, so wait until it is known rather
+      // than briefly showing an owner the client-scoped list.
+      if (isOwner === null) return;
+
+      let rows;
+      if (isOwner) {
+        const { data, error } = await supabase
+          .from('tenants')
+          .select('id, slug, name, status');
+        if (error) { console.error('[tenant] tenants read failed:', error.message || error); return; }
+        rows = data;
+      } else {
+        const { data, error } = await supabase
+          .from('tenant_admins')
+          .select('tenants ( id, slug, name, status )')
+          .eq('user_id', uid);
+        // A read failure here is a real misconfiguration (missing grant/policy),
+        // so keep it visible.
+        if (error) { console.error('[tenant] tenant_admins read failed:', error.message || error); return; }
+        rows = (data || []).map(r => r.tenants);
+      }
+      if (!rows) return;
       // Keep disabled tenants in the ADMIN list — the owner must be able to see and
       // re-enable a suspended client. Public visibility is enforced by lib/tenant.js.
-      const list = data.map(r => r.tenants).filter(Boolean);
+      const list = rows.filter(Boolean);
       list.sort((a, b) => String(a.name || a.slug).localeCompare(String(b.name || b.slug)));
       setTenants(list);
       if (list.length === 0) { setTenant(null); return; }
@@ -557,7 +574,9 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
       const preferred = list.find(x => String(x.id) === String(stored)) || list[0];
       setTenant(prev => prev || preferred);
     } catch (e) { console.error('[tenant] tenant load error:', e); }
-  }, [session]);
+    // isOwner is a dependency, not just a read: it starts null and resolves
+    // asynchronously, so the list must reload once ownership is known.
+  }, [session, isOwner]);
 
   useEffect(() => { loadTenants(); }, [loadTenants]);
 
@@ -3205,11 +3224,19 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
   }
 
   async function deletePortfolio() {
-    // Same guard as before — the keyword must be typed exactly — but in-app.
+    // Refuse before the dialog, not after — asking someone to type DELETE and
+    // only then telling them nothing was selected is worse than not asking.
+    if (!tenant) { toast.error(t('save_failed')); return; }
+
+    // NAME the workspace being cleared. The selector at the top of the dashboard
+    // means the active workspace is often not the one you were last looking at,
+    // and the old dialog said only "delete portfolio" — so a mistimed switch
+    // wiped the wrong client's content with no warning that it was theirs.
+    const label = tenant.name || tenant.slug;
     const keyword = t('delete_portfolio_keyword');
     const ok = await confirm({
       title: t('delete_portfolio'),
-      description: t('delete_portfolio_warning'),
+      description: `${t('delete_portfolio_scope').replace('{name}', label)} ${t('delete_portfolio_warning')}`,
       requireText: keyword,
       requireTextLabel: t('type_to_confirm').replace('{word}', keyword),
       confirmLabel: t('delete'),
@@ -3218,13 +3245,11 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
     });
     if (!ok) return;
 
-    // Reset ONLY the currently selected tenant. With no tenant selected this used
-    // to run a "singleton" branch that deleted analytics_events and projects with
-    // .neq('id', 0) — a predicate every row matches, so it wiped EVERY tenant's
-    // projects and analytics, not just one profile — then blanked profile.id = 1,
-    // which belongs to a live client. Refuse instead: a destructive reset must
-    // name its target.
-    if (!tenant) { toast.error(t('save_failed')); return; }
+    // Reset ONLY the selected tenant (guarded above). This once had a "singleton"
+    // branch that deleted analytics_events and projects with .neq('id', 0) — a
+    // predicate every row matches, so it wiped EVERY tenant's projects and
+    // analytics, not just one profile — then blanked profile.id = 1, a live
+    // client's row. A destructive reset must name its target.
 
     // The fields a "reset" clears.
     const reset = {
