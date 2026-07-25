@@ -4,11 +4,12 @@
 // These cover the rules that keep tenants isolated on ONE deployment:
 //   * a mapped host resolves to its own tenant
 //   * a mapped host whose tenant is disabled must NOT fall back to the singleton
-//   * an UNmapped host still falls back to the singleton (today's production)
+//   * an UNmapped host resolves to NOTHING (404) - it must never fall back to
+//     another tenant's portfolio
 //   * slug fallback works when the host isn't mapped
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveTenant, resolveTenantByHost, normalizeHost, DEFAULT_TENANT } from '../lib/tenant.js';
+import { resolveTenant, resolveTenantByHost, normalizeHost, NO_TENANT } from '../lib/tenant.js';
 
 // Minimal fake of the supabase client surface the resolver actually uses.
 function makeSupabase({ domains = [], tenants = [] } = {}) {
@@ -71,13 +72,13 @@ test('mapped host with a DISABLED tenant is blocked, not defaulted', async () =>
   const supabase = makeSupabase({ domains: [{ domain: 'suspended.com', tenant: suspended }] });
   const t = await resolveTenant({ supabase, host: 'suspended.com' });
   assert.equal(t.mode, 'blocked');
-  assert.notEqual(t.mode, 'singleton');
+  assert.notEqual(t.mode, 'tenant');
 });
 
-test('UNmapped host still falls back to the singleton (production behavior)', async () => {
+test('UNmapped host resolves to nothing -> 404, never another tenant', async () => {
   const supabase = makeSupabase({ domains: [{ domain: 'acme.com', tenant: acme }] });
   const t = await resolveTenant({ supabase, host: 'not-mapped.com' });
-  assert.deepEqual(t, DEFAULT_TENANT);
+  assert.deepEqual(t, NO_TENANT);
 });
 
 test('neutral hosts (localhost / *.vercel.app) never match a domain', async () => {
@@ -93,18 +94,18 @@ test('slug fallback resolves when the host is not mapped', async () => {
   assert.equal(t.id, 'acme-uuid');
 });
 
-test('unknown slug falls back to the singleton', async () => {
+test('unknown slug resolves to nothing -> 404', async () => {
   const supabase = makeSupabase({ tenants: [acme] });
   const t = await resolveTenant({ supabase, host: 'localhost', slug: 'nope' });
-  assert.deepEqual(t, DEFAULT_TENANT);
+  assert.deepEqual(t, NO_TENANT);
 });
 
 test('a disabled tenant is not reachable by slug either', async () => {
   const supabase = makeSupabase({ tenants: [suspended] });
   const t = await resolveTenant({ supabase, host: 'localhost', slug: 'suspended-co' });
-  assert.deepEqual(t, DEFAULT_TENANT); // no tenant match -> caller 404s on an explicit slug
+  assert.deepEqual(t, NO_TENANT); // no tenant match -> caller 404s
 });
 
-test('no supabase client -> singleton (never throws)', async () => {
-  assert.deepEqual(await resolveTenant({}), DEFAULT_TENANT);
+test('no supabase client -> nothing (never throws)', async () => {
+  assert.deepEqual(await resolveTenant({}), NO_TENANT);
 });

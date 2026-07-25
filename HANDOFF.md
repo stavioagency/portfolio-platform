@@ -141,8 +141,20 @@ Legacy singleton mode = `tenant_id` null → falls back to `profile.id = 1`
 - `6b0ab503-a663-4014-9221-a2ede4611fde` — designakum
 - `24baae5a-93c6-4000-bcac-0ecb1c86e7ae` — f9f9
 
-**Current tenants (4):** `f9designer` (demo), `designakum` (official), `ahmad-demo`,
-`luma-studio`. Do NOT delete these when testing.
+**Current tenants (3):** `f9designer` — label "Faisal's Portfolio", 8 projects —
+`designakum` (official), `ahmad-demo` (4 projects). Do NOT delete these when testing.
+Deleted 2026-07-26 at the owner's request: `luma-studio` (demo), `dd` (test tenant),
+and the `www.f9designer.site` domain row.
+
+Note `tenants.name` is the ADMIN-FACING label only. The public site name lives in
+`profile.name` as bilingual JSON — for `f9designer` that is `{ar:"فيصل", en:"𝗙𝗔𝗜𝗦𝗔𝗟"}`
+(styled unicode, intentional). Renaming the label does not touch the public page.
+
+**Domain reality check (2026-07-26):** the `status` column in `tenant_domains` records
+what the app was told, NOT whether the domain resolves. Only `f9designer.site` has
+real DNS (→ Vercel `216.198.79.1`, not the `76.76.21.21` the in-app instructions give);
+it is nonetheless stored as `error`. `ahmad-demo.com` is stored `active` but has no DNS
+record at all. Verify with `dig` before believing this column.
 
 **Reserved slugs** (cannot be created): `admin, privacy, terms, api, _next, 404, 500,
 favicon.ico`.

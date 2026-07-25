@@ -53,8 +53,8 @@ export default function Home({ slug = null } = {}) {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [pageUrl, setPageUrl] = useState('');
-  // Resolved tenant id for analytics stamping. Null in singleton/default fallback
-  // (kept null so inserts behave exactly as before). Set once loadData resolves.
+  // Resolved tenant id for analytics stamping. Always set once the page renders —
+  // an unresolved tenant 404s before this is ever used.
   const [tenantId, setTenantId] = useState(null);
   const pageViewLogged = useRef(false);
 
@@ -74,48 +74,36 @@ export default function Home({ slug = null } = {}) {
 
   async function loadData() {
     try {
-      // Resolve the active tenant. Until the tenants/tenant_domains tables exist,
-      // this fails-safe to the singleton default, so the queries below behave
-      // exactly as they do today. (No slug/host routing is wired yet — Batch 4/5.)
+      // Resolve the active tenant by host, then by slug. Fails safe to NO_TENANT
+      // on any error, so a lookup failure 404s instead of guessing.
       const tenant = await resolveTenant({
         supabase,
         host: typeof window !== 'undefined' ? window.location.hostname : '',
         slug,
       });
-      const tenantMode = tenant.mode === 'tenant' && !!tenant.id;
-      // Stamp analytics with this tenant when resolved; null keeps singleton behavior.
-      setTenantId(tenantMode ? tenant.id : null);
+      // Anything we could not resolve to exactly one tenant is a 404 — a mapped
+      // host whose tenant is disabled ('blocked'), an explicit slug that does not
+      // exist, or a host that is not mapped at all ('none', which includes the
+      // bare Vercel URL). Tenants are separate sites: if we cannot say WHICH one
+      // was asked for, we must not render someone else's portfolio. This used to
+      // fall back to profile.id = 1, which served whichever client owned that row.
+      if (tenant.mode !== 'tenant' || !tenant.id) { setNotFound(true); return; }
 
-      // This host is mapped to a tenant that is disabled/missing -> 404. Never fall
-      // back to the singleton here, or a client's domain would show another
-      // tenant's portfolio.
-      if (tenant.mode === 'blocked') { setNotFound(true); return; }
-
-      // A slug route asked for a specific tenant that doesn't exist -> 404.
-      // (Don't fall back to the singleton for an explicit slug.) `/` has no slug,
-      // so it stays on the singleton path below.
-      if (slug && !tenantMode) { setNotFound(true); return; }
+      // Past this point a tenant is always resolved, so every read below is
+      // scoped to it and analytics are always stamped with a real tenant_id.
+      setTenantId(tenant.id);
 
       // --- Profile ---
-      let profileData;
-      if (tenantMode) {
-        // Future tenant path: one profile per tenant (needs the migration applied).
-        const { data } = await supabase.from('profile').select('*').eq('tenant_id', tenant.id).maybeSingle();
-        profileData = data;
-      } else {
-        // Current singleton behavior — unchanged.
-        const { data } = await supabase.from('profile').select('*').eq('id', 1).single();
-        profileData = data;
-      }
+      const { data: profileData } = await supabase
+        .from('profile').select('*').eq('tenant_id', tenant.id).maybeSingle();
 
       // --- Projects ---
-      let projectsQuery = supabase.from('projects').select('*');
-      if (tenantMode) projectsQuery = projectsQuery.eq('tenant_id', tenant.id); // future: scope to tenant
-      const { data: projectsData } = await projectsQuery.order('display_order', { ascending: true });
+      const { data: projectsData } = await supabase
+        .from('projects').select('*').eq('tenant_id', tenant.id)
+        .order('display_order', { ascending: true });
 
       // NOTE (mt): analytics inserts stamp `tenant_id` from the resolved tenant
-      // (see the page_view effect and logEvent). In singleton/default fallback
-      // tenantId stays null, so inserts behave exactly as before.
+      // (see the page_view effect and logEvent).
 
       if (profileData) {
         setProfile(profileData);
@@ -193,7 +181,7 @@ export default function Home({ slug = null } = {}) {
       user_agent: navigator.userAgent.slice(0, 200),
       visitor_id: getVisitorId(),
     };
-    if (tenantId) row.tenant_id = tenantId; // singleton fallback: tenantId null -> omitted
+    if (tenantId) row.tenant_id = tenantId; // always set here; guard kept for safety
     supabase.from('analytics_events').insert(row).then(() => {}).catch(() => {});
   }, [loading, tenantId]);
 
@@ -297,7 +285,7 @@ export default function Home({ slug = null } = {}) {
   function logEvent(payload) {
     if (typeof window === 'undefined') return;
     const row = { visitor_id: getVisitorId(), ...payload };
-    if (tenantId) row.tenant_id = tenantId; // singleton fallback: tenantId null -> omitted
+    if (tenantId) row.tenant_id = tenantId; // always set here; guard kept for safety
     supabase.from('analytics_events').insert(row).then(() => {}).catch(() => {});
   }
   function onCtaClick(btn) {
