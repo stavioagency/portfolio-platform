@@ -1,0 +1,347 @@
+# HANDOFF — Designakum Portfolio Platform
+
+_Last updated: 2026-07-24 · HEAD `31f8658` (branch `main`, all pushed) · working tree clean_
+
+This document lets a new chat / engineer continue without re-deriving context. Read
+sections 0–2 before touching anything.
+
+---
+
+## 0. CRITICAL ORIENTATION — read first
+
+**The code is NOT where the environment says it is.**
+
+- A new Claude Code session is told the working directory is
+  `/Users/feras/Downloads/portfolio-platform-main`. **That is the WRONG folder.**
+  It is a separate, older tree containing the marketing sites
+  (`marketing-site/`, `marketing-site-v2/`) and an old single-tenant copy of the
+  platform. Per prior user direction, that copy's `pages/`/`lib/` are off-limits.
+- **All real work lives here:**
+  `/Users/feras/Documents/GitHub/portfolio-platform-new/Portfolio Project`
+  (note the space in "Portfolio Project"). This is the git repo.
+  - Remote: `https://github.com/stavioagency/portfolio-platform.git` (`origin`)
+  - Branch: `main`, HEAD `31f8658`, **fully pushed**, tree clean.
+- **First action in a new chat:** `cd` into the GitHub path above. Everything below
+  is relative to it.
+
+**Two more environment gotchas:**
+- The in-app Browser pane historically could not open `localhost`, then later could.
+  If it can, the dev server needs env vars (below) or `/admin` 500s on
+  `supabaseUrl is required`. There is no `.env.local` in the GitHub copy.
+- There is a launch config entry `portfolio-project` in the **Downloads** copy's
+  `.claude/launch.json` that `cd`s into the GitHub path and runs `npm run dev`.
+
+---
+
+## 1. WHAT THIS IS
+
+A multi-tenant SaaS that builds **bilingual (Arabic/English) portfolio websites**
+for freelancers. Designakum (the "owner") onboards paying clients; each client
+("client"/"tenant") gets a private site + dashboard. **One** Next.js app + **one**
+Supabase project serve everyone. Tenant isolation is enforced by Postgres RLS, not
+the UI.
+
+- Brand: royal blue `#2C6FE0`; deep navy `#0C1530`.
+- Numerals: Latin in both locales.
+- WhatsApp: `+966 50 579 6218`. Domain TBD (placeholder `designakum.com`).
+- Pricing (marketing side, not in this app): 149.90 SAR; hidden code `F9SPECIAL` → 99.99.
+
+---
+
+## 2. TECH STACK & HARD CONSTRAINTS
+
+- **Next.js 14, Pages Router, plain JS** (no TypeScript, no tsconfig).
+- **styled-jsx** for all styling. **NO Tailwind, NO PostCSS config.**
+- **5 runtime deps only:** `@supabase/supabase-js`, `next`, `react`, `react-dom`,
+  `react-image-crop`. **No devDeps. Do not add dependencies** without explicit ask.
+- Design tokens are CSS custom properties in `styles/globals.css`.
+- Supabase: Postgres + Auth (GoTrue) + Storage + RLS + one Edge Function (Deno).
+- Tests: Node built-in runner. `npm test` → `node --test tests/*.test.mjs`.
+
+**Build (must set placeholder env or it fails):**
+```
+NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co" NEXT_PUBLIC_SUPABASE_ANON_KEY="x" npx next build
+```
+**Test:** `npm test` → currently **25 pass** (tenant 10, admin-nav 9, safe-url 6).
+
+---
+
+## 3. REPO MAP (every file that matters)
+
+```
+pages/
+  index.js        Public portfolio (CSR). Resolves tenant, loads data, renders site.
+                  Also the /  route. ~1215 lines. Contains safeUrl-guarded links,
+                  analytics page_view logging with ?preview=1 suppression.
+  [slug].js       Reuses <Home> from index.js, passes slug. This is the per-tenant
+                  public route (/{slug}). NO separate renderer.
+  admin.js        THE ENTIRE ADMIN. ~3551 lines. Every editor, the shell, nav,
+                  contexts, modals, SaveBar. See §5 for its internal structure.
+  privacy.js, terms.js   Static legal pages.
+  _app.js         imports styles/globals.css. _document.js  base HTML.
+
+components/
+  PreviewPane.js  Live-preview iframe (device frame, scaling, refresh, error/retry).
+  ui/
+    Button.js Card.js(+CardHeader) Badge.js Icon.js(+ICON_NAMES)
+    Input.js(+Hint) EmptyState.js Skeleton.js(+SkeletonText)
+    Toast.js(ToastProvider/useToast) ConfirmDialog.js(ConfirmProvider/useConfirm)
+    index.js  barrel export
+  NOTE dead exports (built, never used, tree-shaken): Input, Hint, SkeletonText,
+  ICON_NAMES. Also `CardHeader` is imported in admin.js but unused.
+
+lib/
+  supabase.js       createClient(url,key) from NEXT_PUBLIC_* env. No options.
+  tenant.js         PUBLIC resolver. resolveTenant/resolveTenantByHost/normalizeHost,
+                    DEFAULT_TENANT, BLOCKED_TENANT. Order: host(tenant_domains) →
+                    slug(tenants) → singleton fallback. Ignores tenant_domains.status.
+  admin-nav.js      navGroups({isOwner,ar,t}) — the grouped sidebar IA (pure data,
+                    extracted so it is unit-testable). Owner-only "clients",
+                    client-only "home" (labelled "Overview").
+  safe-url.js       safeUrl(raw) — XSS guard. Allowlist http/https/mailto/tel;
+                    bare host → https; rejects javascript:/data:/control-char smuggling.
+  translations.js   ar + en dictionaries. 271 keys each, PARITY VERIFIED. getTranslator.
+  i18n.js           pick / setLangValue / emptyBilingual (bilingual field helpers).
+  brand-icons.js    BRAND_ICONS / BRAND_KEYS / normalizeIcon (social icon paths).
+  legal-content.js  privacy/terms content.
+
+tests/
+  tenant.test.mjs      10 — resolver isolation rules.
+  admin-nav.test.mjs   9  — nav visibility (owner/client leaks).
+  safe-url.test.mjs    6  — XSS scheme blocking.
+
+supabase/
+  sections/section-c-and-onboarding.sql   Applied+verified in prod.
+  sections/section-d-owner-roles.sql      Applied+verified in prod (owner roles).
+  functions/invite-client/index.ts        Owner-only invite Edge Function (DEPLOYED).
+  AUDIT-AND-ROADMAP.md, PRODUCTION-AB-RUNBOOK.md   docs.
+```
+
+---
+
+## 4. DATABASE (Supabase project ref `gphrzvjlstznhypcfgre`, region ap-northeast-1)
+
+> There is a SECOND Supabase project `jswxevbghmbqumlccpfy` = "Finance App" =
+> Financial Manager. **OFF-LIMITS. Never touch it.**
+
+**8 tables (public schema):**
+`tenants`, `tenant_domains`, `tenant_admins`, `platform_owners`, `profile`,
+`projects`, `admin_usernames`, `analytics_events`.
+
+**Tenant model:** `profile`/`projects`/`analytics_events` carry a `tenant_id`.
+Legacy singleton mode = `tenant_id` null → falls back to `profile.id = 1`
+(preserved for backward compatibility; the app still supports it).
+
+**RLS functions (all SECURITY DEFINER):**
+`is_admin()`, `is_tenant_admin(uuid)`, `is_platform_owner()`,
+`get_email_for_username(text)`, `assign_tenant_admin(uuid,text)` (owner-only, role
+`client`).
+
+**Owner accounts (platform_owners.user_id):**
+- `6b0ab503-a663-4014-9221-a2ede4611fde` — designakum
+- `24baae5a-93c6-4000-bcac-0ecb1c86e7ae` — f9f9
+
+**Current tenants (4):** `f9designer` (demo), `designakum` (official), `ahmad-demo`,
+`luma-studio`. Do NOT delete these when testing.
+
+**Reserved slugs** (cannot be created): `admin, privacy, terms, api, _next, 404, 500,
+favicon.ico`.
+
+**RLS gotcha:** policies are permissive/OR'd — adding a restrictive policy next to a
+permissive one does NOT tighten; the old one must be DROPPED.
+
+**Storage:** bucket `media`. Paths are tenant-scoped: `t-{tenant.id}/{name}` (or bare
+name in singleton mode). 5 MB limit, image MIME only.
+
+**Edge Function `invite-client`:** DEPLOYED, `verify_jwt=true`. Re-checks
+`is_platform_owner()` server-side, uses service_role key server-side only (never
+client), creates auth user + `admin_usernames` row, maps via `assign_tenant_admin`.
+
+---
+
+## 5. admin.js INTERNAL STRUCTURE (it's one 3551-line file)
+
+- `Admin` (root) → mounts `ToastProvider` + `ConfirmProvider`, renders `SignIn` /
+  `SetNewPassword` / `Dashboard` by auth state.
+- `Dashboard` — the shell. Owns: `tenant`, `tenants`, `isOwner`, `activeTab`,
+  `previewToken`, `previewOrigin`, `previewOpen`. Renders sidebar (grouped nav via
+  `navGroups`), `<main>` with an editor/preview split.
+- Contexts: `DirtyContext` (unsaved-changes guard), `TenantContext` (`useTenant`),
+  `PreviewContext` (`usePreview` — `refresh()` to reload the preview).
+- Editors: `ClientHome`, `OwnerClientsOverview`, `ProfileEditor`, `CardEditor`,
+  `ProjectsEditor`, `ProjectEditForm`, `LinksEditor`, `AppearanceEditor`,
+  `AnalyticsEditor`, `AccountEditor`.
+- Owner/domain admin: `TenantAdminSection` (prop `part`: `'workspace'` under Account,
+  `'domains'` as its own tab), `DomainManager`, `DnsInstructions`.
+- Shared: `SaveBar` (detects save-success → calls `usePreview().refresh()`),
+  `Field`, `ImageUpload`, `CropperModal`, `MultiImageUpload`, `IconPickerModal`,
+  `SidebarUser`, `TenantSelector`, `NavItem`, `NavGroup`, style blocks.
+
+**Module-level helpers in admin.js:** `adminRedirectUrl()`, `loadProfile(tenant,cols)`,
+`persistProfile(tenant,fields)`, `tenantStoragePath(tenant,name)`, `computeSetup(...)`,
+`checkDomainDns(domain)` (8s AbortController timeout), `domainStatusMeta(status,ar)`,
+`uploadError(file)`, dialog builders `unsavedDialog/removeDialog/deleteDialog`,
+constants `RESERVED_SLUGS`, `VERCEL_A_RECORD='76.76.21.21'`,
+`VERCEL_CNAME='cname.vercel-dns.com'`, `MAX_UPLOAD_BYTES=5MB`.
+
+---
+
+## 6. ARCHITECTURE FACTS A NEW CHAT MUST KNOW
+
+- **Tenant resolution is client-side** in `index.js` via `resolveTenant`. `/{slug}`
+  renders that tenant; `/` uses host or singleton. No SSR/getServerSideProps.
+- **Live preview** = an iframe of the REAL public site at `${origin}/${slug}?preview=1`.
+  Refresh mechanism is a **query-param bump** on the SAME iframe element (not
+  postMessage, not remount, not router.refresh — Pages Router has none). ONE iframe,
+  reused. Chosen so public rendering is never touched.
+- **Save → preview refresh** is wired through the shared `SaveBar`: it detects a
+  successful save (`saving` true→false while `dirty` stays clear) and calls
+  `usePreview().refresh()`. **No editor knows the preview exists** — do not add refresh
+  calls into editors.
+- **Analytics/preview guard:** `index.js` skips the `page_view` insert when
+  `?preview=1` or when embedded in an iframe. This is the ONE deliberate touch to the
+  public page for telemetry hygiene (so owner preview loads don't inflate a tenant's
+  analytics).
+- **Light theme** is driven by `document.documentElement[data-admin-theme="light"|
+  "dark"]` set by Dashboard, with tokens in `globals.css`. Set at ROOT so overlays
+  (toasts, dialogs) rendered outside `.dashboard` inherit it. The dark theme also
+  locally overrides `--accent` to `#4f6ef2` inside `.dashboard`.
+- **safeUrl** guards all public link sinks (social anchor, CTA `window.open`, project
+  external_url, lightbox). Applied at RENDER, not at save (input is still stored raw).
+- **Async handlers** all use try/catch/finally so a network throw never leaves a
+  button stuck (fixed in Phase 6). EXCEPTIONS: two read-only loaders lack it — see §8.
+- **adminRedirectUrl()** returns one canonical origin for reset/invite emails:
+  `NEXT_PUBLIC_ADMIN_URL` → else localhost (dev) → else hardcoded vercel URL. See §7#1.
+
+---
+
+## 7. NOT DONE — "NEEDS YOU" (manual/external, no code). Ordered by priority.
+
+These are blockers to a *clean* launch but are dashboard/manual steps only.
+
+1. **Set `NEXT_PUBLIC_ADMIN_URL` in Vercel** (Production) = the real launch origin, no
+   trailing slash. Then REDEPLOY (NEXT_PUBLIC_* is build-time inlined). Without it,
+   password-reset/invite emails point at the hardcoded
+   `https://portfolio-platform-designakum.vercel.app`. **Must match** a Supabase Auth
+   Redirect URL.
+2. **Supabase → Auth → URL Configuration → Redirect URLs:** add `<that origin>/admin`.
+3. **Supabase → Auth:** enable leaked-password protection.
+4. **Per-client custom domain:** after adding a domain in-app, the owner must ALSO add
+   it in Vercel (project → Domains). The app does NOT automate Vercel DNS. DNS: apex
+   A `76.76.21.21`, subdomain CNAME `cname.vercel-dns.com`.
+5. **Run the full MANUAL QA pass** — nobody has clicked through the live product.
+   Arabic QA checklist artifact exists (see §11). The 3 critical security tests:
+   (a) a link saved as `javascript:alert(1)` must be inert on the public page;
+   (b) a client must not see the Clients screen or another tenant's data;
+   (c) repeated owner saves must NOT increment that tenant's analytics.
+6. **Backups:** confirm Supabase automatic daily backups are ON + retention; note DB
+   backups do NOT include Storage (`media` bucket / uploaded images) — 47+ image URLs
+   referenced. A verified manual data snapshot was taken (see §11).
+
+---
+
+## 8. NOT DONE — DEFERRED (safe after launch) & TECH DEBT
+
+- **Two loaders lack try/finally** (stuck-on-skeleton if the fetch throws):
+  `ClientHome` (~admin.js:2909) and `OwnerClientsOverview` (~admin.js:3012). Both are
+  read-only; self-heal on reload. Low risk. Left because Phase 7 brief was blockers-only.
+- **`analytics_events` query is unbounded** — `AnalyticsEditor.load()` selects all rows
+  for the range with no limit. Fine early; needs server-side aggregation before a
+  high-traffic tenant. NOT fixable without schema/RPC work.
+- **No client-side error reporting** — production errors go to `console.error` only,
+  invisible to you. Highest-value observability gap.
+- **No ESLint** configured (`next lint` only offers to scaffold).
+- **Dead code:** `components/ui/Input.js` (Input+Hint), `SkeletonText`, `ICON_NAMES`,
+  and the unused `CardHeader` import in admin.js. Tree-shaken, zero runtime cost.
+- **`pages/admin.js` is 3551 lines** — splitting it is a real refactor, out of scope
+  every phase so far.
+- **No focus trap** in `IconPickerModal`/`CropperModal` (they DO have Escape + roles +
+  labels as of Phase 7; `ConfirmDialog` has a full trap).
+- **Restore drill** never done — test restoring a backup into a scratch project once.
+
+---
+
+## 9. WHAT HAS BEEN DONE — by commit (newest first)
+
+```
+31f8658 chore: launch readiness QA pass       (Phase 7: a11y labels on ~17 icon
+        buttons + move_up/move_down keys; Escape/role/aria on IconPicker+Cropper
+        modals; fixed live-preview cropped-scale bug across the 1024px breakpoint;
+        removed duplicate "add link" control on empty Links.)
+398bea3 chore: production hardening            (Phase 6: safeUrl XSS guard +6 tests;
+        try/catch/finally across ~12 async handlers; 8s DNS-verify timeout;
+        analytics range-switch race guard.)
+977f45b feat: add live preview builder         (Phase 5D: PreviewPane iframe of real
+        site; SaveBar→PreviewContext refresh; editor/preview split; ?preview=1
+        analytics guard in index.js.)
+a53a637 chore: production qa and polish pass   (Phase 5C: tokenised status colours
+        for light mode; Projects/Links loading skeletons vs empty-state flash;
+        focus rings on small row controls.)
+6dedc96 feat: redesign admin navigation architecture  (Phase 5B-4: grouped sidebar
+        IA in lib/admin-nav.js +9 tests; components/ui/Icon.js SVG set replacing
+        emoji; Domains split into its own tab; sidebar site-identity card; owner
+        badge. "Home"→"Overview" to avoid clash with "Home Page".)
+0c42789 feat: refactor admin screens onto ui primitives   (Phase 5B-3.)
+8df9eeb feat: replace native dialogs with app UI          (Phase 5B-2: all
+        alert()/confirm()/prompt() → Toast/ConfirmDialog.)
+07d1e29 feat: add UI design system primitives             (Phase 5B-1: tokens +
+        components/ui/*. Light theme moved to [data-admin-theme].)
+b9fb42c feat(saas): Phase 4 client domain experience
+c835317 fix(auth): one canonical admin URL for reset+invite redirects
+ad8a484 feat(saas): Phase 3 client onboarding experience
+68d6480 feat(saas): Phase 2 owner vs client dashboard split
+b842c4c feat(saas): Phase 1 owner-only client invite Edge Function
+6c09358 feat(saas): Phase 1a owner/client permission foundation (RLS)
+df38961 docs(mt): Section C complete + verified in production
+```
+Earlier work (before this doc): SQL grants for public reads, analytics tenant
+stamping, public lightbox UX, Section C migration executed+verified, demo tenants.
+
+---
+
+## 10. HOW TO WORK / VERIFY (the harness pattern)
+
+The dev server needs Supabase creds. There is no `.env.local`, and placeholder creds
+mean data-driven screens fail (they show skeletons/empty states — useful for UI QA,
+useless for data QA).
+
+To visually inspect the ADMIN (which needs a session) without real login, a
+**temporary harness** was used repeatedly: inject a `qaMode` state that renders
+`<Dashboard session={fakeSession} .../>` when the URL has `?qa`, verify in the Browser
+pane, then REMOVE the harness before building/committing. Make it hydration-safe
+(gate on a `useEffect`-set state, not `window.location` read during render) or you get
+a hydration mismatch that blocks the client render. ALWAYS grep for `TEMP HARNESS` /
+`fakeSession` / `qaMode` and confirm zero before committing.
+
+Browser-pane probes can return a STALE context after navigation — screenshot to
+confirm, and re-run JS probes against the live DOM.
+
+Always finish a change with: build (placeholder env) + `npm test`, then review the
+diff. Commit messages end with the Co-Authored-By line. Commit/push only when asked;
+on `main`, work is committed directly here (that's how every phase ran) and pushed
+when the user says so.
+
+---
+
+## 11. EXTERNAL ARTIFACTS & FILES (outside the repo)
+
+- **Verified data backup:** `~/Downloads/portfolio-backups/20260724-142901/`
+  (tenancy.json, profile.json, projects.json, verify.txt, README.md). Signatures were
+  verified against the live DB. Does NOT include Storage or analytics_events (anon
+  cannot read analytics — correct RLS behaviour).
+- **Arabic QA checklist (artifact):**
+  `https://claude.ai/code/artifact/11526ddb-2591-43be-a6b7-962e9e6b144a`
+- **Project map (artifact):**
+  `https://claude.ai/code/artifact/7a2e4684-bd39-4f8d-a6e4-feac1a418ebe`
+
+---
+
+## 12. GUARDRAILS (do not violate without explicit ask)
+
+Do NOT: add dependencies · add Tailwind/framework · change DB schema/RLS/auth/tenant
+resolver/routing · touch the Marketing Site or its `marketing-site-v2/` · touch the
+Financial Manager / Supabase project `jswxevbghmbqumlccpfy` · redesign or rewrite the
+admin · start mobile bottom-nav or AI features · commit the temp harness.
+The product itself (this repo) is what you build; infra is settled on the
+`stavioagency` GitHub account.
+```
