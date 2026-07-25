@@ -68,10 +68,14 @@ function deleteDialog(t, title, description) {
 // Supabase "Redirect URLs" allowlist, no matter how many client custom domains exist.
 // Override per environment with NEXT_PUBLIC_ADMIN_URL; on localhost we keep the local
 // origin so dev password-reset works.
+// The fallback below must ALWAYS be present in Supabase's Redirect URLs allowlist.
+// Supabase silently drops a redirect it does not recognise and falls back to the
+// Site URL, which is how password recovery once landed on a tenant homepage
+// instead of the reset screen (see c835317).
 function adminRedirectUrl() {
   const isLocal = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
   const base = process.env.NEXT_PUBLIC_ADMIN_URL
-    || (isLocal ? window.location.origin : 'https://portfolio-platform-designakum.vercel.app');
+    || (isLocal ? window.location.origin : 'https://designakum.site');
   return `${String(base).replace(/\/+$/, '')}/admin`;
 }
 
