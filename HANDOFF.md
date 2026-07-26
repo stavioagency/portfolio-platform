@@ -310,13 +310,36 @@ in that direction, but push and redeploy so the two agree.
    Redirect URLs. Supabase silently drops an unrecognised redirect and falls back to
    the Site URL — that is exactly the bug c835317 fixed once already. Keep the old
    vercel.app entry until a reset is confirmed working from the new domain.
-5. **Supabase → Auth: enable leaked-password protection.** Still OFF. This is the
-   password setting that actually matters; the 20-character maximum is a product
-   decision by the owner and does not improve security.
-6. **The storage-isolation proof.** Section E is applied and verified at the policy
-   level, but the check that actually demonstrates it has NOT been run: sign in as a
-   CLIENT (not an owner) and attempt to write under another tenant's `t-<id>/` prefix.
-   It must fail.
+5. **Supabase → Auth: enable leaked-password protection.** Still OFF — confirmed by the
+   advisor on 2026-07-26. This is the password setting that actually matters; the
+   20-character maximum is a product decision by the owner and does not improve security.
+   NOT doable from a session: there is no MCP tool for auth config, and the dashboard
+   needs an interactive login. Click path:
+   Dashboard -> Authentication -> Sign In / Providers -> Password section ->
+   "Prevent use of leaked passwords" -> Save. Re-run the security advisor to confirm
+   `auth_leaked_password_protection` has cleared.
+6. **The storage-isolation proof — DONE 2026-07-26, and it found two things.**
+   Proven at the authorization layer by evaluating `can_write_media()` under simulated
+   JWT claims for `fghj` (a real CLIENT, mapped only to f9designer). Own-tenant prefix
+   -> true; another tenant's prefix -> false; flat path -> false; null -> false. All
+   three write policies on `storage.objects` (INSERT/UPDATE/DELETE) are gated on that
+   function, so the isolation holds. This is a proof of the policy logic, not an
+   end-to-end HTTP upload — that still wants a real client session one day.
+
+   a) **Path traversal accepted, now FIXED (F5).** `t-<own>/../t-<other>/x.png`
+      returned TRUE, because only the first path segment was checked. Not reachable
+      through the app and no object name contains '..', so it was hardening rather
+      than an incident. `can_write_media` now rejects '..' outright.
+
+   b) **OPEN DECISION — all 135 objects in `media` are legacy FLAT paths.** Not one
+      uses the `t-<tenant-id>/` prefix; the newest upload is 2026-07-03, well before
+      Section E. So tenant isolation currently protects nothing that exists — it only
+      governs future uploads. Consequence: `can_write_media` returns false for flat
+      paths, so a CLIENT cannot replace or delete any existing media (all of it is
+      f9designer's). Platform owners still can. Migrating those 135 objects under
+      `t-4e75be11-…/` means renaming storage objects AND rewriting every stored URL in
+      `profile.banners`, `profile.brand_logo`, `projects.cover_image`, `projects.images`
+      — a real migration with a broken-image failure mode. Deliberately NOT attempted.
 7. **Full manual QA pass** — nobody has clicked through the live product. The 3
    critical security tests: (a) a link saved as `javascript:alert(1)` must be inert on
    the public page; (b) a client must not see the Clients screen or another tenant's

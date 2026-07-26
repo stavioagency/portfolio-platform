@@ -148,6 +148,45 @@ revoke all on function public.assign_tenant_admin(uuid, text, text) from anon;
 grant execute on function public.assign_tenant_admin(uuid, text, text) to authenticated;
 
 
+-- ── F5 ── can_write_media rejects path traversal (applied 2026-07-26) ───────
+-- Proving Section E's isolation surfaced this: can_write_media only inspected the
+-- FIRST path segment, so a client satisfied it with 't-<own>/../t-<other>/x.png'
+-- — foldername()[1] is still their own tenant. Whether that becomes a real
+-- cross-tenant write depends on whether the storage API normalises the path before
+-- or after the policy runs, which cannot be settled from SQL. Not reachable through
+-- the app (tenantStoragePath interpolates a UUID from the database and an
+-- app-generated filename) and no existing object name contains '..', so this is
+-- hardening, not an incident. Rejected outright rather than normalised, for platform
+-- owners too: nothing legitimate needs a traversal segment.
+create or replace function public.can_write_media(object_name text)
+ returns boolean
+ language sql
+ stable security definer
+ set search_path to 'public', 'storage'
+as $function$
+  select coalesce(
+    position('..' in object_name) = 0
+    and (
+      public.is_platform_owner()
+      or exists (
+        select 1
+        from public.tenant_admins ta
+        where ta.user_id = auth.uid()
+          and (storage.foldername(object_name))[1] = 't-' || ta.tenant_id::text
+      )
+    ),
+    false
+  );
+$function$;
+
+-- Verified as fghj (a client, mapped only to f9designer), via simulated JWT claims:
+--   own tenant prefix      -> true
+--   another tenant prefix  -> false
+--   flat/legacy path       -> false
+--   traversal path         -> false   (was TRUE before this)
+--   null                   -> false
+
+
 -- ── VERIFY ──────────────────────────────────────────────────────────────────
 -- Expect: every platform owner holds an 'owner' row on every tenant.
 --
