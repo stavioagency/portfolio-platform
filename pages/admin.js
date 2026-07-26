@@ -231,7 +231,10 @@ export default function Admin() {
         ? (
           <>
             <Dashboard session={session} lang={lang} toggleLang={toggleLang} setLang={setLang} theme={theme} toggleTheme={toggleTheme} />
-            {recoveryMode && (
+            {/* Three ways to owe a password, all ending at the same gate: arrived by
+                an invite/reset link, a pending obligation from a previous load, or an
+                account created with a temporary password by the owner. */}
+            {(recoveryMode || session.user?.user_metadata?.must_set_password === true) && (
               <SetPasswordGate
                 lang={lang}
                 onDone={() => { clearPasswordPending(); setRecoveryMode(false); }}
@@ -536,7 +539,13 @@ function SetPasswordGate({ lang, onDone }) {
       // Breach check before the write. Fails open by design — see lib/pwned-password.js.
       const { pwned } = await isPwnedPassword(newPwd);
       if (pwned) { setError(t('password_pwned')); return; }
-      const { error: updateErr } = await supabase.auth.updateUser({ password: newPwd });
+      // Clear must_set_password in the SAME call that sets the password, so the two
+      // can never disagree — the gate is driven by that flag for temp-password
+      // accounts, and a separate write could fail and leave it stuck on.
+      const { error: updateErr } = await supabase.auth.updateUser({
+        password: newPwd,
+        data: { must_set_password: false },
+      });
       if (updateErr) { setError(updateErr.message); return; }
       setDone(true);
       doneTimer.current = setTimeout(() => onDone && onDone(), 1200);
@@ -2880,6 +2889,9 @@ function TenantAdminSection({ lang, part = 'all' }) {
   const [invSlug, setInvSlug] = useState('');
   const [invSlugTouched, setInvSlugTouched] = useState(false);
   const invSlugPreview = normalizeSlug(invSlug || invName);
+  // Credentials to hand to the client. Held only in memory, shown once.
+  const [invCreds, setInvCreds] = useState(null);
+  const [invCopied, setInvCopied] = useState(false);
   // Inviting a client CREATES THAT CLIENT'S OWN WORKSPACE. It used to attach them to
   // whichever workspace happened to be selected in the switcher, which meant an
   // invite silently added someone to an unrelated client's site and no new workspace
@@ -2924,12 +2936,13 @@ function TenantAdminSection({ lang, part = 'all' }) {
       // 3) The client's login, scoped to the workspace we just made.
       //    supabase.functions.invoke attaches the owner's session JWT; the function
       //    verifies is_platform_owner server-side before doing anything.
+      //    No redirect_to any more: the function creates the account WITH a password
+      //    and returns it, instead of emailing a one-time link.
       const { data, error } = await supabase.functions.invoke('invite-client', {
         body: {
           tenant_id: tRow.id,
           email: invEmail.trim(),
           username: invUser.trim(),
-          redirect_to: adminRedirectUrl(),
         },
       });
       if (error) {
@@ -2950,10 +2963,16 @@ function TenantAdminSection({ lang, part = 'all' }) {
       if (data?.error) { setInvErr(data.detail ? `${data.error}: ${data.detail}` : data.error); return; }
 
       created = null; // succeeded — do not roll back
+
+      // The password is shown ONCE, here. It is not stored and not emailed, so if
+      // this is dismissed without copying it the only way back is a reset.
+      setInvCreds({
+        workspace: tRow.name || tRow.slug,
+        username: data?.username || invUser.trim(),
+        password: data?.temp_password || '',
+      });
       setInvEmail(''); setInvUser(''); setInvName(''); setInvSlug('');
-      setInvMsg(ar
-        ? `تم إنشاء مساحة «${tRow.name || tRow.slug}» ودعوة العميل`
-        : `Workspace "${tRow.name || tRow.slug}" created and the client invited`);
+      setInvMsg('');
       await reloadTenants();
       setTenant(tRow); // land the owner on the workspace they just made
       try { localStorage.setItem('admin_selected_tenant', String(tRow.id)); } catch (_) {}
@@ -3205,9 +3224,40 @@ function TenantAdminSection({ lang, part = 'all' }) {
         {invErr && <div className="ts-err">{invErr}</div>}
         {invMsg && <div className="ts-ok">{invMsg} ✓</div>}
         <Button type="submit" loading={invBusy} style={{ marginTop: 12 }}>
-          {ar ? 'إنشاء المساحة وإرسال الدعوة' : 'Create workspace & send invite'}
+          {ar ? 'إنشاء المساحة والحساب' : 'Create workspace & account'}
         </Button>
       </form>
+
+      {invCreds && (
+        <div className="creds">
+          <h3>{ar ? `جاهز — مساحة «${invCreds.workspace}»` : `Ready — workspace "${invCreds.workspace}"`}</h3>
+          <p className="hint">{ar
+            ? 'أرسل هذه البيانات للعميل عبر واتساب. لن تظهر كلمة المرور مرة أخرى، وسيُطلب منه تغييرها عند أول تسجيل دخول.'
+            : 'Send these to the client on WhatsApp. The password is not shown again, and they will be required to change it on first sign-in.'}</p>
+          <div className="creds-row"><span>{ar ? 'اسم المستخدم' : 'Username'}</span><code dir="ltr">{invCreds.username}</code></div>
+          <div className="creds-row"><span>{ar ? 'كلمة المرور' : 'Password'}</span><code dir="ltr">{invCreds.password}</code></div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            <Button
+              type="button" size="sm"
+              onClick={async () => {
+                const text = ar
+                  ? `رابط الدخول: ${adminRedirectUrl()}\nاسم المستخدم: ${invCreds.username}\nكلمة المرور: ${invCreds.password}`
+                  : `Sign in: ${adminRedirectUrl()}\nUsername: ${invCreds.username}\nPassword: ${invCreds.password}`;
+                try {
+                  await navigator.clipboard.writeText(text);
+                  setInvCopied(true);
+                  setTimeout(() => setInvCopied(false), 2000);
+                } catch (_) { /* clipboard blocked — the values are on screen to copy by hand */ }
+              }}
+            >
+              {invCopied ? (ar ? 'تم النسخ ✓' : 'Copied ✓') : (ar ? 'نسخ التفاصيل' : 'Copy details')}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => { setInvCreds(null); setInvCopied(false); }}>
+              {ar ? 'تم' : 'Done'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <h2>{ar ? 'مدير العميل' : 'Client admin'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
@@ -3245,6 +3295,11 @@ function TenantAdminSection({ lang, part = 'all' }) {
       )}
 
       <style jsx>{`
+        .creds { max-width: 500px; margin-top: 16px; padding: 16px; background: var(--success-bg); border: 1px solid var(--success-border); border-radius: var(--radius-md); }
+        .creds h3 { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .creds-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
+        .creds-row span { color: var(--text-secondary); }
+        .creds-row code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--text-primary); user-select: all; }
         .ts-err { padding: 8px 12px; background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
         .ts-ok { padding: 8px 12px; background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
       `}</style>
