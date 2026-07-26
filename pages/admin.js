@@ -3159,7 +3159,10 @@ function TenantAdminSection({ lang, part = 'settings' }) {
 
 
   return (
-    <>
+    // Every other editor wraps itself in .editor and mounts AdminStyles; this one
+    // never did, because it was always rendered INSIDE AccountEditor's wrapper. Moving
+    // it onto its own tab exposed that: unstyled native inputs and no spacing.
+    <div className="editor">
       {/* Workspace settings for the ACTIVE workspace. Lives on the Workspace tab,
           NOT on Account — Account is about YOUR login, and stacking a client's
           workspace controls above your own password change is what made this
@@ -3274,10 +3277,15 @@ function TenantAdminSection({ lang, part = 'settings' }) {
 
       {isOwner && part === 'settings' && (
       <>
-      <h2>{ar ? 'مدير العميل' : 'Client admin'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
+      {/* Collapsed by default. This grants access to an account that ALREADY exists,
+          which almost never happens now that "Add client" creates the account itself
+          — but sitting open it read as a required step and was the single most
+          confusing thing on the screen. */}
+      <details className="advanced">
+        <summary>{ar ? 'خيارات متقدمة: منح وصول لحساب موجود' : 'Advanced: give an existing account access'}</summary>
       <p className="hint">{ar
-        ? 'امنح مستخدمًا موجودًا (باسم مستخدم) حق إدارة هذه المساحة. «عميل» هو صاحب الموقع، و«مالك» يشير إلى مشرف شريك — وكلاهما يحصل على نفس صلاحية التحرير لهذه المساحة وحدها. ملكية المنصّة (إدارة كل المساحات) منفصلة ولا تُمنح من هنا.'
-        : 'Grant an EXISTING user (by username) admin access to this workspace. "Client" is the person whose site this is; "Owner" marks a co-administrator. Both get the same edit access to this workspace only — platform ownership (administering every workspace) is separate and is not granted here.'}</p>
+        ? 'استخدم هذا فقط لإضافة شخص لديه حساب بالفعل إلى هذه المساحة — مثل شريك يساعد في التحرير. لإضافة عميل جديد، استخدم «العملاء ← إضافة عميل».'
+        : 'Only for adding someone who ALREADY has an account to this workspace — a partner helping with edits, say. To add a new client, use Clients → Add client.'}</p>
       {tenant ? (
         <form onSubmit={assignAdmin} style={{ display: 'flex', gap: 8, maxWidth: 500, alignItems: 'flex-start' }}>
           <input type="text" dir="ltr" value={adminUser} onChange={(e) => setAdminUser(e.target.value)} placeholder={ar ? 'اسم المستخدم' : 'username'} />
@@ -3296,6 +3304,7 @@ function TenantAdminSection({ lang, part = 'settings' }) {
       )}
       {assignErr && <div className="ts-err">{assignErr}</div>}
       {assignMsg && <div className="ts-ok">{assignMsg} ✓</div>}
+      </details>
       </>
       )}
 
@@ -3310,6 +3319,10 @@ function TenantAdminSection({ lang, part = 'settings' }) {
       )}
 
       <style jsx>{`
+        .advanced { max-width: 500px; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 14px; }
+        .advanced summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); user-select: none; }
+        .advanced summary:hover { color: var(--text-primary); }
+        .advanced[open] summary { margin-bottom: 8px; }
         .creds { max-width: 500px; margin-top: 16px; padding: 16px; background: var(--success-bg); border: 1px solid var(--success-border); border-radius: var(--radius-md); }
         .creds h3 { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
         .creds-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
@@ -3318,7 +3331,8 @@ function TenantAdminSection({ lang, part = 'settings' }) {
         .ts-err { padding: 8px 12px; background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
         .ts-ok { padding: 8px 12px; background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
       `}</style>
-    </>
+      <AdminStyles />
+    </div>
   );
 }
 
