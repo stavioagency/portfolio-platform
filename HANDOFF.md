@@ -1,6 +1,6 @@
 # HANDOFF — Designakum Portfolio Platform
 
-_Last updated: 2026-07-24 · HEAD `31f8658` (branch `main`, all pushed) · working tree clean_
+_Last updated: 2026-07-26 · HEAD `cc9163f` (branch `main`, all pushed) · working tree clean_
 
 This document lets a new chat / engineer continue without re-deriving context. Read
 sections 0–2 before touching anything.
@@ -20,7 +20,7 @@ sections 0–2 before touching anything.
   `/Users/feras/Documents/GitHub/portfolio-platform-new/Portfolio Project`
   (note the space in "Portfolio Project"). This is the git repo.
   - Remote: `https://github.com/stavioagency/portfolio-platform.git` (`origin`)
-  - Branch: `main`, HEAD `31f8658`, **fully pushed**, tree clean.
+  - Branch: `main`, HEAD `cc9163f`, **fully pushed**, tree clean.
 - **First action in a new chat:** `cd` into the GitHub path above. Everything below
   is relative to it.
 
@@ -62,7 +62,8 @@ the UI.
 ```
 NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co" NEXT_PUBLIC_SUPABASE_ANON_KEY="x" npx next build
 ```
-**Test:** `npm test` → currently **25 pass** (tenant 10, admin-nav 9, safe-url 6).
+**Test:** `npm test` → currently **66 pass** (tenant 14, admin-nav 9, safe-url 6,
+password-policy 12, resolve-login 8, image-compress 17).
 
 ---
 
@@ -93,8 +94,15 @@ components/
 lib/
   supabase.js       createClient(url,key) from NEXT_PUBLIC_* env. No options.
   tenant.js         PUBLIC resolver. resolveTenant/resolveTenantByHost/normalizeHost,
-                    DEFAULT_TENANT, BLOCKED_TENANT. Order: host(tenant_domains) →
-                    slug(tenants) → singleton fallback. Ignores tenant_domains.status.
+                    NO_TENANT (404), BLOCKED_TENANT. Order as of 2026-07-26:
+                    explicit slug(tenants) FIRST, then host(tenant_domains) when there
+                    is no slug, else NO_TENANT. There is NO singleton fallback any
+                    more. Ignores tenant_domains.status.
+  password-policy.js  min 8 / max 20 CHARS (owner's product call) + a 72-BYTE bcrypt
+                    backstop. Returns a translation key.
+  resolve-login.js  parseLoginIdentifier — decides email vs username at sign-in.
+  image-compress.js compressImage — downscale + WebP before upload; returns the
+                    ORIGINAL file on any failure so an upload is never blocked.
   admin-nav.js      navGroups({isOwner,ar,t}) — the grouped sidebar IA (pure data,
                     extracted so it is unit-testable). Owner-only "clients",
                     client-only "home" (labelled "Overview").
@@ -106,9 +114,12 @@ lib/
   legal-content.js  privacy/terms content.
 
 tests/
-  tenant.test.mjs      10 — resolver isolation rules.
-  admin-nav.test.mjs   9  — nav visibility (owner/client leaks).
-  safe-url.test.mjs    6  — XSS scheme blocking.
+  tenant.test.mjs         14 — resolver isolation + slug-vs-host precedence.
+  admin-nav.test.mjs       9 — nav visibility (owner/client leaks).
+  safe-url.test.mjs        6 — XSS scheme blocking.
+  password-policy.test.mjs 12 — length rules, Arabic/emoji byte counting.
+  resolve-login.test.mjs    8 — email vs username at sign-in.
+  image-compress.test.mjs  17 — scaling maths, pass-through formats, extensions.
 
 supabase/
   sections/section-c-and-onboarding.sql   Applied+verified in prod.
@@ -129,8 +140,10 @@ supabase/
 `projects`, `admin_usernames`, `analytics_events`.
 
 **Tenant model:** `profile`/`projects`/`analytics_events` carry a `tenant_id`.
-Legacy singleton mode = `tenant_id` null → falls back to `profile.id = 1`
-(preserved for backward compatibility; the app still supports it).
+The legacy singleton mode is GONE as of 2026-07-26. It fell back to `profile.id = 1`,
+which in production belongs to a live client — so every unresolvable request served
+that client's portfolio, and the admin read/wrote it whenever no workspace was
+selected. Public resolution now 404s (137607c) and the admin refuses (8ec5458).
 
 **RLS functions (all SECURITY DEFINER):**
 `is_admin()`, `is_tenant_admin(uuid)`, `is_platform_owner()`,
@@ -245,28 +258,58 @@ constants `RESERVED_SLUGS`, `VERCEL_A_RECORD='76.76.21.21'`,
 
 ---
 
-## 7. NOT DONE — "NEEDS YOU" (manual/external, no code). Ordered by priority.
+## 7. NOT DONE — "NEEDS YOU" (manual/external, no code). As of 2026-07-26.
 
-These are blockers to a *clean* launch but are dashboard/manual steps only.
+**THE ONE BLOCKER: email does not send. Nothing else stops launch.**
 
-1. **Set `NEXT_PUBLIC_ADMIN_URL` in Vercel** (Production) = the real launch origin, no
-   trailing slash. Then REDEPLOY (NEXT_PUBLIC_* is build-time inlined). Without it,
-   password-reset/invite emails point at the hardcoded
-   `https://portfolio-platform-designakum.vercel.app`. **Must match** a Supabase Auth
-   Redirect URL.
-2. **Supabase → Auth → URL Configuration → Redirect URLs:** add `<that origin>/admin`.
-3. **Supabase → Auth:** enable leaked-password protection.
-4. **Per-client custom domain:** after adding a domain in-app, the owner must ALSO add
-   it in Vercel (project → Domains). The app does NOT automate Vercel DNS. DNS: apex
-   A `76.76.21.21`, subdomain CNAME `cname.vercel-dns.com`.
-5. **Run the full MANUAL QA pass** — nobody has clicked through the live product.
-   Arabic QA checklist artifact exists (see §11). The 3 critical security tests:
-   (a) a link saved as `javascript:alert(1)` must be inert on the public page;
-   (b) a client must not see the Clients screen or another tenant's data;
-   (c) repeated owner saves must NOT increment that tenant's analytics.
-6. **Backups:** confirm Supabase automatic daily backups are ON + retention; note DB
-   backups do NOT include Storage (`media` bucket / uploaded images) — 47+ image URLs
-   referenced. A verified manual data snapshot was taken (see §11).
+1. **Resend DNS is not resolving.** SMTP was set up on 2026-07-26 to escape
+   Supabase's built-in mailer (a few messages per hour, "not meant for production"
+   per their docs). The three records are SAVED and CORRECT in the GoDaddy UI —
+   `resend._domainkey` TXT, `send` TXT (SPF), `send` MX priority 10 — but GoDaddy's
+   own nameserver returns **NXDOMAIN** for those names. Not NODATA: the names are
+   absent from the zone it serves. `_dmarc.designakum.com` (a GoDaddy default, same
+   zone, same 1h TTL) resolves fine, so this is not propagation lag, and there is no
+   CNAME shadowing them. Cause unknown from outside; likely GoDaddy not publishing.
+   Check with: `dig +short TXT resend._domainkey.designakum.com` — empty means still
+   broken. Then re-save a record in GoDaddy to force a republish, or open a support
+   ticket quoting the NXDOMAIN from ns05.domaincontrol.com.
+   Until this resolves: **client invites return 400 and password resets never
+   arrive.** Both draw on the same exhausted quota. Not a code bug — verified in the
+   auth logs (`over_email_send_rate_limit`) and the edge-function logs (six
+   consecutive 400s from `invite_failed`).
+2. **Supabase → Auth → SMTP Settings** — confirm the custom SMTP fields are actually
+   saved: host `smtp.resend.com`, port 465, user `resend`, password = the `re_` key,
+   sender `noreply@designakum.com`. Could not be verified from here (no MCP tool
+   reads auth config). Every `mail.send` in the last 24h still came from
+   `noreply@mail.app.supabase.io`, so as of the last check this had not taken effect.
+3. **`NEXT_PUBLIC_ADMIN_URL`** is still UNSET in Vercel. The code fallback is now
+   `https://designakum.site` (2db4bae), so reset/invite links point there. Setting the
+   env var requires a REDEPLOY — it is inlined at build time.
+4. **Supabase → Auth → URL Configuration:** `https://designakum.site/admin` must be in
+   Redirect URLs. Supabase silently drops an unrecognised redirect and falls back to
+   the Site URL — that is exactly the bug c835317 fixed once already. Keep the old
+   vercel.app entry until a reset is confirmed working from the new domain.
+5. **Supabase → Auth: enable leaked-password protection.** Still OFF. This is the
+   password setting that actually matters; the 20-character maximum is a product
+   decision by the owner and does not improve security.
+6. **The storage-isolation proof.** Section E is applied and verified at the policy
+   level, but the check that actually demonstrates it has NOT been run: sign in as a
+   CLIENT (not an owner) and attempt to write under another tenant's `t-<id>/` prefix.
+   It must fail.
+7. **Full manual QA pass** — nobody has clicked through the live product. The 3
+   critical security tests: (a) a link saved as `javascript:alert(1)` must be inert on
+   the public page; (b) a client must not see the Clients screen or another tenant's
+   data; (c) repeated owner saves must NOT increment that tenant's analytics.
+8. **Backups:** confirm Supabase daily backups are ON + retention. DB backups do NOT
+   include Storage (`media` bucket).
+
+**Live domains (2026-07-26):** `designakum.com` → the `designakum-marketing` Vercel
+project (working). `designakum.site` + `www` → the `portfolio-platform` project,
+mapped in `tenant_domains` to the `designakum` tenant, status `active` (working, but
+that tenant has NO content yet — it will render the "needs setup" state).
+`f9designer.site` → the `f9designer` tenant. `ahmad-demo.com` has no DNS at all.
+Both domains are registered at GoDaddy; the Vercel A record in use is `216.198.79.1`,
+NOT the `76.76.21.21` the in-app DNS instructions still print.
 
 ---
 
