@@ -2744,17 +2744,59 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
   const [invBusy, setInvBusy] = useState(false);
   const [invMsg, setInvMsg] = useState('');
   const [invErr, setInvErr] = useState('');
+  // The workspace this invite will create. Slug is derived from the name until the
+  // owner edits it, so the common case is two fields, not four.
+  const [invName, setInvName] = useState('');
+  const [invSlug, setInvSlug] = useState('');
+  const [invSlugTouched, setInvSlugTouched] = useState(false);
+  const invSlugPreview = normalizeSlug(invSlug || invName);
+  // Inviting a client CREATES THAT CLIENT'S OWN WORKSPACE. It used to attach them to
+  // whichever workspace happened to be selected in the switcher, which meant an
+  // invite silently added someone to an unrelated client's site and no new workspace
+  // ever appeared — the owner reasonably assumed something was broken.
+  //
+  // A client is a separate site, so onboarding one is: make their workspace, then
+  // give them a login to it. Those are one action, not two.
   async function inviteClient(e) {
     e.preventDefault();
     setInvErr(''); setInvMsg('');
-    if (!tenant) { setInvErr(ar ? 'اختر مساحة أولًا' : 'Select a workspace first'); return; }
+
+    const s = normalizeSlug(invSlug || invName);
+    if (!s) { setInvErr(ar ? 'أدخل معرّفًا صالحًا للمساحة' : 'Enter a valid workspace slug'); return; }
+    if (RESERVED_SLUGS.includes(s)) {
+      setInvErr(ar ? 'هذا المعرّف محجوز، اختر غيره' : 'That slug is reserved — pick another');
+      return;
+    }
+
     setInvBusy(true);
+    let created = null; // the workspace THIS call made, for rollback
     try {
-      // supabase.functions.invoke attaches the owner's session JWT; the function verifies
-      // is_platform_owner server-side before doing anything.
+      // 1) The client's own workspace.
+      const { data: tRow, error: tErr } = await supabase.from('tenants')
+        .insert({ slug: s, name: invName.trim() || s, default_lang: 'ar', status: 'active' })
+        .select().single();
+      if (tErr) {
+        // A duplicate slug is the common case and the message is cryptic.
+        const dup = String(tErr.message || '').toLowerCase().includes('duplicate');
+        setInvErr(dup
+          ? (ar ? 'هذا المعرّف مستخدم بالفعل' : 'That slug is already taken')
+          : (tErr.message || String(tErr)));
+        return;
+      }
+      created = tRow;
+
+      // 2) Its profile row. The Section F trigger has already enrolled every
+      //    platform owner on this tenant, so this write is permitted.
+      const { error: pErr } = await supabase.from('profile')
+        .insert({ tenant_id: tRow.id, default_lang: 'ar' });
+      if (pErr) { setInvErr(pErr.message || String(pErr)); return; }
+
+      // 3) The client's login, scoped to the workspace we just made.
+      //    supabase.functions.invoke attaches the owner's session JWT; the function
+      //    verifies is_platform_owner server-side before doing anything.
       const { data, error } = await supabase.functions.invoke('invite-client', {
         body: {
-          tenant_id: tenant.id,
+          tenant_id: tRow.id,
           email: invEmail.trim(),
           username: invUser.trim(),
           redirect_to: adminRedirectUrl(),
@@ -2776,12 +2818,31 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
         return;
       }
       if (data?.error) { setInvErr(data.detail ? `${data.error}: ${data.detail}` : data.error); return; }
-      setInvEmail(''); setInvUser('');
-      setInvMsg((ar ? 'تمت دعوة العميل' : 'Client invited') + (data?.user_created ? '' : ' ✓'));
+
+      created = null; // succeeded — do not roll back
+      setInvEmail(''); setInvUser(''); setInvName(''); setInvSlug('');
+      setInvMsg(ar
+        ? `تم إنشاء مساحة «${tRow.name || tRow.slug}» ودعوة العميل`
+        : `Workspace "${tRow.name || tRow.slug}" created and the client invited`);
+      await reloadTenants();
+      setTenant(tRow); // land the owner on the workspace they just made
+      try { localStorage.setItem('admin_selected_tenant', String(tRow.id)); } catch (_) {}
     } catch (err) {
       console.error('[invite] failed:', err);
       setInvErr(ar ? 'فشلت الدعوة' : 'Invite failed');
     } finally {
+      // Roll back a workspace whose invite never landed. Email is the step that
+      // fails most often right now, and a half-made workspace with no client and no
+      // way to tell it apart is worse than a clean failure the owner can retry.
+      if (created) {
+        const { error: rbErr } = await supabase.from('tenants').delete().eq('id', created.id);
+        if (rbErr) {
+          console.error('[invite] rollback failed, workspace left behind:', rbErr);
+          setInvErr((prev) => `${prev} — ${ar
+            ? `تعذّر حذف المساحة «${created.slug}»، احذفها يدويًا`
+            : `could not remove the workspace "${created.slug}", delete it manually`}`);
+        }
+      }
       setInvBusy(false);
     }
   }
@@ -2998,10 +3059,10 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
     <>
       {isOwner && part !== 'domains' && (
       <>
-      <h2>{ar ? 'المساحات (العملاء)' : 'Workspaces (clients)'}</h2>
+      <h2>{ar ? 'مساحة فارغة (بدون عميل)' : 'Empty workspace (no client)'}</h2>
       <p className="hint">{ar
-        ? 'أنشئ مساحة لكل عميل. يتم إنشاء ملف تعريف وربطك كمالك تلقائيًا.'
-        : 'Create a workspace per client. A profile is provisioned and you are linked as owner automatically.'}</p>
+        ? 'لبناء موقع قبل أن يكون للعميل حساب دخول. لإضافة عميل بحساب دخول، استخدم «إضافة عميل» بالأسفل — فهي تنشئ المساحة والحساب معًا.'
+        : "For building a site before the client has a login. To onboard a client WITH a login, use \"Add a client\" below — that creates the workspace and the account together."}</p>
       <form onSubmit={createTenant} style={{ maxWidth: 500 }}>
         <Field id="tenant-slug" label={ar ? 'المعرّف (slug)' : 'Slug'}>
           <input id="tenant-slug" type="text" dir="ltr" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="acme-studio" />
@@ -3046,27 +3107,41 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
         </>
       )}
 
-      <h2>{ar ? 'دعوة عميل' : 'Invite client'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
+      <h2>{ar ? 'إضافة عميل' : 'Add a client'}</h2>
       <p className="hint">{ar
-        ? 'أنشئ حساب دخول جديد للعميل وأرسل له دعوة بالبريد. يُربط تلقائيًا بهذه المساحة كـ«عميل».'
-        : 'Create a new login for the client and email them an invite. They are linked to this workspace as a client automatically.'}</p>
-      {tenant ? (
-        <form onSubmit={inviteClient} style={{ maxWidth: 500 }}>
-          <Field id="inv-email" label={ar ? 'البريد الإلكتروني' : 'Email'}>
-            <input id="inv-email" type="email" dir="ltr" value={invEmail} onChange={(e) => setInvEmail(e.target.value)} placeholder="client@email.com" />
-          </Field>
-          <Field id="inv-user" label={ar ? 'اسم المستخدم' : 'Username'}>
-            <input id="inv-user" type="text" dir="ltr" value={invUser} onChange={(e) => setInvUser(e.target.value)} placeholder="client" />
-          </Field>
-          {invErr && <div className="ts-err">{invErr}</div>}
-          {invMsg && <div className="ts-ok">{invMsg} ✓</div>}
-          <Button type="submit" loading={invBusy} style={{ marginTop: 12 }}>
-            {ar ? 'إرسال الدعوة' : 'Send invite'}
-          </Button>
-        </form>
-      ) : (
-        <div className="hint">{ar ? 'اختر مساحة من الأعلى.' : 'Select a workspace at the top.'}</div>
-      )}
+        ? 'ينشئ هذا مساحة عمل خاصة بالعميل ويرسل له دعوة بالبريد لتسجيل الدخول إليها. لا يؤثر على المساحة المختارة في الأعلى.'
+        : "This creates the client's OWN workspace and emails them a login for it. It does not touch the workspace selected above."}</p>
+      <form onSubmit={inviteClient} style={{ maxWidth: 500 }}>
+        <Field id="inv-name" label={ar ? 'اسم العميل / المساحة' : 'Client / workspace name'}>
+          <input
+            id="inv-name" type="text" value={invName}
+            onChange={(e) => { setInvName(e.target.value); if (!invSlugTouched) setInvSlug(''); }}
+            placeholder={ar ? 'أكمي ستوديو' : 'Acme Studio'}
+          />
+        </Field>
+        <Field id="inv-slug" label={ar ? 'المعرّف (رابط الموقع)' : 'Slug (site address)'}>
+          <input
+            id="inv-slug" type="text" dir="ltr"
+            value={invSlug || (invSlugTouched ? '' : invSlugPreview)}
+            onChange={(e) => { setInvSlugTouched(true); setInvSlug(e.target.value); }}
+            placeholder="acme-studio"
+          />
+        </Field>
+        {invSlugPreview && (
+          <p className="hint" dir="ltr" style={{ marginTop: -4 }}>/{invSlugPreview}</p>
+        )}
+        <Field id="inv-email" label={ar ? 'البريد الإلكتروني' : 'Email'}>
+          <input id="inv-email" type="email" dir="ltr" value={invEmail} onChange={(e) => setInvEmail(e.target.value)} placeholder="client@email.com" />
+        </Field>
+        <Field id="inv-user" label={ar ? 'اسم المستخدم' : 'Username'}>
+          <input id="inv-user" type="text" dir="ltr" value={invUser} onChange={(e) => setInvUser(e.target.value)} placeholder="client" />
+        </Field>
+        {invErr && <div className="ts-err">{invErr}</div>}
+        {invMsg && <div className="ts-ok">{invMsg} ✓</div>}
+        <Button type="submit" loading={invBusy} style={{ marginTop: 12 }}>
+          {ar ? 'إنشاء المساحة وإرسال الدعوة' : 'Create workspace & send invite'}
+        </Button>
+      </form>
 
       <h2>{ar ? 'مدير العميل' : 'Client admin'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
