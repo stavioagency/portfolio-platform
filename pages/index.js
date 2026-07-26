@@ -7,6 +7,7 @@ import { resolveTenant } from '../lib/tenant';
 import { privacyContent, termsContent } from '../lib/legal-content';
 import { BRAND_ICONS, normalizeIcon } from '../lib/brand-icons';
 import { safeUrl } from '../lib/safe-url';
+import { hasPublicContent } from '../lib/profile-content';
 
 const BANNER_BGS = {
   purple: 'linear-gradient(135deg, #7a72d6, #9FA7FF)',
@@ -229,7 +230,11 @@ export default function Home({ slug = null } = {}) {
     );
   }
 
-  if (!profile) {
+  // A profile ROW existing is not the same as a profile having CONTENT. A freshly
+  // created workspace has a row with nothing in it, which used to fall through to the
+  // card below and render as a nameless "?" avatar with a bare copyright line. Treat
+  // "row exists but is empty" exactly like "no row": show the setup screen.
+  if (!profile || !hasPublicContent(profile, projects.length)) {
     return (
       <div dir={dir} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, color: 'var(--text-secondary)' }}>
         <h1 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>{t('setup_needed_title')}</h1>
