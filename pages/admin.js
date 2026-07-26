@@ -2883,6 +2883,73 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
     await reloadTenants();
   }
 
+  // PERMANENTLY delete the active workspace. Distinct from "Delete portfolio" in
+  // Account, which only CLEARS a workspace's content and leaves the workspace itself —
+  // which is why a suspended demo workspace kept reappearing in the switcher with no
+  // way to get rid of it.
+  //
+  // Every table referencing tenants is ON DELETE CASCADE (profile, projects,
+  // tenant_admins, tenant_domains, analytics_events), so one delete removes the lot.
+  // RLS already restricts this to platform owners.
+  async function deleteWorkspace() {
+    if (!tenant) return;
+    const label = tenant.name || tenant.slug;
+    // Require the SLUG, not a generic word: the switcher means the active workspace
+    // is often not the one you were last looking at, and this is unrecoverable.
+    const ok = await confirm({
+      title: ar ? 'حذف مساحة العمل نهائيًا؟' : 'Delete workspace permanently?',
+      description: ar
+        ? `سيؤدي هذا إلى حذف «${label}» بالكامل: الملف الشخصي والمشاريع والنطاقات والإحصائيات ووصول العميل. لا يمكن التراجع. لن يُحذف حساب دخول العميل، فقد يكون مرتبطًا بمساحات أخرى.`
+        : `This permanently deletes "${label}" and everything in it: profile, projects, domains, analytics and client access. It cannot be undone. The client's LOGIN is not deleted — they may belong to other workspaces.`,
+      requireText: tenant.slug,
+      // Inlined rather than t('type_to_confirm'): this component takes `lang` and
+      // builds its strings from `ar`, it has no translator in scope.
+      requireTextLabel: ar ? `اكتب «${tenant.slug}» للتأكيد` : `Type "${tenant.slug}" to confirm`,
+      confirmLabel: ar ? 'حذف نهائي' : 'Delete forever',
+      cancelLabel: ar ? 'إلغاء' : 'Cancel',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    setWsErr(''); setWsMsg(''); setWsBusy(true);
+    const doomed = tenant;
+    try {
+      // Delete the tenant FIRST, then clean storage. The other order risks wiping a
+      // live workspace's images and then failing to delete it; orphaned files are a
+      // far cheaper mistake than deleted files for a workspace that still exists.
+      const { data, error } = await supabase.from('tenants').delete().eq('id', doomed.id).select('id');
+      if (error) { setWsErr(error.message || String(error)); return; }
+      if (!data || data.length === 0) { setWsErr(BLOCKED_WRITE_ERROR.message); return; }
+
+      // Best effort: the tenant is already gone, so a failure here leaves unreachable
+      // files, not a broken workspace. Never let it surface as a failed delete.
+      try {
+        const prefix = `t-${doomed.id}`;
+        const { data: files } = await supabase.storage.from('media').list(prefix, { limit: 1000 });
+        if (files && files.length) {
+          await supabase.storage.from('media').remove(files.map((f) => `${prefix}/${f.name}`));
+        }
+      } catch (storageErr) {
+        console.warn('[tenant] workspace deleted; storage cleanup failed:', storageErr);
+      }
+
+      // Drop the remembered selection so the switcher cannot reopen a dead workspace.
+      try {
+        if (localStorage.getItem('admin_selected_tenant') === String(doomed.id)) {
+          localStorage.removeItem('admin_selected_tenant');
+        }
+      } catch (_) {}
+      setTenant(null);
+      await reloadTenants();
+      setWsMsg(ar ? 'تم حذف المساحة' : 'Workspace deleted');
+    } catch (err) {
+      console.error('[tenant] delete failed:', err);
+      setWsErr(err?.message || (ar ? 'فشل الحذف' : 'Delete failed'));
+    } finally {
+      setWsBusy(false);
+    }
+  }
+
   // Assign a client as admin of the active tenant. Done through a SECURITY DEFINER
   // RPC because tenant_admins is readable only for your OWN mappings — the client's
   // user_id can't (and shouldn't) be looked up from the browser.
@@ -2956,8 +3023,16 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
               <Button variant="secondary" size="sm" onClick={toggleStatus} disabled={wsBusy}>
                 {tenant.status === 'disabled' ? (ar ? 'إعادة التفعيل' : 'Reactivate') : (ar ? 'تعليق المساحة' : 'Suspend workspace')}
               </Button>
+              {/* type="button": this sits inside the settings form, and a bare button
+                  would submit it — saving the workspace instead of deleting it. */}
+              <Button type="button" variant="danger" size="sm" onClick={deleteWorkspace} disabled={wsBusy}>
+                {ar ? 'حذف المساحة' : 'Delete workspace'}
+              </Button>
             </div>
           </form>
+          <p className="hint">{ar
+            ? 'التعليق يوقف الموقع مؤقتًا ويمكن التراجع عنه. الحذف نهائي ويشمل المشاريع والنطاقات والإحصائيات.'
+            : 'Suspending takes the site offline and is reversible. Deleting is permanent and includes projects, domains and analytics.'}</p>
           {wsErr && <div className="ts-err">{wsErr}</div>}
           {wsMsg && <div className="ts-ok">{wsMsg} ✓</div>}
         </>
