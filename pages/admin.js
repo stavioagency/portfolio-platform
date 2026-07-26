@@ -1099,15 +1099,33 @@ function usePreview() { return useContext(PreviewContext); }
 // the public site follows (lib/tenant.js -> NO_TENANT -> 404).
 const NO_TENANT_ERROR = { message: 'No tenant selected' };
 
+// User-facing counterpart to NO_TENANT_ERROR, for the screens that refuse to act
+// until a workspace is chosen.
+function noWorkspaceMsg(lang) {
+  return lang === 'ar' ? 'اختر مساحة عمل أولًا' : 'Select a workspace first';
+}
+
 function loadProfile(tenant, columns = '*') {
   if (!tenant) return Promise.resolve({ data: null, error: NO_TENANT_ERROR });
   return supabase.from('profile').select(columns).eq('tenant_id', tenant.id).maybeSingle();
 }
-function persistProfile(tenant, fields) {
+// An update the RLS policy filters out is not an error to PostgREST — it reports
+// success having changed zero rows. So saving into a workspace you cannot write
+// looked exactly like a real save, and the work was gone on reload. `.select()`
+// makes the affected rows observable so a blocked write can fail loudly instead.
+const BLOCKED_WRITE_ERROR = {
+  message: 'Update affected no rows — this account may not have write access to this workspace',
+};
+
+async function persistProfile(tenant, fields) {
   // Updates an EXISTING profile row; creating a brand-new tenant's profile is
   // part of the create-tenant flow, not this helper.
-  if (!tenant) return Promise.resolve({ data: null, error: NO_TENANT_ERROR });
-  return supabase.from('profile').update(fields).eq('tenant_id', tenant.id);
+  if (!tenant) return { data: null, error: NO_TENANT_ERROR };
+  const { data, error } = await supabase
+    .from('profile').update(fields).eq('tenant_id', tenant.id).select('tenant_id');
+  if (error) return { data, error };
+  if (!data || data.length === 0) return { data, error: BLOCKED_WRITE_ERROR };
+  return { data, error: null };
 }
 
 // Tenant-isolated storage path: a tenant's media lives under `t-<id>/`. Returns
@@ -1649,31 +1667,52 @@ function ProjectsEditor({ t, lang }) {
   const { tenant } = useTenant();
 
   useEffect(() => { load(); }, []);
+  // No tenant means REFUSE, not "fall back to everything" — the same rule
+  // loadProfile/persistProfile follow via NO_TENANT_ERROR, and the one the public
+  // site follows via NO_TENANT -> 404. The tenant filter used to be conditional, so
+  // an unset workspace listed every tenant's projects in one undifferentiated list.
   async function load() {
-    let q = supabase.from('projects').select('*');
-    if (tenant) q = q.eq('tenant_id', tenant.id);
-    const { data } = await q.order('display_order');
+    if (!tenant) { setProjects([]); setLoading(false); return; }
+    const { data } = await supabase
+      .from('projects').select('*').eq('tenant_id', tenant.id).order('display_order');
     setProjects(data || []);
     setLoading(false);
   }
 
   async function addProject() {
+    // Likewise: an unstamped project belongs to no tenant and would be invisible to
+    // every workspace, so refuse rather than create an orphan.
+    if (!tenant) { toast.error(noWorkspaceMsg(lang)); return; }
     const nextOrder = projects.length;
     const defaultTitle = { en: 'New Project', ar: 'مشروع جديد' };
-    const row = { title: defaultTitle, display_order: nextOrder, images: [] };
-    if (tenant) row.tenant_id = tenant.id; // stamp new projects with the active tenant
+    const row = { title: defaultTitle, display_order: nextOrder, images: [], tenant_id: tenant.id };
     const { data, error } = await supabase.from('projects').insert(row).select().single();
     if (data) { setProjects([...projects, data]); setEditing(data); }
     if (error) { console.error(error); toast.error(t('save_failed')); }
   }
+  // These three writes discarded their result entirely, so BOTH failure modes were
+  // invisible: a real error (network, constraint) and an RLS-filtered write, which
+  // is not an error at all but a successful statement that changed zero rows. Each
+  // one now inspects the rows it actually touched — see BLOCKED_WRITE_ERROR.
   async function updateProject(updated) {
-    await supabase.from('projects').update(updated).eq('id', updated.id);
+    const { data, error } = await supabase
+      .from('projects').update(updated).eq('id', updated.id).select('id');
+    // Throwing is what ProjectEditForm.save() already expects: its catch reports
+    // save_failed and leaves the form dirty. Nothing ever threw before, which is
+    // why a failed save still announced "saved".
+    if (error) throw error;
+    if (!data || data.length === 0) throw new Error(BLOCKED_WRITE_ERROR.message);
     setProjects(projects.map(p => p.id === updated.id ? updated : p));
     setEditing(updated);
   }
   async function deleteProject(id) {
     if (!(await confirm(deleteDialog(t, t('delete_project_confirm'))))) return;
-    await supabase.from('projects').delete().eq('id', id);
+    const { data, error } = await supabase.from('projects').delete().eq('id', id).select('id');
+    if (error || !data || data.length === 0) {
+      console.error('[projects] delete failed:', error || BLOCKED_WRITE_ERROR);
+      toast.error(t('save_failed'));
+      return; // keep the row on screen — it is still in the database
+    }
     setProjects(projects.filter(p => p.id !== id));
     if (editing?.id === id) setEditing(null);
   }
@@ -1682,8 +1721,18 @@ function ProjectsEditor({ t, lang }) {
     if (j < 0 || j >= projects.length) return;
     const arr = [...projects]; [arr[i], arr[j]] = [arr[j], arr[i]];
     const updates = arr.map((p, idx) => ({ ...p, display_order: idx }));
-    setProjects(updates);
-    await Promise.all(updates.map(p => supabase.from('projects').update({ display_order: p.display_order }).eq('id', p.id)));
+    setProjects(updates); // optimistic — resynced below if the writes do not land
+    const results = await Promise.all(updates.map(p => supabase
+      .from('projects').update({ display_order: p.display_order }).eq('id', p.id).select('id')));
+    const failed = results.find(r => r.error || !r.data || r.data.length === 0);
+    if (failed) {
+      console.error('[projects] reorder failed:', failed.error || BLOCKED_WRITE_ERROR);
+      toast.error(t('save_failed'));
+      // These are independent statements, so some may have landed. Re-read rather
+      // than restoring the previous array, which would only be right if the whole
+      // reorder failed together.
+      await load();
+    }
   }
 
   if (editing) return <ProjectEditForm project={editing} onSave={updateProject} onBack={() => { setEditing(null); load(); }} onDelete={deleteProject} t={t} lang={lang} />;
@@ -1711,6 +1760,11 @@ function ProjectsEditor({ t, lang }) {
             </div>
           ))}
         </div>
+      ) : !tenant ? (
+        // Distinguish "this workspace has no projects yet" from "no workspace is
+        // selected", which the shared empty state would otherwise report as the
+        // former — and invite you to add a project that could not be stamped.
+        <div className="hint">{noWorkspaceMsg(lang)}</div>
       ) : projects.length === 0 ? (
         <EmptyState
           icon={<Icon name="folder" size={24} />}
@@ -2745,8 +2799,16 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
       // 2) link the current admin as owner FIRST. The profile write is gated by
       //    is_tenant_admin(tenant_id), so we must administer this tenant before we can
       //    create its profile. Roll the tenant back on failure (cascades the mapping).
+      //
+      //    Section F adds a trigger that enrols EVERY platform owner on insert — the
+      //    browser cannot do that itself, because platform_owners is readable only for
+      //    your own row. This upsert is then a no-op safety net rather than a duplicate
+      //    -key failure, and it keeps workspace creation working if F is not applied yet.
       const { error: aErr } = await supabase.from('tenant_admins')
-        .insert({ tenant_id: tRow.id, user_id: session.user.id, role: 'owner' });
+        .upsert(
+          { tenant_id: tRow.id, user_id: session.user.id, role: 'owner' },
+          { onConflict: 'tenant_id,user_id', ignoreDuplicates: true },
+        );
       if (aErr) { await supabase.from('tenants').delete().eq('id', tRow.id); throw aErr; }
       // 3) initial profile row for this tenant (now permitted by is_tenant_admin)
       const { error: pErr } = await supabase.from('profile').insert({ tenant_id: tRow.id, default_lang: 'ar' });
@@ -2821,6 +2883,7 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
   // RPC because tenant_admins is readable only for your OWN mappings — the client's
   // user_id can't (and shouldn't) be looked up from the browser.
   const [adminUser, setAdminUser] = useState('');
+  const [adminRole, setAdminRole] = useState('client');
   const [assigning, setAssigning] = useState(false);
   const [assignMsg, setAssignMsg] = useState('');
   const [assignErr, setAssignErr] = useState('');
@@ -2832,7 +2895,19 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
     const u = adminUser.trim();
     if (!u) { setAssignErr(ar ? 'أدخل اسم المستخدم' : 'Enter a username'); return; }
     setAssigning(true);
-    const { error } = await supabase.rpc('assign_tenant_admin', { p_tenant_id: tenant.id, p_username: u });
+    // p_role requires the Section F migration; before it lands the RPC only has a
+    // 2-arg signature and this call fails with "function not found".
+    //
+    // NOTE: tenant_admins.role is descriptive today — no policy or helper function
+    // reads it (is_tenant_admin and can_write_media both test membership only), so
+    // 'owner' and 'client' currently confer identical access to THIS workspace.
+    // Platform ownership lives in platform_owners and is deliberately not settable
+    // from the browser. What the role does buy is an honest record of who someone
+    // is, and F's ON CONFLICT DO UPDATE means re-granting can now correct a
+    // mis-recorded role instead of silently doing nothing.
+    const { error } = await supabase.rpc('assign_tenant_admin', {
+      p_tenant_id: tenant.id, p_username: u, p_role: adminRole,
+    });
     setAssigning(false);
     if (error) { setAssignErr(error.message || String(error)); return; }
     setAdminUser('');
@@ -2908,11 +2983,19 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
 
       <h2>{ar ? 'مدير العميل' : 'Client admin'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
-        ? 'امنح مستخدمًا موجودًا (باسم مستخدم) حق إدارة هذه المساحة.'
-        : 'Grant an EXISTING user (by username) admin access to this workspace.'}</p>
+        ? 'امنح مستخدمًا موجودًا (باسم مستخدم) حق إدارة هذه المساحة. «عميل» هو صاحب الموقع، و«مالك» يشير إلى مشرف شريك — وكلاهما يحصل على نفس صلاحية التحرير لهذه المساحة وحدها. ملكية المنصّة (إدارة كل المساحات) منفصلة ولا تُمنح من هنا.'
+        : 'Grant an EXISTING user (by username) admin access to this workspace. "Client" is the person whose site this is; "Owner" marks a co-administrator. Both get the same edit access to this workspace only — platform ownership (administering every workspace) is separate and is not granted here.'}</p>
       {tenant ? (
         <form onSubmit={assignAdmin} style={{ display: 'flex', gap: 8, maxWidth: 500, alignItems: 'flex-start' }}>
           <input type="text" dir="ltr" value={adminUser} onChange={(e) => setAdminUser(e.target.value)} placeholder={ar ? 'اسم المستخدم' : 'username'} />
+          <select
+            value={adminRole}
+            onChange={(e) => setAdminRole(e.target.value)}
+            aria-label={ar ? 'الدور' : 'Role'}
+          >
+            <option value="client">{ar ? 'عميل' : 'Client'}</option>
+            <option value="owner">{ar ? 'مالك' : 'Owner'}</option>
+          </select>
           <Button type="submit" variant="secondary" size="sm" loading={assigning}>{ar ? 'منح' : 'Grant'}</Button>
         </form>
       ) : (

@@ -260,7 +260,17 @@ constants `RESERVED_SLUGS`, `VERCEL_A_RECORD='76.76.21.21'`,
 
 ## 7. NOT DONE — "NEEDS YOU" (manual/external, no code). As of 2026-07-26.
 
-**THE ONE BLOCKER: email does not send. Nothing else stops launch.**
+**BLOCKER 0 — `supabase/sections/section-f-owner-admin-parity.sql` is NOT APPLIED.**
+It must be applied BEFORE the current frontend is deployed. Section F makes
+`is_tenant_admin()` recognise platform owners (so a co-owner can actually write the
+workspaces they can already see), adds the missing `admin_usernames` SELECT policy,
+enrols every platform owner on every workspace via trigger + backfill, and gives
+`assign_tenant_admin` a `p_role` parameter. The admin's Client-admin screen now sends
+`p_role`, and that RPC call FAILS with "function not found" until F is applied. The
+matching frontend changes are already committed; the two must ship together.
+Apply it in the Supabase SQL editor, then run the VERIFY block at the bottom of the file.
+
+**THE ONE BLOCKER FOR LAUNCH: email does not send.**
 
 1. **Resend DNS is not resolving.** SMTP was set up on 2026-07-26 to escape
    Supabase's built-in mailer (a few messages per hour, "not meant for production"
@@ -273,6 +283,18 @@ constants `RESERVED_SLUGS`, `VERCEL_A_RECORD='76.76.21.21'`,
    Check with: `dig +short TXT resend._domainkey.designakum.com` — empty means still
    broken. Then re-save a record in GoDaddy to force a republish, or open a support
    ticket quoting the NXDOMAIN from ns05.domaincontrol.com.
+
+   **WORKAROUND — verified 2026-07-26, do this instead of waiting on GoDaddy.**
+   All three Resend records ARE live and resolving on **`designakum.site`**:
+   `resend._domainkey` (DKIM), `send` TXT (`v=spf1 include:amazonses.com ~all`), and
+   `send` MX (`10 feedback-smtp.ap-northeast-1.amazonses.com`). Same registrar, but
+   `.site` is served by ns47/ns48.domaincontrol.com while the broken `.com` zone is on
+   ns05/ns06 — which supports "GoDaddy is not publishing that one zone" rather than a
+   mistake in the record values. So: verify **designakum.site** in Resend and set the
+   Supabase SMTP sender to `noreply@designakum.site`. No code change is needed — nothing
+   in the repo hardcodes a sender address; it lives only in the Supabase SMTP fields.
+   `.site` is also where auth redirects already point (2db4bae), so sender and links
+   finally agree. Fixing the `.com` zone stays a nice-to-have, not a launch blocker.
    Until this resolves: **client invites return 400 and password resets never
    arrive.** Both draw on the same exhausted quota. Not a code bug — verified in the
    auth logs (`over_email_send_rate_limit`) and the edge-function logs (six
