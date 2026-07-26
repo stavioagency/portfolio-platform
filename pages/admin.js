@@ -866,7 +866,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
             {activeTab === 'links'      && <LinksEditor      key={tenantKey} t={t} lang={lang} />}
             {activeTab === 'appearance' && <AppearanceEditor key={tenantKey} t={t} lang={lang} />}
             {activeTab === 'analytics'  && <AnalyticsEditor  key={tenantKey} t={t} lang={lang} />}
-            {activeTab === 'domains'    && <TenantAdminSection key={tenantKey} lang={lang} part="domains" />}
+            {activeTab === 'domains'    && <TenantAdminSection key={tenantKey} lang={lang} part="settings" />}
             {activeTab === 'account'    && <AccountEditor    key={tenantKey} t={t} lang={lang} session={session} setChromeLang={setLang} />}
           </div>
 
@@ -2872,7 +2872,7 @@ function DomainManager({ lang, isOwner }) {
 // Default 'all' keeps the original combined rendering.
 // `session` was dropped when the standalone create-workspace form went away — it
 // was only used to self-enrol the creator, which the Section F trigger now does.
-function TenantAdminSection({ lang, part = 'all' }) {
+function TenantAdminSection({ lang, part = 'settings' }) {
   const confirm = useConfirm();
   const { tenant, setTenant, reloadTenants, isOwner } = useTenant();
   const ar = lang === 'ar';
@@ -3160,7 +3160,11 @@ function TenantAdminSection({ lang, part = 'all' }) {
 
   return (
     <>
-      {isOwner && part !== 'domains' && (
+      {/* Workspace settings for the ACTIVE workspace. Lives on the Workspace tab,
+          NOT on Account — Account is about YOUR login, and stacking a client's
+          workspace controls above your own password change is what made this
+          screen unreadable. */}
+      {isOwner && part === 'settings' && (
       <>
       {tenant && (
         <>
@@ -3192,10 +3196,16 @@ function TenantAdminSection({ lang, part = 'all' }) {
         </>
       )}
 
+      </>
+      )}
+
+      {/* Onboarding: shown on its own, inside the Clients screen's modal. */}
+      {isOwner && part === 'onboard' && (
+      <>
       <h2>{ar ? 'إضافة عميل' : 'Add a client'}</h2>
       <p className="hint">{ar
-        ? 'ينشئ هذا مساحة عمل خاصة بالعميل ويرسل له دعوة بالبريد لتسجيل الدخول إليها. لا يؤثر على المساحة المختارة في الأعلى.'
-        : "This creates the client's OWN workspace and emails them a login for it. It does not touch the workspace selected above."}</p>
+        ? 'ينشئ مساحة عمل خاصة بهذا العميل وحسابًا بكلمة مرور. ستظهر لك كلمة المرور مرة واحدة لترسلها له — لا يُرسَل أي بريد.'
+        : "Creates this client's own workspace and an account with a password. You'll be shown the password once to pass on — no email is sent."}</p>
       <form onSubmit={inviteClient} style={{ maxWidth: 500 }}>
         <Field id="inv-name" label={ar ? 'اسم العميل / المساحة' : 'Client / workspace name'}>
           <input
@@ -3259,6 +3269,11 @@ function TenantAdminSection({ lang, part = 'all' }) {
         </div>
       )}
 
+      </>
+      )}
+
+      {isOwner && part === 'settings' && (
+      <>
       <h2>{ar ? 'مدير العميل' : 'Client admin'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
         ? 'امنح مستخدمًا موجودًا (باسم مستخدم) حق إدارة هذه المساحة. «عميل» هو صاحب الموقع، و«مالك» يشير إلى مشرف شريك — وكلاهما يحصل على نفس صلاحية التحرير لهذه المساحة وحدها. ملكية المنصّة (إدارة كل المساحات) منفصلة ولا تُمنح من هنا.'
@@ -3284,7 +3299,7 @@ function TenantAdminSection({ lang, part = 'all' }) {
       </>
       )}
 
-      {part !== 'workspace' && (
+      {(part === 'settings' || part === 'domains') && (
       <>
       <h2>{ar ? 'موقعك والنطاق' : 'Your website & domain'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
@@ -3460,6 +3475,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
   const ar = lang === 'ar';
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -3488,12 +3504,29 @@ function OwnerClientsOverview({ lang, onOpen }) {
       if (!cancelled) { setRows(out); setLoading(false); }
     })();
     return () => { cancelled = true; };
-  }, [tenants]);
+  }, [tenants, adding]);
 
   return (
     <div className="editor">
-      <h1>{ar ? 'العملاء' : 'Clients'} <span className="meta">· {rows.length}</span></h1>
-      <p className="hint">{ar ? 'نظرة عامة على مساحات العملاء. اضغط لفتح مساحة.' : 'A quick overview of your client workspaces. Tap one to open it.'}</p>
+      {/* One list, one primary action. Onboarding used to live at the bottom of the
+          Account screen, under this person's own password change, which is why
+          nobody could find it or tell the two apart. */}
+      <div className="editor-header">
+        <h1>{ar ? 'العملاء' : 'Clients'} <span className="meta">· {rows.length}</span></h1>
+        <Button size="sm" onClick={() => setAdding(true)}>+ {ar ? 'إضافة عميل' : 'Add client'}</Button>
+      </div>
+      <p className="hint">{ar
+        ? 'كل عميل له مساحته وموقعه. اضغط على أي عميل لفتح مساحته وتحريرها.'
+        : 'Every client has their own workspace and site. Tap a client to open and edit theirs.'}</p>
+
+      {adding && (
+        <div className="add-bg" onClick={() => setAdding(false)}>
+          <div className="add-panel" onClick={(e) => e.stopPropagation()} dir={ar ? 'rtl' : 'ltr'}>
+            <button type="button" className="add-close" onClick={() => setAdding(false)} aria-label={ar ? 'إغلاق' : 'Close'}>×</button>
+            <TenantAdminSection lang={lang} part="onboard" />
+          </div>
+        </div>
+      )}
       {loading ? <div className="hint">…</div> : rows.length === 0 ? (
         <div className="hint">{ar ? 'لا يوجد عملاء بعد.' : 'No clients yet.'}</div>
       ) : (
@@ -3522,6 +3555,28 @@ function OwnerClientsOverview({ lang, onOpen }) {
       )}
       <AdminStyles />
       <style jsx>{`
+        .add-bg {
+          position: fixed; inset: 0; z-index: 200;
+          background: rgba(0,0,0,0.6);
+          -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+          display: flex; align-items: flex-start; justify-content: center;
+          padding: 40px 16px; overflow-y: auto;
+        }
+        .add-panel {
+          position: relative; width: 100%; max-width: 560px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-strong);
+          border-radius: var(--radius-lg, 16px);
+          padding: 24px; box-shadow: 0 24px 70px rgba(0,0,0,0.5);
+        }
+        .add-close {
+          position: absolute; top: 12px; inset-inline-end: 12px;
+          width: 32px; height: 32px; border-radius: 50%;
+          background: var(--bg-elevated); border: 1px solid var(--border);
+          color: var(--text-secondary); font-size: 20px; line-height: 1;
+          cursor: pointer; font-family: inherit;
+        }
+        .add-close:hover { color: var(--text-primary); }
         .cl-list { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
         /* surface comes from Card; only the row layout is local */
         .cl-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; min-height: 56px; }
@@ -3673,7 +3728,6 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
       {savingLang && <span className="hint">...</span>}
       {savedLangMsg && <span className="saved-indicator">{savedLangMsg} ✓</span>}
 
-      <TenantAdminSection lang={lang} part="workspace" />
 
       <h2>{t('change_password')}</h2>
       <form onSubmit={updatePassword} style={{ maxWidth: 500 }}>
