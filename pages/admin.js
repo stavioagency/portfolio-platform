@@ -9,7 +9,11 @@ import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
 import { navGroups } from '../lib/admin-nav';
 import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_CHARS } from '../lib/password-policy';
 import { isPwnedPassword } from '../lib/pwned-password';
-import { arrivedViaPasswordLink as arrivedViaPasswordLinkFn } from '../lib/auth-link';
+import {
+  arrivedViaPasswordLink as arrivedViaPasswordLinkFn,
+  readAuthLinkErrorFromWindow,
+  isExpiredLinkError,
+} from '../lib/auth-link';
 import { parseLoginIdentifier } from '../lib/resolve-login';
 import { compressImage, fileExtension, MAX_AVATAR_DIMENSION } from '../lib/image-compress';
 import {
@@ -26,10 +30,28 @@ import PreviewPane from '../components/PreviewPane';
 // once at module load (before the client's async init clears it) and treat it as a
 // second, independent signal.
 //
-// Both recovery AND invite links must force the set-password screen — see
+// Both recovery AND invite links must force the set-password step — see
 // lib/auth-link.js for why invite is the case that was missing. Evaluated at module
 // load, before supabase-js strips the hash.
 const arrivedViaPasswordLink = arrivedViaPasswordLinkFn();
+const authLinkError = readAuthLinkErrorFromWindow();
+
+// "Must set a password" has to OUTLIVE the URL. The hash is stripped by supabase-js
+// within a second of landing, so a refresh — or any navigation — used to drop the
+// requirement entirely, leaving someone inside the admin with a session and no
+// password. Persist it until a password is actually saved.
+const PENDING_PW_KEY = 'admin_must_set_password';
+function markPasswordPending() {
+  try { localStorage.setItem(PENDING_PW_KEY, '1'); } catch (_) {}
+}
+function isPasswordPending() {
+  try { return localStorage.getItem(PENDING_PW_KEY) === '1'; } catch (_) { return false; }
+}
+function clearPasswordPending() {
+  try { localStorage.removeItem(PENDING_PW_KEY); } catch (_) {}
+}
+// Set it at module load, for the same reason the link is read here.
+if (arrivedViaPasswordLink) markPasswordPending();
 
 function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
 
@@ -133,7 +155,9 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [lang, setLangState] = useState('ar');
   const [theme, setThemeState] = useState('dark');
-  const [recoveryMode, setRecoveryMode] = useState(arrivedViaPasswordLink);
+  // Reads the persisted flag, not just this page load's URL: the hash is gone after
+  // a refresh, but the obligation is not.
+  const [recoveryMode, setRecoveryMode] = useState(() => arrivedViaPasswordLink || isPasswordPending());
   const t = getTranslator(lang);
 
   useEffect(() => {
@@ -154,8 +178,10 @@ export default function Admin() {
     const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
       // An invite fires SIGNED_IN, not PASSWORD_RECOVERY, so the link type is the
       // only reliable signal for it. Belt and braces alongside the initial state.
-      if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
-      if (event === 'SIGNED_IN' && arrivedViaPasswordLink) setRecoveryMode(true);
+      if (event === 'PASSWORD_RECOVERY') { markPasswordPending(); setRecoveryMode(true); }
+      if (event === 'SIGNED_IN' && arrivedViaPasswordLink) { markPasswordPending(); setRecoveryMode(true); }
+      // Signing out ends the obligation — the next session decides for itself.
+      if (event === 'SIGNED_OUT') { clearPasswordPending(); setRecoveryMode(false); }
       setSession(s);
     });
     return () => listener.subscription.unsubscribe();
@@ -197,11 +223,23 @@ export default function Admin() {
     <ToastProvider>
     <ConfirmProvider>
       <Head><title>{t('head_title_admin')}</title></Head>
-      {recoveryMode
-        ? <SetNewPassword lang={lang} toggleLang={toggleLang} theme={theme} toggleTheme={toggleTheme} onDone={() => setRecoveryMode(false)} />
-        : session
-          ? <Dashboard session={session} lang={lang} toggleLang={toggleLang} setLang={setLang} theme={theme} toggleTheme={toggleTheme} />
-          : <SignIn lang={lang} toggleLang={toggleLang} theme={theme} toggleTheme={toggleTheme} />}
+      {/* An invited client gets the admin IMMEDIATELY, with a gate on top of it that
+          cannot be dismissed until a password exists. Replacing the whole screen with
+          a password form (the old behaviour) meant they never saw that the invite had
+          actually worked. No session means the link failed — SignIn explains why. */}
+      {session
+        ? (
+          <>
+            <Dashboard session={session} lang={lang} toggleLang={toggleLang} setLang={setLang} theme={theme} toggleTheme={toggleTheme} />
+            {recoveryMode && (
+              <SetPasswordGate
+                lang={lang}
+                onDone={() => { clearPasswordPending(); setRecoveryMode(false); }}
+              />
+            )}
+          </>
+        )
+        : <SignIn lang={lang} toggleLang={toggleLang} theme={theme} toggleTheme={toggleTheme} linkError={authLinkError} />}
     </ConfirmProvider>
     </ToastProvider>
   );
@@ -267,8 +305,9 @@ function ThemeToggleButton({ theme, onClick }) {
 // =========================================================
 // Sign In
 // =========================================================
-function SignIn({ lang, toggleLang, theme, toggleTheme }) {
+function SignIn({ lang, toggleLang, theme, toggleTheme, linkError }) {
   const t = getTranslator(lang);
+  const ar = lang === 'ar';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -366,6 +405,17 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
           )
         ) : (
           <>
+            {/* Arriving here from a dead invite/reset link used to look like the app
+                simply demanding a password the person had never set. Say what happened. */}
+            {linkError && (
+              <div className="error" style={{ marginBottom: 12 }}>
+                {isExpiredLinkError(linkError)
+                  ? (ar
+                    ? 'انتهت صلاحية الرابط أو تم استخدامه من قبل. اطلب دعوة جديدة أو رابط إعادة تعيين.'
+                    : 'That link has expired or was already used. Ask for a new invite or reset link.')
+                  : (linkError.description || linkError.code)}
+              </div>
+            )}
             <p className="signin-hint">{t('sign_in_hint')}</p>
             <label htmlFor="signin-username">{t('username_or_email')}</label>
             {/* 254 = the maximum length of an email address; a username is capped
@@ -385,7 +435,7 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
   );
 }
 
-// Shared chrome for the two signed-out screens (SignIn + SetNewPassword). Both
+// Shared chrome for the signed-out screen (SignIn).
 // previously carried a byte-identical 18-line style block; it now lives once in
 // AuthStyles below.
 function AuthShell({ theme, lang, toggleLang, toggleTheme, title, onSubmit, children }) {
@@ -430,18 +480,51 @@ function AuthStyles() {
 }
 
 // =========================================================
-// Set New Password — shown when Supabase signals PASSWORD_RECOVERY
-// (i.e. the admin opened a password-reset email link)
+// Set Password Gate — a modal over a LIVE dashboard, for someone who arrived by an
+// invite or reset link and therefore has a session but no password of their own.
+//
+// It is deliberately not dismissable: no close button, no Escape, no backdrop click.
+// Letting it be closed recreates the original bug — an account that works until you
+// sign out and then can never be signed into again, with password reset (which needs
+// email) as the only way back.
 // =========================================================
-function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
+function SetPasswordGate({ lang, onDone }) {
   const t = getTranslator(lang);
+  const ar = lang === 'ar';
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const doneTimer = useRef(null);
+  const firstFieldRef = useRef(null);
+  const panelRef = useRef(null);
+
   useEffect(() => () => clearTimeout(doneTimer.current), []);
+
+  // Lock the page behind the gate: no scrolling, no tabbing out, no Escape.
+  useEffect(() => {
+    firstFieldRef.current?.focus();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return; }
+      if (e.key !== 'Tab') return;
+      // Focus trap: keep Tab inside the panel so the dashboard underneath cannot be
+      // operated around the gate.
+      const focusables = panelRef.current?.querySelectorAll('input, button');
+      if (!focusables || focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -466,24 +549,69 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
   }
 
   return (
-    <AuthShell
-      theme={theme} lang={lang} toggleLang={toggleLang} toggleTheme={toggleTheme}
-      title={t('set_new_password_heading')} onSubmit={handleSubmit}
-    >
+    <div className="gate-bg" role="dialog" aria-modal="true" aria-labelledby="gate-title">
+      <div className="gate-panel" ref={panelRef} dir={ar ? 'rtl' : 'ltr'}>
+        <h2 id="gate-title">{ar ? 'اختر كلمة المرور' : 'Choose your password'}</h2>
         {done ? (
-          <p className="signin-hint">{t('password_updated')}</p>
+          <p className="gate-hint">{t('password_updated')} ✓</p>
         ) : (
-          <>
-            <p className="signin-hint">{t('set_new_password_hint')}</p>
-            <label htmlFor="new-pwd">{t('new_password')}</label>
-            <input id="new-pwd" name="new-pwd" type="password" dir="ltr" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} required autoFocus autoComplete="new-password" minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_CHARS} />
-            <label htmlFor="confirm-pwd">{t('confirm_new_password')}</label>
-            <input id="confirm-pwd" name="confirm-pwd" type="password" dir="ltr" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} required autoComplete="new-password" minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_CHARS} />
-            {error && <div className="error">{error}</div>}
-            <Button type="submit" block loading={loading}>{loading ? t('saving') : t('set_new_password_button')}</Button>
-          </>
+          <form onSubmit={handleSubmit}>
+            <p className="gate-hint">{ar
+              ? 'حسابك جاهز. اختر كلمة مرور الآن لتتمكن من تسجيل الدخول لاحقًا — بدونها لن تستطيع الرجوع بعد تسجيل الخروج.'
+              : "Your account is ready. Set a password now so you can sign in later — without one you cannot get back in after signing out."}</p>
+            <label htmlFor="gate-new">{t('new_password')}</label>
+            <input
+              id="gate-new" ref={firstFieldRef} type="password" dir="ltr" value={newPwd}
+              onChange={(e) => setNewPwd(e.target.value)} required autoComplete="new-password"
+              minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_CHARS}
+            />
+            <label htmlFor="gate-confirm">{t('confirm_new_password')}</label>
+            <input
+              id="gate-confirm" type="password" dir="ltr" value={confirmPwd}
+              onChange={(e) => setConfirmPwd(e.target.value)} required autoComplete="new-password"
+              minLength={PASSWORD_MIN} maxLength={PASSWORD_MAX_CHARS}
+            />
+            {error && <div className="gate-err">{error}</div>}
+            <Button type="submit" block loading={loading}>
+              {loading ? t('saving') : t('set_new_password_button')}
+            </Button>
+          </form>
         )}
-    </AuthShell>
+      </div>
+      <style jsx>{`
+        .gate-bg {
+          position: fixed; inset: 0; z-index: 9999;
+          background: rgba(0,0,0,0.75);
+          -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+          display: flex; align-items: center; justify-content: center;
+          padding: 20px;
+        }
+        .gate-panel {
+          width: 100%; max-width: 380px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-strong);
+          border-radius: var(--radius-lg, 16px);
+          padding: 24px;
+          box-shadow: 0 24px 70px rgba(0,0,0,0.5);
+        }
+        .gate-panel h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+        .gate-hint { font-size: 13px; line-height: 1.6; color: var(--text-secondary); margin-bottom: 16px; }
+        .gate-panel label { display: block; font-size: 12px; color: var(--text-secondary); margin: 10px 0 4px; }
+        .gate-panel input {
+          width: 100%; padding: 10px 12px;
+          background: var(--bg-elevated); color: var(--text-primary);
+          border: 1px solid var(--border); border-radius: var(--radius-md, 10px);
+          font-family: inherit; font-size: 14px;
+        }
+        .gate-panel input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+        .gate-err {
+          margin-top: 10px; padding: 8px 12px; font-size: 12px;
+          background: var(--danger-bg); color: var(--danger);
+          border: 1px solid var(--danger-border); border-radius: var(--radius-md, 10px);
+        }
+        .gate-panel :global(button) { margin-top: 14px; }
+      `}</style>
+    </div>
   );
 }
 
