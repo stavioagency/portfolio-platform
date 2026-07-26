@@ -298,11 +298,20 @@ in that direction, but push and redeploy so the two agree.
    arrive.** Both draw on the same exhausted quota. Not a code bug — verified in the
    auth logs (`over_email_send_rate_limit`) and the edge-function logs (six
    consecutive 400s from `invite_failed`).
-2. **Supabase → Auth → SMTP Settings** — confirm the custom SMTP fields are actually
-   saved: host `smtp.resend.com`, port 465, user `resend`, password = the `re_` key,
-   sender `noreply@designakum.com`. Could not be verified from here (no MCP tool
-   reads auth config). Every `mail.send` in the last 24h still came from
-   `noreply@mail.app.supabase.io`, so as of the last check this had not taken effect.
+2. **Supabase → Auth → SMTP Settings — STILL NOT CONFIGURED (re-checked 2026-07-26 via
+   auth logs).** Every `mail.send` still shows `mail_from: noreply@mail.app.supabase.io`,
+   and there were 5 `over_email_send_rate_limit` errors in the last 24h. Set:
+   host `smtp.resend.com`, port 465, user `resend`, password = the `re_` key,
+   sender **`noreply@designakum.site`** (NOT `.com` — that zone is the broken one; the
+   `.site` DNS records are live, see item 1).
+
+   **This is also the "branded invite emails" request** (deferred by the owner until
+   the other issues are done). Configuring custom SMTP is the whole fix: Supabase Auth
+   keeps sending, but the From address becomes Designakum's instead of Supabase's, and
+   the quota goes from a handful per hour to Resend's ~3,000/month. The wording can
+   then be customised under Authentication → Emails. No code change, no need to move
+   off Supabase Auth. Only build a custom Resend-API invite mail if the templates prove
+   too limiting — it is strictly more work for the same visible result.
 3. **`NEXT_PUBLIC_ADMIN_URL`** is still UNSET in Vercel. The code fallback is now
    `https://designakum.site` (2db4bae), so reset/invite links point there. Setting the
    env var requires a REDEPLOY — it is inlined at build time.
