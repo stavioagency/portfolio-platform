@@ -8,6 +8,7 @@ import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
 import { navGroups } from '../lib/admin-nav';
 import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_CHARS } from '../lib/password-policy';
+import { isPwnedPassword } from '../lib/pwned-password';
 import { parseLoginIdentifier } from '../lib/resolve-login';
 import { compressImage, fileExtension, MAX_AVATAR_DIMENSION } from '../lib/image-compress';
 import {
@@ -441,6 +442,9 @@ function SetNewPassword({ lang, toggleLang, theme, toggleTheme, onDone }) {
     if (policyErr) { setError(t(policyErr)); return; }
     setLoading(true);
     try {
+      // Breach check before the write. Fails open by design — see lib/pwned-password.js.
+      const { pwned } = await isPwnedPassword(newPwd);
+      if (pwned) { setError(t('password_pwned')); return; }
       const { error: updateErr } = await supabase.auth.updateUser({ password: newPwd });
       if (updateErr) { setError(updateErr.message); return; }
       setDone(true);
@@ -3304,6 +3308,10 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
     try {
       const { error: reAuthErr } = await supabase.auth.signInWithPassword({ email: session.user.email, password: curPwd });
       if (reAuthErr) { setPwdErr(t('invalid_credentials')); return; }
+      // Breach check AFTER re-auth, so an unauthenticated caller cannot use this
+      // screen to probe whether an arbitrary password is in the corpus.
+      const { pwned } = await isPwnedPassword(newPwd);
+      if (pwned) { setPwdErr(t('password_pwned')); return; }
       const { error } = await supabase.auth.updateUser({ password: newPwd });
       if (error) setPwdErr(error.message);
       else { setPwdMsg(t('password_updated')); setCurPwd(''); setNewPwd(''); setConfirmPwd(''); setTimeout(() => setPwdMsg(''), 3000); }

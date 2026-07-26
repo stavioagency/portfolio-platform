@@ -310,14 +310,31 @@ in that direction, but push and redeploy so the two agree.
    Redirect URLs. Supabase silently drops an unrecognised redirect and falls back to
    the Site URL — that is exactly the bug c835317 fixed once already. Keep the old
    vercel.app entry until a reset is confirmed working from the new domain.
-5. **Supabase → Auth: enable leaked-password protection.** Still OFF — confirmed by the
-   advisor on 2026-07-26. This is the password setting that actually matters; the
-   20-character maximum is a product decision by the owner and does not improve security.
-   NOT doable from a session: there is no MCP tool for auth config, and the dashboard
-   needs an interactive login. Click path:
-   Dashboard -> Authentication -> Sign In / Providers -> Password section ->
-   "Prevent use of leaked passwords" -> Save. Re-run the security advisor to confirm
-   `auth_leaked_password_protection` has cleared.
+5. **Leaked-password protection — BLOCKED BY PLAN, mitigated in code. Not a to-do.**
+   The setting lives at Authentication -> Sign In / Providers -> Email provider panel ->
+   "Prevent use of leaked passwords". It is labelled **"Only available on Pro plan and
+   above"** and the org is on **FREE**, so it cannot be enabled. The security advisor
+   will therefore keep reporting `auth_leaked_password_protection` forever — that
+   warning is NOT actionable until the plan changes. Do not keep chasing it.
+
+   Mitigated instead by `lib/pwned-password.js`, which reimplements the same check
+   client-side against HaveIBeenPwned's public range API using k-anonymity (SHA-1, send
+   only the first 5 hex chars, match the remaining 35 locally — the password and its
+   full hash never leave the browser). Wired into BOTH password-set paths: the
+   post-reset screen and the account editor. Verified against the live API:
+   "password" -> 52,372,427 hits, a random password -> clean.
+
+   Know the limit: this is a GUARDRAIL, not enforcement. It runs in our UI, so a direct
+   Supabase API call bypasses it; the Pro feature runs inside GoTrue and cannot be
+   bypassed. It also FAILS OPEN when the API is unreachable, deliberately — blocking
+   would lock a user out mid-reset. If the project moves to Pro, enable the real
+   setting and delete the module.
+
+   Settings that WERE tightened on Free (2026-07-26): minimum password length 6 -> 8
+   (it was weaker than the app's own PASSWORD_MIN), password requirements, and secure
+   password change. "Require current password when updating" was deliberately left OFF
+   — it would break the post-reset screen, where the user by definition has no old
+   password.
 6. **The storage-isolation proof — DONE 2026-07-26, and it found two things.**
    Proven at the authorization layer by evaluating `can_write_media()` under simulated
    JWT claims for `fghj` (a real CLIENT, mapped only to f9designer). Own-tenant prefix
