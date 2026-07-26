@@ -109,3 +109,50 @@ test('a disabled tenant is not reachable by slug either', async () => {
 test('no supabase client -> nothing (never throws)', async () => {
   assert.deepEqual(await resolveTenant({}), NO_TENANT);
 });
+
+// --- slug-vs-host precedence -------------------------------------------------
+// The bug these lock down: host used to be checked BEFORE slug and returned
+// early, so any /slug opened from a mapped domain served that domain's tenant.
+// The admin's live preview loads `${window.location.origin}/${slug}`, so an
+// owner working from f9designer.site saw f9designer's portfolio no matter which
+// workspace they had selected.
+
+const other = { id: 'other-uuid', slug: 'other-co', status: 'active' };
+
+test('an explicit slug WINS over a mapped host', async () => {
+  const supabase = makeSupabase({
+    domains: [{ domain: 'acme.com', tenant: acme }],
+    tenants: [acme, other],
+  });
+  const t = await resolveTenant({ supabase, host: 'acme.com', slug: 'other-co' });
+  assert.equal(t.slug, 'other-co', 'the URL named a tenant; it must be honoured');
+});
+
+test('the host still decides when there is no slug', async () => {
+  const supabase = makeSupabase({
+    domains: [{ domain: 'acme.com', tenant: acme }],
+    tenants: [acme, other],
+  });
+  const t = await resolveTenant({ supabase, host: 'acme.com', slug: null });
+  assert.equal(t.slug, 'acme');
+});
+
+test('an unknown slug on a mapped host is a 404, not the host tenant', async () => {
+  // Falling back to the host here would let a typo quietly serve the domain's
+  // own portfolio under someone else's URL.
+  const supabase = makeSupabase({
+    domains: [{ domain: 'acme.com', tenant: acme }],
+    tenants: [acme],
+  });
+  const t = await resolveTenant({ supabase, host: 'acme.com', slug: 'does-not-exist' });
+  assert.deepEqual(t, NO_TENANT);
+});
+
+test('a DISABLED tenant named by slug is 404 even on its own mapped host', async () => {
+  const supabase = makeSupabase({
+    domains: [{ domain: 'suspended.com', tenant: suspended }],
+    tenants: [suspended],
+  });
+  const t = await resolveTenant({ supabase, host: 'suspended.com', slug: 'suspended-co' });
+  assert.deepEqual(t, NO_TENANT);
+});
