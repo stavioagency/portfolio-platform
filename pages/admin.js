@@ -9,6 +9,7 @@ import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
 import { navGroups } from '../lib/admin-nav';
 import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_CHARS } from '../lib/password-policy';
 import { isPwnedPassword } from '../lib/pwned-password';
+import { arrivedViaPasswordLink as arrivedViaPasswordLinkFn } from '../lib/auth-link';
 import { parseLoginIdentifier } from '../lib/resolve-login';
 import { compressImage, fileExtension, MAX_AVATAR_DIMENSION } from '../lib/image-compress';
 import {
@@ -24,12 +25,11 @@ import PreviewPane from '../components/PreviewPane';
 // dashboard and the reset link silently becomes a passwordless login. Read the hash
 // once at module load (before the client's async init clears it) and treat it as a
 // second, independent signal.
-const arrivedViaRecoveryLink = (() => {
-  if (typeof window === 'undefined') return false;
-  const h = window.location.hash || '';
-  const q = window.location.search || '';
-  return /(^|[#&?])type=recovery(&|$)/.test(h) || /(^|[&?])type=recovery(&|$)/.test(q);
-})();
+//
+// Both recovery AND invite links must force the set-password screen — see
+// lib/auth-link.js for why invite is the case that was missing. Evaluated at module
+// load, before supabase-js strips the hash.
+const arrivedViaPasswordLink = arrivedViaPasswordLinkFn();
 
 function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
 
@@ -133,7 +133,7 @@ export default function Admin() {
   const [loading, setLoading] = useState(true);
   const [lang, setLangState] = useState('ar');
   const [theme, setThemeState] = useState('dark');
-  const [recoveryMode, setRecoveryMode] = useState(arrivedViaRecoveryLink);
+  const [recoveryMode, setRecoveryMode] = useState(arrivedViaPasswordLink);
   const t = getTranslator(lang);
 
   useEffect(() => {
@@ -152,7 +152,10 @@ export default function Admin() {
       .catch((err) => { console.error('[auth] getSession failed:', err); })
       .finally(() => { setLoading(false); });
     const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
+      // An invite fires SIGNED_IN, not PASSWORD_RECOVERY, so the link type is the
+      // only reliable signal for it. Belt and braces alongside the initial state.
       if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
+      if (event === 'SIGNED_IN' && arrivedViaPasswordLink) setRecoveryMode(true);
       setSession(s);
     });
     return () => listener.subscription.unsubscribe();
@@ -365,9 +368,14 @@ function SignIn({ lang, toggleLang, theme, toggleTheme }) {
           <>
             <p className="signin-hint">{t('sign_in_hint')}</p>
             <label htmlFor="signin-username">{t('username_or_email')}</label>
-            <input id="signin-username" name="username" type="text" dir="ltr" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus autoComplete="username" spellCheck="false" autoCapitalize="off" />
+            {/* 254 = the maximum length of an email address; a username is capped
+                well below that by the invite validator. */}
+            <input id="signin-username" name="username" type="text" dir="ltr" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus autoComplete="username" spellCheck="false" autoCapitalize="off" maxLength={254} />
             <label htmlFor="signin-password">{t('password')}</label>
-            <input id="signin-password" name="password" type="password" dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+            {/* Matches the cap enforced everywhere a password is SET, so the two
+                screens cannot disagree. NOTE: this makes a pre-policy password
+                longer than PASSWORD_MAX_CHARS untypeable here — see HANDOFF §7. */}
+            <input id="signin-password" name="password" type="password" dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" maxLength={PASSWORD_MAX_CHARS} />
             {error && <div className="error">{error}</div>}
             <Button type="submit" block loading={loading}>{loading ? t('signing_in') : t('sign_in')}</Button>
             <button type="button" className="link-btn" onClick={() => setMode('forgot')}>{t('forgot_password_link')}</button>
