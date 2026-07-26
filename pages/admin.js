@@ -729,7 +729,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
             {activeTab === 'links'      && <LinksEditor      key={tenantKey} t={t} lang={lang} />}
             {activeTab === 'appearance' && <AppearanceEditor key={tenantKey} t={t} lang={lang} />}
             {activeTab === 'analytics'  && <AnalyticsEditor  key={tenantKey} t={t} lang={lang} />}
-            {activeTab === 'domains'    && <TenantAdminSection key={tenantKey} session={session} lang={lang} part="domains" />}
+            {activeTab === 'domains'    && <TenantAdminSection key={tenantKey} lang={lang} part="domains" />}
             {activeTab === 'account'    && <AccountEditor    key={tenantKey} t={t} lang={lang} session={session} setChromeLang={setLang} />}
           </div>
 
@@ -2733,7 +2733,9 @@ function DomainManager({ lang, isOwner }) {
 //   'workspace' — owner-only client administration (stays under Account)
 //   'domains'   — the tenant's own website + custom domain (its own Settings tab)
 // Default 'all' keeps the original combined rendering.
-function TenantAdminSection({ session, lang, part = 'all' }) {
+// `session` was dropped when the standalone create-workspace form went away — it
+// was only used to self-enrol the creator, which the Section F trigger now does.
+function TenantAdminSection({ lang, part = 'all' }) {
   const confirm = useConfirm();
   const { tenant, setTenant, reloadTenants, isOwner } = useTenant();
   const ar = lang === 'ar';
@@ -2831,70 +2833,24 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
       console.error('[invite] failed:', err);
       setInvErr(ar ? 'فشلت الدعوة' : 'Invite failed');
     } finally {
-      // Roll back a workspace whose invite never landed. Email is the step that
-      // fails most often right now, and a half-made workspace with no client and no
-      // way to tell it apart is worse than a clean failure the owner can retry.
+      // KEEP a workspace whose invite failed, and say so.
+      //
+      // This used to roll the workspace back, which was right while a separate
+      // "create workspace" form existed. It is now the ONLY way to create one, so
+      // deleting it whenever the email step fails — the step that fails most often
+      // right now — would mean no workspace could be created at all until email is
+      // fixed. Better to state plainly what exists and what did not happen; "Delete
+      // workspace" in settings undoes it in one click.
       if (created) {
-        const { error: rbErr } = await supabase.from('tenants').delete().eq('id', created.id);
-        if (rbErr) {
-          console.error('[invite] rollback failed, workspace left behind:', rbErr);
-          setInvErr((prev) => `${prev} — ${ar
-            ? `تعذّر حذف المساحة «${created.slug}»، احذفها يدويًا`
-            : `could not remove the workspace "${created.slug}", delete it manually`}`);
-        }
+        setInvErr((prev) => `${prev} — ${ar
+          ? `لكن مساحة «${created.slug}» أُنشئت بنجاح. أصلح البريد ثم أعد الدعوة، أو احذف المساحة من إعداداتها.`
+          : `The workspace "${created.slug}" WAS created. Fix email then invite again, or delete it in Workspace settings.`}`);
+        await reloadTenants();
+        setTenant(created);
+        try { localStorage.setItem('admin_selected_tenant', String(created.id)); } catch (_) {}
       }
       setInvBusy(false);
     }
-  }
-
-  const [slug, setSlug] = useState('');
-  const [name, setName] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [createMsg, setCreateMsg] = useState('');
-  const [createErr, setCreateErr] = useState('');
-
-  async function createTenant(e) {
-    e.preventDefault();
-    setCreateErr(''); setCreateMsg('');
-    const s = normalizeSlug(slug);
-    if (!s) { setCreateErr(ar ? 'أدخل معرّفًا صالحًا' : 'Enter a valid slug'); return; }
-    if (RESERVED_SLUGS.includes(s)) {
-      setCreateErr(ar ? 'هذا المعرّف محجوز، اختر غيره' : 'That slug is reserved — pick another');
-      return;
-    }
-    setCreating(true);
-    try {
-      // 1) tenant row
-      const { data: tRow, error: tErr } = await supabase.from('tenants')
-        .insert({ slug: s, name: name.trim() || s, default_lang: 'ar', status: 'active' })
-        .select().single();
-      if (tErr) throw tErr;
-      // 2) link the current admin as owner FIRST. The profile write is gated by
-      //    is_tenant_admin(tenant_id), so we must administer this tenant before we can
-      //    create its profile. Roll the tenant back on failure (cascades the mapping).
-      //
-      //    Section F adds a trigger that enrols EVERY platform owner on insert — the
-      //    browser cannot do that itself, because platform_owners is readable only for
-      //    your own row. This upsert is then a no-op safety net rather than a duplicate
-      //    -key failure, and it keeps workspace creation working if F is not applied yet.
-      const { error: aErr } = await supabase.from('tenant_admins')
-        .upsert(
-          { tenant_id: tRow.id, user_id: session.user.id, role: 'owner' },
-          { onConflict: 'tenant_id,user_id', ignoreDuplicates: true },
-        );
-      if (aErr) { await supabase.from('tenants').delete().eq('id', tRow.id); throw aErr; }
-      // 3) initial profile row for this tenant (now permitted by is_tenant_admin)
-      const { error: pErr } = await supabase.from('profile').insert({ tenant_id: tRow.id, default_lang: 'ar' });
-      if (pErr) { await supabase.from('tenants').delete().eq('id', tRow.id); throw pErr; }
-      setSlug(''); setName('');
-      setCreateMsg(ar ? 'تم إنشاء المساحة' : 'Workspace created');
-      await reloadTenants();
-      setTenant(tRow);
-      try { localStorage.setItem('admin_selected_tenant', String(tRow.id)); } catch (_) {}
-    } catch (err) {
-      console.error('[tenant] create failed:', err);
-      setCreateErr(err?.message || err?.code || (ar ? 'فشل الإنشاء' : 'Creation failed'));
-    } finally { setCreating(false); }
   }
 
   // Workspace settings for the ACTIVE tenant: rename, change slug, suspend/reactivate.
@@ -3059,24 +3015,6 @@ function TenantAdminSection({ session, lang, part = 'all' }) {
     <>
       {isOwner && part !== 'domains' && (
       <>
-      <h2>{ar ? 'مساحة فارغة (بدون عميل)' : 'Empty workspace (no client)'}</h2>
-      <p className="hint">{ar
-        ? 'لبناء موقع قبل أن يكون للعميل حساب دخول. لإضافة عميل بحساب دخول، استخدم «إضافة عميل» بالأسفل — فهي تنشئ المساحة والحساب معًا.'
-        : "For building a site before the client has a login. To onboard a client WITH a login, use \"Add a client\" below — that creates the workspace and the account together."}</p>
-      <form onSubmit={createTenant} style={{ maxWidth: 500 }}>
-        <Field id="tenant-slug" label={ar ? 'المعرّف (slug)' : 'Slug'}>
-          <input id="tenant-slug" type="text" dir="ltr" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="acme-studio" />
-        </Field>
-        <Field id="tenant-name" label={ar ? 'الاسم' : 'Name'}>
-          <input id="tenant-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder={ar ? 'أكمي ستوديو' : 'Acme Studio'} />
-        </Field>
-        {createErr && <div className="ts-err">{createErr}</div>}
-        {createMsg && <div className="ts-ok">{createMsg} ✓</div>}
-        <Button type="submit" loading={creating} style={{ marginTop: 12 }}>
-          {ar ? 'إنشاء مساحة' : 'Create workspace'}
-        </Button>
-      </form>
-
       {tenant && (
         <>
           <h2>{ar ? 'إعدادات المساحة' : 'Workspace settings'} <span className="meta">· {tenant.status === 'disabled' ? (ar ? 'معلّقة' : 'suspended') : (ar ? 'نشطة' : 'active')}</span></h2>
@@ -3552,7 +3490,7 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
       {savingLang && <span className="hint">...</span>}
       {savedLangMsg && <span className="saved-indicator">{savedLangMsg} ✓</span>}
 
-      <TenantAdminSection session={session} lang={lang} part="workspace" />
+      <TenantAdminSection lang={lang} part="workspace" />
 
       <h2>{t('change_password')}</h2>
       <form onSubmit={updatePassword} style={{ maxWidth: 500 }}>
