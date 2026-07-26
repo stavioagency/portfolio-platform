@@ -260,15 +260,14 @@ constants `RESERVED_SLUGS`, `VERCEL_A_RECORD='76.76.21.21'`,
 
 ## 7. NOT DONE — "NEEDS YOU" (manual/external, no code). As of 2026-07-26.
 
-**BLOCKER 0 — `supabase/sections/section-f-owner-admin-parity.sql` is NOT APPLIED.**
-It must be applied BEFORE the current frontend is deployed. Section F makes
-`is_tenant_admin()` recognise platform owners (so a co-owner can actually write the
-workspaces they can already see), adds the missing `admin_usernames` SELECT policy,
-enrols every platform owner on every workspace via trigger + backfill, and gives
-`assign_tenant_admin` a `p_role` parameter. The admin's Client-admin screen now sends
-`p_role`, and that RPC call FAILS with "function not found" until F is applied. The
-matching frontend changes are already committed; the two must ship together.
-Apply it in the Supabase SQL editor, then run the VERIFY block at the bottom of the file.
+**Section F IS APPLIED (2026-07-26)** — `supabase/sections/section-f-owner-admin-parity.sql`.
+`is_tenant_admin()` now recognises platform owners, `admin_usernames` has its missing
+SELECT policy, a trigger + backfill enrols every platform owner on every workspace
+(`tenant_admins` 5 -> 7 rows), and `assign_tenant_admin` takes `p_role`. Verified in
+production: as f9f9, `is_tenant_admin()` returns true for a nonexistent tenant uuid,
+which can only be the owner branch. **The DB is now AHEAD of production**: the admin's
+Client-admin screen sends `p_role`, which the deployed build does not yet do — harmless
+in that direction, but push and redeploy so the two agree.
 
 **THE ONE BLOCKER FOR LAUNCH: email does not send.**
 

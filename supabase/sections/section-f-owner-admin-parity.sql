@@ -1,7 +1,21 @@
 -- ############################################################################
 -- SECTION F — platform-owner parity across every workspace
 -- ############################################################################
--- STATUS: NOT YET APPLIED. Apply this BEFORE deploying the matching frontend.
+-- ┌──────────────────────────────────────────────────────────────────────────┐
+-- │ APPLIED + VERIFIED IN PRODUCTION 2026-07-26 (gphrzvjlstznhypcfgre):       │
+-- │   ✅ F1 is_tenant_admin recognises platform owners                        │
+-- │   ✅ F2 admin_usernames SELECT policy                                     │
+-- │   ✅ F3 trigger + backfill (tenant_admins 5 -> 7 rows)                    │
+-- │   ✅ F4 assign_tenant_admin(uuid, text, text), anon/PUBLIC revoked        │
+-- │                                                                          │
+-- │ Verified: as f9f9 (a platform owner), is_tenant_admin() returns TRUE for  │
+-- │ a tenant uuid that does not exist — no membership row can match, so that  │
+-- │ is the owner branch. Both owners now hold 'owner' on all three tenants;   │
+-- │ the client row (fghj on f9designer) was left untouched. Trigger re-tested │
+-- │ after the F3 revoke below: a probe insert auto-enrolled both owners.      │
+-- │ Advisor confirms the admin_usernames and assign_tenant_admin warnings     │
+-- │ have cleared.                                                            │
+-- └──────────────────────────────────────────────────────────────────────────┘
 --
 -- The problem this fixes
 -- ---------------------
@@ -75,6 +89,16 @@ drop trigger if exists trg_enroll_platform_owners on public.tenants;
 create trigger trg_enroll_platform_owners
   after insert on public.tenants
   for each row execute function public.enroll_platform_owners();
+
+-- CREATE FUNCTION grants EXECUTE to PUBLIC by default, which exposed this trigger
+-- function at /rest/v1/rpc/enroll_platform_owners. Calling it directly errors
+-- ("can only be called as a trigger"), so it was noise rather than a hole, but it
+-- should not be reachable at all. PostgreSQL checks EXECUTE on a trigger function
+-- when the TRIGGER IS CREATED, not each time it fires, so the trigger still works
+-- — re-verified with a rolled-back probe insert after applying this.
+revoke all on function public.enroll_platform_owners() from public;
+revoke all on function public.enroll_platform_owners() from anon;
+revoke all on function public.enroll_platform_owners() from authenticated;
 
 -- Backfill the workspaces that predate the trigger. DO NOTHING leaves every
 -- existing row untouched, including client-role rows (fghj on f9designer).
