@@ -9,6 +9,7 @@ import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
 import { navGroups } from '../lib/admin-nav';
 import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_CHARS } from '../lib/password-policy';
 import { isPwnedPassword } from '../lib/pwned-password';
+import { GUIDE_STEPS, nextStep } from '../lib/onboarding-guide';
 import {
   arrivedViaPasswordLink as arrivedViaPasswordLinkFn,
   readAuthLinkErrorFromWindow,
@@ -3329,25 +3330,95 @@ function computeSetup({ profile, projectCount, domainCount }) {
 }
 
 // Reusable, client-only, mobile-friendly checklist. Each row opens the relevant tab.
-function ClientOnboardingChecklist({ items, labels, onNavigate, ar }) {
+// The guided build-your-website checklist.
+//
+// This replaced a flat list of seven labels. Labels tell someone WHICH BUTTON to
+// press, and that was never where clients got stuck — they got stuck on what to
+// actually write in the box. Each step now carries why it matters, the concrete
+// actions in order, and what "good" looks like, from lib/onboarding-guide.js.
+//
+// Progressive disclosure: exactly ONE step is expanded — the first unfinished one —
+// so the screen reads as "here is your next move", not as a wall of instructions.
+// Finished steps collapse to a tick. Any step can still be opened by clicking it.
+function WebsiteGuide({ doneMap, onNavigate, lang }) {
+  const ar = lang === 'ar';
+  const next = nextStep(doneMap);
+  // Opening on the next unfinished step, but tracked in state so the client can read
+  // ahead or revisit something already done.
+  const [openId, setOpenId] = useState(next ? next.id : null);
+  const pick2 = (v) => (ar ? v.ar : v.en);
+
   return (
-    <div className="ck">
-      {items.map((it) => (
-        <Card key={it.key} as="button" interactive pad="none" className={`ck-item ${it.done ? 'done' : ''}`} onClick={() => onNavigate(it.tab)}>
-          <span className="ck-box">{it.done ? '✓' : ''}</span>
-          <span className="ck-label">{labels[it.key]}</span>
-          <span className="ck-arrow">{ar ? '‹' : '›'}</span>
-        </Card>
-      ))}
+    <div className="wg">
+      {GUIDE_STEPS.map((step, i) => {
+        const done = !!doneMap[step.id];
+        const open = openId === step.id;
+        return (
+          <Card key={step.id} pad="none" className={`wg-step ${done ? 'done' : ''} ${open ? 'open' : ''}`}>
+            <button
+              type="button"
+              className="wg-head"
+              onClick={() => setOpenId(open ? null : step.id)}
+              aria-expanded={open}
+            >
+              <span className="wg-mark">{done ? '✓' : i + 1}</span>
+              <span className="wg-title">{pick2(step.title)}</span>
+              {!done && next && next.id === step.id && (
+                <span className="wg-next">{ar ? 'التالي' : 'Next'}</span>
+              )}
+              <span className="wg-chev">{open ? '▾' : (ar ? '‹' : '›')}</span>
+            </button>
+
+            {open && (
+              <div className="wg-body">
+                <p className="wg-why">{pick2(step.why)}</p>
+                <ol className="wg-how">
+                  {pick2(step.how).map((line, n) => <li key={n}>{line}</li>)}
+                </ol>
+                <p className="wg-tip"><strong>{ar ? 'نصيحة' : 'Tip'}</strong> · {pick2(step.tip)}</p>
+                <Button size="sm" onClick={() => onNavigate(step.tab)}>
+                  {done
+                    ? (ar ? 'تعديل' : 'Edit this')
+                    : (ar ? 'ابدأ الآن' : 'Do this now')}
+                </Button>
+              </div>
+            )}
+          </Card>
+        );
+      })}
       <style jsx>{`
-        .ck { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
-        /* surface comes from Card; only the row layout is local */
-        .ck-item { display: flex; align-items: center; gap: 12px; padding: 13px 14px; font-size: var(--text-md); min-height: 48px; }
-        .ck-box { width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px; border: 1.5px solid var(--border-strong); display: flex; align-items: center; justify-content: center; font-size: 13px; color: #fff; }
-        .ck-item.done .ck-box { background: var(--accent); border-color: var(--accent); }
-        .ck-item.done .ck-label { color: var(--text-tertiary); text-decoration: line-through; }
-        .ck-label { flex: 1; }
-        .ck-arrow { color: var(--text-muted); font-size: 18px; }
+        .wg { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+        .wg-head {
+          display: flex; align-items: center; gap: 12px; width: 100%;
+          padding: 13px 14px; min-height: 48px;
+          background: none; border: none; cursor: pointer;
+          font-family: inherit; font-size: var(--text-md); color: inherit; text-align: inherit;
+        }
+        .wg-mark {
+          width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%;
+          border: 1.5px solid var(--border-strong);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 12px; font-weight: 600; color: var(--text-tertiary);
+        }
+        .wg-step.done .wg-mark { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .wg-step.done .wg-title { color: var(--text-tertiary); }
+        .wg-title { flex: 1; font-weight: 500; }
+        .wg-next {
+          font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+          color: var(--accent); border: 1px solid var(--accent);
+          border-radius: 999px; padding: 2px 8px; flex-shrink: 0;
+        }
+        .wg-chev { color: var(--text-muted); font-size: 16px; flex-shrink: 0; }
+        .wg-body { padding: 0 14px 16px; border-top: 1px solid var(--border); margin-top: -1px; }
+        .wg-why { font-size: 13px; line-height: 1.7; color: var(--text-secondary); margin: 14px 0 12px; }
+        .wg-how { margin: 0 0 12px; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 6px; }
+        .wg-how li { font-size: 13px; line-height: 1.6; color: var(--text-primary); }
+        .wg-tip {
+          font-size: 12px; line-height: 1.6; color: var(--text-secondary);
+          background: var(--bg-elevated); border: 1px solid var(--border);
+          border-radius: var(--radius-md); padding: 10px 12px; margin: 0 0 14px;
+        }
+        .wg-tip strong { color: var(--accent); }
       `}</style>
     </div>
   );
@@ -3385,15 +3456,6 @@ function ClientHome({ lang, onNavigate }) {
   const slugUrl = tenant ? `/${tenant.slug}` : '/';
   const publicUrl = primary ? `https://${primary.domain}` : slugUrl;
   const active = (tenant?.status || 'active') !== 'disabled';
-  const LABELS = {
-    photo: ar ? 'أضف صورة الملف' : 'Add profile photo',
-    bio: ar ? 'اكتب نبذتك' : 'Write your bio',
-    project: ar ? 'أضف أول مشروع' : 'Add your first project',
-    links: ar ? 'أضف روابط التواصل' : 'Add social links',
-    theme: ar ? 'اختر مظهرًا' : 'Choose a theme',
-    domain: ar ? 'اربط نطاقك' : 'Connect a domain',
-    publish: ar ? 'أضف اسمك وانشر' : 'Add your name & publish',
-  };
 
   return (
     <div className="editor">
@@ -3436,10 +3498,32 @@ function ClientHome({ lang, onNavigate }) {
       </div>
 
       <h2>{ar ? 'أكمل موقعك' : 'Complete your website'} <span className="meta">· {loading ? '…' : `${setup.done}/${setup.total}`}</span></h2>
-      {!loading && <ClientOnboardingChecklist items={setup.items} labels={LABELS} onNavigate={onNavigate} ar={ar} />}
+      {!loading && (
+        <>
+          {/* Progress before the steps: seeing a filled bar is what makes the
+              remaining work feel finite rather than open-ended. */}
+          <div className="ch-progress" aria-hidden="true">
+            <div className="ch-progress-fill" style={{ width: `${setup.percent}%` }} />
+          </div>
+          <p className="hint" style={{ marginBottom: 14 }}>{
+            setup.done === setup.total
+              ? (ar ? 'اكتمل كل شيء. موقعك جاهز تمامًا للمشاركة 🎉' : 'Everything is done. Your site is ready to share 🎉')
+              : (ar
+                ? 'كل خطوة تشرح سبب أهميتها وكيف تنفّذها. ابدأ بالخطوة المفتوحة — هي التالية.'
+                : 'Each step explains why it matters and exactly how to do it. Start with the open one — that is your next move.')
+          }</p>
+          <WebsiteGuide
+            doneMap={Object.fromEntries(setup.items.map((i) => [i.key, i.done]))}
+            onNavigate={onNavigate}
+            lang={lang}
+          />
+        </>
+      )}
 
       <AdminStyles />
       <style jsx>{`
+        .ch-progress { height: 6px; border-radius: 999px; background: var(--bg-elevated); border: 1px solid var(--border); max-width: 640px; overflow: hidden; margin-bottom: 10px; }
+        .ch-progress-fill { height: 100%; background: var(--accent); transition: width 0.4s ease; }
         .ch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; max-width: 640px; margin-bottom: var(--space-5); }
         /* surface comes from Card */
         .ch-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 6px; }
