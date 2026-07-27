@@ -10,10 +10,14 @@
 //     were locked out, with password reset (which needs email) as the only way back;
 //   * it depends on email, the least reliable part of this system.
 //
-// Now the account is created WITH a randomised password that is returned to the
-// OWNER. The owner passes it to the client through the channel they already use, the
-// client signs in immediately, and the admin forces them to choose their own password
-// on first sign-in via user_metadata.must_set_password. Nothing here needs email.
+// Now the account is created WITH a randomised password. If RESEND_API_KEY is set the
+// details are emailed to the client automatically; the password is ALSO returned to
+// the owner either way, as the fallback and as the only channel while that secret is
+// unset. Either route, the client signs in immediately and the admin forces them to
+// choose their own password on first sign-in via user_metadata.must_set_password.
+//
+// The distinction that matters: email is now an OPTIMISATION, not a dependency. When
+// it breaks, onboarding degrades to copy-and-paste instead of stopping.
 //
 // Security model (unchanged):
 //   * The CALLER's JWT is verified (verify_jwt on the gateway) AND we re-check
@@ -24,13 +28,24 @@
 //     role 'client', so a client can never invite users or reach another tenant.
 //
 // Body: { tenant_id: uuid, email: string, username: string }
-// Returns: { ok, tenant, email, username, temp_password }
+// Returns: { ok, tenant, email, username, temp_password, emailed, email_error }
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// OPTIONAL. Set these as Edge Function secrets and onboarding becomes automatic; leave
+// them unset and it stays manual, with the owner passing the password on. Nothing here
+// breaks either way — the account is created before any email is attempted, and a
+// failed send never fails the request.
+//   RESEND_API_KEY   re_...
+//   MAIL_FROM        e.g. "Designakum <noreply@designakum.site>"   (.site, not .com)
+//   ADMIN_URL        e.g. "https://designakum.site/admin"
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+const MAIL_FROM = Deno.env.get("MAIL_FROM") ?? "Designakum <noreply@designakum.site>";
+const ADMIN_URL = Deno.env.get("ADMIN_URL") ?? "https://designakum.site/admin";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -64,6 +79,63 @@ function randomPassword(len = 14): string {
     [chars[i], chars[j]] = [chars[j], chars[i]];
   }
   return chars.join("");
+}
+
+const esc = (v: string) =>
+  String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// Sends the credentials straight to the client, so onboarding stops depending on the
+// owner relaying them by hand.
+//
+// It emails a TEMPORARY password in plaintext, which is a real trade-off. It is
+// acceptable here only because the account is useless until the holder changes it —
+// must_set_password forces that on first sign-in — and because the alternative,
+// a one-time magic link, is exactly what kept failing: single-use, burnt by mail
+// scanners, and leaving accounts with no password at all.
+//
+// Returns null on success, or a reason. NEVER throws: the account already exists by
+// the time this runs, and the owner still has the password on screen as a fallback.
+async function emailCredentials(
+  to: string, username: string, password: string, workspace: string,
+): Promise<string | null> {
+  if (!RESEND_API_KEY) return "not_configured";
+  const html = `
+<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:28px 24px;color:#0C1530">
+  <h1 style="font-size:20px;margin:0 0 6px">Your website is ready</h1>
+  <p style="font-size:14px;line-height:1.6;color:#475069;margin:0 0 20px">
+    An account has been created for you on <strong>${esc(workspace)}</strong>.
+    Sign in below to add your work, then make it yours.
+  </p>
+  <div style="background:#F4F6FB;border:1px solid #DDE3F0;border-radius:12px;padding:16px;margin-bottom:20px">
+    <p style="margin:0 0 10px;font-size:12px;color:#475069">Username</p>
+    <p style="margin:0 0 16px;font-size:16px;font-family:ui-monospace,Menlo,monospace"><strong>${esc(username)}</strong></p>
+    <p style="margin:0 0 10px;font-size:12px;color:#475069">Temporary password</p>
+    <p style="margin:0;font-size:16px;font-family:ui-monospace,Menlo,monospace"><strong>${esc(password)}</strong></p>
+  </div>
+  <p style="margin:0 0 20px">
+    <a href="${esc(ADMIN_URL)}" style="display:inline-block;background:#2C6FE0;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600">Sign in</a>
+  </p>
+  <p style="font-size:13px;line-height:1.6;color:#475069;margin:0">
+    You will be asked to choose your own password the first time you sign in — this one
+    stops working then. If you did not expect this email, you can ignore it.
+  </p>
+</div>`;
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: MAIL_FROM,
+        to: [to],
+        subject: `Your ${workspace} website — sign-in details`,
+        html,
+      }),
+    });
+    if (!res.ok) return `resend_${res.status}: ${(await res.text()).slice(0, 200)}`;
+    return null;
+  } catch (e) {
+    return `resend_unreachable: ${String(e).slice(0, 200)}`;
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -144,15 +216,23 @@ Deno.serve(async (req: Request) => {
     return json({ error: "assign_failed", detail: assignErr.message }, 500);
   }
 
-  // The password is returned to the OWNER to pass on out of band. Deliberately NOT
-  // emailed: plaintext passwords in email age badly, and email is the dependency this
-  // rewrite exists to remove.
+  // Try to deliver it automatically. This is the LAST step on purpose: everything
+  // above has already succeeded, so a mail failure costs convenience, not the account.
+  const mailError = await emailCredentials(email, username, temp_password, tenantRow.slug);
+
+  // The password is returned to the owner REGARDLESS. Even on a successful send it is
+  // the fallback for a client who never receives it, and while RESEND_API_KEY is unset
+  // it is the only delivery mechanism there is.
   return json({
     ok: true,
     tenant: tenantRow.slug,
     email,
     username,
     temp_password,
-    message: "Account created. Give the client their username and this password — they must change it on first sign-in.",
+    emailed: mailError === null,
+    email_error: mailError,
+    message: mailError === null
+      ? "Account created and the details were emailed to the client."
+      : "Account created. Give the client their username and this password — they must change it on first sign-in.",
   });
 });

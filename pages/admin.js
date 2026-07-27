@@ -2998,8 +2998,13 @@ function TenantAdminSection({ lang, part = 'settings' }) {
       // this is dismissed without copying it the only way back is a reset.
       setInvCreds({
         workspace: tRow.name || tRow.slug,
+        email: data?.email || invEmail.trim(),
         username: data?.username || invUser.trim(),
         password: data?.temp_password || '',
+        // The function reports whether it actually delivered. It never fails the
+        // request over email, so this can be false while everything else succeeded.
+        emailed: data?.emailed === true,
+        emailError: data?.email_error || null,
       });
       setInvEmail(''); setInvUser(''); setInvName(''); setInvSlug('');
       setInvMsg('');
@@ -3152,41 +3157,6 @@ function TenantAdminSection({ lang, part = 'settings' }) {
     }
   }
 
-  // Assign a client as admin of the active tenant. Done through a SECURITY DEFINER
-  // RPC because tenant_admins is readable only for your OWN mappings — the client's
-  // user_id can't (and shouldn't) be looked up from the browser.
-  const [adminUser, setAdminUser] = useState('');
-  const [adminRole, setAdminRole] = useState('client');
-  const [assigning, setAssigning] = useState(false);
-  const [assignMsg, setAssignMsg] = useState('');
-  const [assignErr, setAssignErr] = useState('');
-
-  async function assignAdmin(e) {
-    e.preventDefault();
-    setAssignErr(''); setAssignMsg('');
-    if (!tenant) { setAssignErr(ar ? 'اختر مساحة أولًا' : 'Select a workspace first'); return; }
-    const u = adminUser.trim();
-    if (!u) { setAssignErr(ar ? 'أدخل اسم المستخدم' : 'Enter a username'); return; }
-    setAssigning(true);
-    // p_role requires the Section F migration; before it lands the RPC only has a
-    // 2-arg signature and this call fails with "function not found".
-    //
-    // NOTE: tenant_admins.role is descriptive today — no policy or helper function
-    // reads it (is_tenant_admin and can_write_media both test membership only), so
-    // 'owner' and 'client' currently confer identical access to THIS workspace.
-    // Platform ownership lives in platform_owners and is deliberately not settable
-    // from the browser. What the role does buy is an honest record of who someone
-    // is, and F's ON CONFLICT DO UPDATE means re-granting can now correct a
-    // mis-recorded role instead of silently doing nothing.
-    const { error } = await supabase.rpc('assign_tenant_admin', {
-      p_tenant_id: tenant.id, p_username: u, p_role: adminRole,
-    });
-    setAssigning(false);
-    if (error) { setAssignErr(error.message || String(error)); return; }
-    setAdminUser('');
-    setAssignMsg(ar ? 'تم منح الوصول' : 'Access granted');
-  }
-
 
   return (
     // Every other editor wraps itself in .editor and mounts AdminStyles; this one
@@ -3274,9 +3244,16 @@ function TenantAdminSection({ lang, part = 'settings' }) {
       {invCreds && (
         <div className="creds">
           <h3>{ar ? `جاهز — مساحة «${invCreds.workspace}»` : `Ready — workspace "${invCreds.workspace}"`}</h3>
-          <p className="hint">{ar
-            ? 'أرسل هذه البيانات للعميل عبر واتساب. لن تظهر كلمة المرور مرة أخرى، وسيُطلب منه تغييرها عند أول تسجيل دخول.'
-            : 'Send these to the client on WhatsApp. The password is not shown again, and they will be required to change it on first sign-in.'}</p>
+          <p className="hint">{invCreds.emailed
+            ? (ar
+              ? `تم إرسال التفاصيل تلقائيًا إلى ${invCreds.email}. تظهر هنا أيضًا في حال لم تصله.`
+              : `Details were emailed automatically to ${invCreds.email}. Shown here too, in case it never arrives.`)
+            : (ar
+              ? 'لم يُرسَل بريد — أرسل هذه البيانات للعميل بنفسك. لن تظهر كلمة المرور مرة أخرى، وسيُطلب منه تغييرها عند أول تسجيل دخول.'
+              : 'No email was sent — pass these to the client yourself. The password is not shown again, and they must change it on first sign-in.')}</p>
+          {!invCreds.emailed && invCreds.emailError && invCreds.emailError !== 'not_configured' && (
+            <p className="hint" style={{ opacity: 0.75 }} dir="ltr">{invCreds.emailError}</p>
+          )}
           <div className="creds-row"><span>{ar ? 'اسم المستخدم' : 'Username'}</span><code dir="ltr">{invCreds.username}</code></div>
           <div className="creds-row"><span>{ar ? 'كلمة المرور' : 'Password'}</span><code dir="ltr">{invCreds.password}</code></div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
@@ -3305,38 +3282,6 @@ function TenantAdminSection({ lang, part = 'settings' }) {
       </>
       )}
 
-      {isOwner && part === 'settings' && (
-      <>
-      {/* Collapsed by default. This grants access to an account that ALREADY exists,
-          which almost never happens now that "Add client" creates the account itself
-          — but sitting open it read as a required step and was the single most
-          confusing thing on the screen. */}
-      <details className="advanced">
-        <summary>{ar ? 'خيارات متقدمة: منح وصول لحساب موجود' : 'Advanced: give an existing account access'}</summary>
-      <p className="hint">{ar
-        ? 'استخدم هذا فقط لإضافة شخص لديه حساب بالفعل إلى هذه المساحة — مثل شريك يساعد في التحرير. لإضافة عميل جديد، استخدم «العملاء ← إضافة عميل».'
-        : 'Only for adding someone who ALREADY has an account to this workspace — a partner helping with edits, say. To add a new client, use Clients → Add client.'}</p>
-      {tenant ? (
-        <form onSubmit={assignAdmin} style={{ display: 'flex', gap: 8, maxWidth: 500, alignItems: 'flex-start' }}>
-          <input type="text" dir="ltr" value={adminUser} onChange={(e) => setAdminUser(e.target.value)} placeholder={ar ? 'اسم المستخدم' : 'username'} />
-          <select
-            value={adminRole}
-            onChange={(e) => setAdminRole(e.target.value)}
-            aria-label={ar ? 'الدور' : 'Role'}
-          >
-            <option value="client">{ar ? 'عميل' : 'Client'}</option>
-            <option value="owner">{ar ? 'مالك' : 'Owner'}</option>
-          </select>
-          <Button type="submit" variant="secondary" size="sm" loading={assigning}>{ar ? 'منح' : 'Grant'}</Button>
-        </form>
-      ) : (
-        <div className="hint">{ar ? 'اختر مساحة من الأعلى.' : 'Select a workspace at the top.'}</div>
-      )}
-      {assignErr && <div className="ts-err">{assignErr}</div>}
-      {assignMsg && <div className="ts-ok">{assignMsg} ✓</div>}
-      </details>
-      </>
-      )}
 
       {(part === 'settings' || part === 'domains') && (
       <>
