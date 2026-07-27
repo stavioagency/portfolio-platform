@@ -1,6 +1,7 @@
 # HANDOFF — Designakum Portfolio Platform
 
-_Last updated: 2026-07-26 · HEAD `cc9163f` (branch `main`, all pushed) · working tree clean_
+_Last updated: 2026-07-27 · branch `main`. Do not trust a HEAD written here — check
+`git status -sb` and `git log --oneline -5`, because this line goes stale first._
 
 This document lets a new chat / engineer continue without re-deriving context. Read
 sections 0–2 before touching anything.
@@ -62,8 +63,9 @@ the UI.
 ```
 NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co" NEXT_PUBLIC_SUPABASE_ANON_KEY="x" npx next build
 ```
-**Test:** `npm test` → currently **66 pass** (tenant 14, admin-nav 9, safe-url 6,
-password-policy 12, resolve-login 8, image-compress 17).
+**Test:** `npm test` → currently **102 pass** (tenant 14, admin-nav 9, safe-url 6,
+password-policy 12, resolve-login 8, image-compress 17, pwned-password 11,
+profile-content 14, auth-link 6, auth-link-error 5).
 
 ---
 
@@ -122,11 +124,26 @@ tests/
   image-compress.test.mjs  17 — scaling maths, pass-through formats, extensions.
 
 supabase/
-  sections/section-c-and-onboarding.sql   Applied+verified in prod.
-  sections/section-d-owner-roles.sql      Applied+verified in prod (owner roles).
-  functions/invite-client/index.ts        Owner-only invite Edge Function (DEPLOYED).
+  SCHEMA.sql      >>> START HERE. The live schema, read back out of the database
+                  2026-07-27. Documentation, NOT a migration — do not run it.
+  sections/       The applied-migration log. Add NEW changes here.
+                  c = onboarding · d = owner roles · e = storage isolation
+                  f = owner parity across workspaces (+ storage traversal fix)
+  history/        Superseded scripts + README. NEVER RUN THESE. Includes the old
+                  single-tenant schema, which still carries CHECK (id = 1).
+  functions/invite-client/index.ts   Owner-only onboarding Edge Function (DEPLOYED,
+                  v2). Creates the account WITH a generated password and returns it
+                  to the owner. It no longer emails a magic link — see §7.
   AUDIT-AND-ROADMAP.md, PRODUCTION-AB-RUNBOOK.md   docs.
 ```
+
+**Client onboarding, as of 2026-07-27:** Clients → "+ Add client" → workspace name,
+slug, email, username → the workspace AND the account are created together, and the
+generated password is shown ONCE with a copy button. You pass it to the client
+yourself; nothing is emailed. On first sign-in they hit a password gate that cannot
+be dismissed (`user_metadata.must_set_password`). This replaced magic-link invites,
+which failed because the link is single-use, the account had no password until it was
+clicked, and the whole thing depended on email.
 
 ---
 
@@ -145,10 +162,38 @@ which in production belongs to a live client — so every unresolvable request s
 that client's portfolio, and the admin read/wrote it whenever no workspace was
 selected. Public resolution now 404s (137607c) and the admin refuses (8ec5458).
 
-**RLS functions (all SECURITY DEFINER):**
-`is_admin()`, `is_tenant_admin(uuid)`, `is_platform_owner()`,
-`get_email_for_username(text)`, `assign_tenant_admin(uuid,text)` (owner-only, role
-`client`).
+**>>> THE SCHEMA IS DOCUMENTED IN `supabase/SCHEMA.sql`. <<<**
+Read back out of the live database on 2026-07-27, so it is what EXISTS rather than
+what someone intended. Everything below is a summary; that file is the authority.
+
+**SQL files were consolidated 2026-07-27.** There were 11 `.sql` files across four
+directories (~2,300 lines) describing four overlapping versions of this database with
+no way to tell which was true. Now:
+  * `supabase/SCHEMA.sql`      — current reality. Documentation, NOT a migration.
+  * `supabase/sections/`       — the applied-migration log (C, D, E, F). Add new
+                                 changes here.
+  * `supabase/history/`        — superseded scripts + a README. NEVER run these.
+                                 `supabase-complete.sql` in there still carries
+                                 `CHECK (id = 1)`, which multi-tenancy required
+                                 removing; copying table definitions out of it
+                                 reintroduces single-tenant assumptions.
+
+**RLS functions (all SECURITY DEFINER):** `is_tenant_admin(uuid)`,
+`is_platform_owner()`, `can_write_media(text)`, `get_email_for_username(text)`,
+`assign_tenant_admin(uuid,text,text)`, `list_workspace_members()`,
+`enroll_platform_owners()` (trigger).
+
+**Schema clean sweep 2026-07-27:**
+  * DROPPED `is_admin()` — "is this user an admin at all", meaningless once access
+    became per-tenant. No policy, function or line of app code referenced it.
+  * REVOKED anon EXECUTE on `can_write_media`, `is_platform_owner`, `is_tenant_admin`.
+    None needed it: every policy calling them is authenticated-only, and inside a
+    SECURITY DEFINER function the grant is irrelevant. Cleared 4 advisor warnings.
+  * `get_email_for_username` KEEPS anon on purpose — sign-in resolves a username
+    before anyone is authenticated. Still the open issue in section 8.
+  * NOT dropped, despite being legacy: `profile.links` (1 row has data),
+    `projects.full_description` (8 rows), `analytics_events.country` (never
+    populated but read by the analytics editor). Documented in SCHEMA.sql instead.
 
 **Owner accounts (platform_owners.user_id):**
 - `6b0ab503-a663-4014-9221-a2ede4611fde` — designakum
@@ -387,7 +432,7 @@ NOT the `76.76.21.21` the in-app DNS instructions still print.
 
 - **OPEN SECURITY ISSUE — `get_email_for_username` leaks emails to anonymous callers.**
   The RPC is `SECURITY DEFINER` and `GRANT EXECUTE ... TO anon`
-  (`supabase-complete.sql:287-304`), so anyone can POST a username to
+  (now `supabase/history/supabase-complete.sql`), so anyone can POST a username to
   `/rest/v1/rpc/get_email_for_username` and get that account's real email back, with no
   auth and no rate limit. It also confirms which usernames exist (email vs null). This
   defeats the generic "invalid credentials" / "if an account exists" wording on the
