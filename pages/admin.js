@@ -187,10 +187,37 @@ export default function Admin() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  function setLang(next) {
+  // Language is remembered in TWO places on purpose:
+  //   * localStorage — instant, so the admin never flashes Arabic before correcting
+  //     itself on load.
+  //   * user_metadata.admin_lang — follows the ACCOUNT, so signing in on a different
+  //     browser or machine still comes up in the language you last chose. This is
+  //     separate from profile.default_lang, which is the language a client's PUBLIC
+  //     SITE opens in — a different decision that happens to have the same values.
+  function setLang(next, { persistToAccount = true } = {}) {
     setLangState(next);
     applyLang(next);
+    if (persistToAccount && session) {
+      // Fire and forget: a failure here costs the cross-device memory, nothing else,
+      // and localStorage has already recorded the choice.
+      // Spread the existing metadata rather than trusting the API to merge: if it
+      // replaced instead, this would silently clear must_set_password and drop the
+      // password gate for a client who has not chosen one yet.
+      supabase.auth.updateUser({ data: { ...(session.user?.user_metadata || {}), admin_lang: next } })
+        .catch((err) => console.warn('[lang] could not save to account:', err));
+    }
   }
+
+  // Apply the account's remembered language once a session exists. Skipped when it
+  // already matches, so this never fights the user mid-session, and flagged not to
+  // write back — otherwise reading a value would immediately re-save it.
+  useEffect(() => {
+    const saved = session?.user?.user_metadata?.admin_lang;
+    if (!saved || (saved !== 'ar' && saved !== 'en')) return;
+    if (saved === lang) return;
+    setLangState(saved);
+    applyLang(saved);
+  }, [session?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   function toggleLang() {
     setLang(lang === 'ar' ? 'en' : 'ar');
   }
@@ -542,9 +569,12 @@ function SetPasswordGate({ lang, onDone }) {
       // Clear must_set_password in the SAME call that sets the password, so the two
       // can never disagree — the gate is driven by that flag for temp-password
       // accounts, and a separate write could fail and leave it stuck on.
+      const { data: cur } = await supabase.auth.getUser();
       const { error: updateErr } = await supabase.auth.updateUser({
         password: newPwd,
-        data: { must_set_password: false },
+        // Same reasoning as the language write: preserve whatever else is in there
+        // (admin_lang) instead of relying on the API to merge.
+        data: { ...(cur?.user?.user_metadata || {}), must_set_password: false },
       });
       if (updateErr) { setError(updateErr.message); return; }
       setDone(true);

@@ -22,6 +22,19 @@ function readLang() {
   return localStorage.getItem('lang');
 }
 
+// The admin's live preview loads this page in an iframe on the SAME ORIGIN, so it
+// shares one localStorage with the dashboard. Anything this page persists is
+// therefore written on the admin's behalf, whether or not the admin wanted it.
+function isPreviewContext() {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (new URLSearchParams(window.location.search).get('preview') === '1') return true;
+    return window.self !== window.top;
+  } catch (_) {
+    return true; // cross-origin frame check threw — treat as embedded and persist nothing
+  }
+}
+
 function getVisitorId() {
   if (typeof window === 'undefined') return null;
   let id = localStorage.getItem('visitor_id');
@@ -46,6 +59,12 @@ export default function Home({ slug = null } = {}) {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [lang, setLang] = useState('ar');
+  // Captured on the FIRST RENDER, before the persist effect below can run. That
+  // effect used to fire on mount with the default 'ar' and overwrite the stored
+  // preference — so by the time loadData read it, the visitor's real choice was
+  // already gone, and the admin (same origin, via the preview iframe) was reset to
+  // Arabic on its next load. Read once, up front, and nothing can clobber it.
+  const storedLangRef = useRef(readLang());
   const [bannerIdx, setBannerIdx] = useState(0);
   const [bannerPaused, setBannerPaused] = useState(false);
   const [loadedBanners, setLoadedBanners] = useState(() => new Set([0, 1])); // only active+next load initially
@@ -108,8 +127,8 @@ export default function Home({ slug = null } = {}) {
 
       if (profileData) {
         setProfile(profileData);
-        const stored = readLang();
-        setLang(stored || profileData.default_lang || 'ar');
+        // A visitor's own choice wins; otherwise this tenant's default.
+        setLang(storedLangRef.current || profileData.default_lang || 'ar');
       }
       if (projectsData) setProjects(projectsData);
     } catch (e) {
@@ -119,13 +138,18 @@ export default function Home({ slug = null } = {}) {
     }
   }
 
-  // Apply lang to <html> and persist
+  // Apply lang to <html>, and persist only when it is genuinely this visitor's choice.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     document.documentElement.lang = lang;
     document.documentElement.dir = dir;
+    // Do NOT persist while still loading: at that point `lang` is only the 'ar'
+    // placeholder, and writing it destroys the stored preference we are about to
+    // apply. And never persist from the admin's preview iframe — it shares this
+    // origin, so it would be silently rewriting the dashboard's own language.
+    if (loading || isPreviewContext()) return;
     localStorage.setItem('lang', lang);
-  }, [lang, dir]);
+  }, [lang, dir, loading]);
 
   // Apply customizable appearance tokens
   useEffect(() => {
