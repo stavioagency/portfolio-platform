@@ -3490,6 +3490,57 @@ function OwnerClientsOverview({ lang, onOpen }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [resettingId, setResettingId] = useState(null);
+  const [resetCreds, setResetCreds] = useState(null);
+  const [resetErr, setResetErr] = useState('');
+  const [resetCopied, setResetCopied] = useState(false);
+  const confirm = useConfirm();
+
+  // Recovery path for a client who lost their password. Without this the only fix was
+  // deleting the workspace and rebuilding it, which loses their site — and a reset
+  // EMAIL is not an option while SMTP is unconfigured.
+  async function resetPassword(row) {
+    const m = row.member;
+    if (!m) return;
+    const ok = await confirm({
+      title: ar ? 'إعادة تعيين كلمة المرور؟' : 'Reset this password?',
+      description: ar
+        ? `سيتم إنشاء كلمة مرور جديدة لـ ${m.email}. كلمتهم الحالية ستتوقف فورًا، وستظهر لك الجديدة مرة واحدة لترسلها لهم.`
+        : `A new password will be generated for ${m.email}. Their current one stops working immediately, and you will be shown the new one once to pass on.`,
+      confirmLabel: ar ? 'إعادة التعيين' : 'Reset',
+      cancelLabel: ar ? 'إلغاء' : 'Cancel',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setResetErr(''); setResetCreds(null); setResettingId(m.user_id);
+    try {
+      const { data, error } = await supabase.functions.invoke('reset-client-password', {
+        body: { user_id: m.user_id },
+      });
+      if (error) {
+        let msg = error.message;
+        try {
+          const b = await error.context?.json?.();
+          if (b?.detail) msg = `${b.error || 'reset_failed'}: ${b.detail}`;
+          else if (b?.error) msg = b.error;
+        } catch (_) {}
+        setResetErr(msg || (ar ? 'فشلت إعادة التعيين' : 'Reset failed'));
+        return;
+      }
+      if (data?.error) { setResetErr(data.detail ? `${data.error}: ${data.detail}` : data.error); return; }
+      setResetCreds({
+        workspace: row.name,
+        email: data?.email || m.email,
+        username: data?.username || m.username,
+        password: data?.temp_password || '',
+      });
+    } catch (err) {
+      console.error('[reset] failed:', err);
+      setResetErr(ar ? 'فشلت إعادة التعيين' : 'Reset failed');
+    } finally {
+      setResettingId(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -3497,14 +3548,20 @@ function OwnerClientsOverview({ lang, onOpen }) {
       setLoading(true);
       const ids = tenants.map((x) => x.id);
       if (ids.length === 0) { if (!cancelled) { setRows([]); setLoading(false); } return; }
-      const [{ data: profiles }, { data: projects }, { data: domains }] = await Promise.all([
+      const [{ data: profiles }, { data: projects }, { data: domains }, { data: members }] = await Promise.all([
         supabase.from('profile').select('tenant_id,name,bio,profile_image,brand_logo,custom_links,appearance').in('tenant_id', ids),
         supabase.from('projects').select('tenant_id').in('tenant_id', ids),
         supabase.from('tenant_domains').select('tenant_id,domain,is_primary').in('tenant_id', ids),
+        // Which email belongs to which workspace. Has to be an RPC: tenant_admins and
+        // admin_usernames are both readable only for your OWN rows, so the browser
+        // cannot join a workspace to its client. Owner-gated inside the function, and
+        // it never returns platform owners — only clients.
+        supabase.rpc('list_workspace_members'),
       ]);
       const pcount = {}; (projects || []).forEach((p) => { pcount[p.tenant_id] = (pcount[p.tenant_id] || 0) + 1; });
       const pmap = {}; (profiles || []).forEach((p) => { pmap[p.tenant_id] = p; });
       const dmap = {}; (domains || []).forEach((d) => { (dmap[d.tenant_id] = dmap[d.tenant_id] || []).push(d); });
+      const mmap = {}; (members || []).forEach((m) => { mmap[m.tenant_id] = m; });
       const out = tenants.map((x) => {
         const s = computeSetup({ profile: pmap[x.id], projectCount: pcount[x.id] || 0, domainCount: (dmap[x.id] || []).length });
         const dom = (dmap[x.id] || []).find((d) => d.is_primary) || (dmap[x.id] || [])[0];
@@ -3513,6 +3570,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
           domain: dom?.domain || `/${x.slug}`,
           domainStatus: dom ? dom.status : null,
           isPrimary: !!dom?.is_primary,
+          member: mmap[x.id] || null,
         };
       }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
       if (!cancelled) { setRows(out); setLoading(false); }
@@ -3541,28 +3599,89 @@ function OwnerClientsOverview({ lang, onOpen }) {
           </div>
         </div>
       )}
+      {resetErr && <div className="ts-err" style={{ maxWidth: 720 }}>{resetErr}</div>}
+
+      {resetCreds && (
+        <div className="creds" style={{ marginBottom: 16 }}>
+          <h3>{ar ? `كلمة مرور جديدة — ${resetCreds.workspace}` : `New password — ${resetCreds.workspace}`}</h3>
+          <p className="hint">{ar
+            ? 'كلمتهم القديمة توقّفت الآن. أرسل لهم هذه، وسيُطلب منهم تغييرها عند الدخول. لن تظهر مرة أخرى.'
+            : 'Their old password has stopped working. Send them this — they will be asked to change it on sign-in. It is not shown again.'}</p>
+          <div className="creds-row"><span>{ar ? 'البريد' : 'Email'}</span><code dir="ltr">{resetCreds.email}</code></div>
+          {resetCreds.username && (
+            <div className="creds-row"><span>{ar ? 'اسم المستخدم' : 'Username'}</span><code dir="ltr">{resetCreds.username}</code></div>
+          )}
+          <div className="creds-row"><span>{ar ? 'كلمة المرور' : 'Password'}</span><code dir="ltr">{resetCreds.password}</code></div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            <Button
+              type="button" size="sm"
+              onClick={async () => {
+                const text = ar
+                  ? `رابط الدخول: ${adminRedirectUrl()}\nاسم المستخدم: ${resetCreds.username || resetCreds.email}\nكلمة المرور: ${resetCreds.password}`
+                  : `Sign in: ${adminRedirectUrl()}\nUsername: ${resetCreds.username || resetCreds.email}\nPassword: ${resetCreds.password}`;
+                try {
+                  await navigator.clipboard.writeText(text);
+                  setResetCopied(true);
+                  setTimeout(() => setResetCopied(false), 2000);
+                } catch (_) { /* clipboard blocked — values are on screen */ }
+              }}
+            >
+              {resetCopied ? (ar ? 'تم النسخ ✓' : 'Copied ✓') : (ar ? 'نسخ التفاصيل' : 'Copy details')}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => { setResetCreds(null); setResetCopied(false); }}>
+              {ar ? 'تم' : 'Done'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {loading ? <div className="hint">…</div> : rows.length === 0 ? (
         <div className="hint">{ar ? 'لا يوجد عملاء بعد.' : 'No clients yet.'}</div>
       ) : (
         <div className="cl-list">
           {rows.map((r) => (
-            <Card key={r.id} as="button" interactive pad="none" className="cl-row" onClick={() => onOpen(r.id)}>
-              <div className="cl-main">
-                <div className="cl-name">{r.name}</div>
-                <div className="cl-domain" dir="ltr">
-                  {r.domainStatus && (
-                    <span
-                      className={`dotmark ${domainStatusMeta(r.domainStatus, ar).tone}`}
-                      title={domainStatusMeta(r.domainStatus, ar).label}
-                    />
-                  )}
-                  {r.domain}{r.isPrimary ? ' ★' : ''}
+            /* The row is a DIV, not a button: it now contains its own buttons, and a
+               button inside a button is invalid and unclickable in places. */
+            <Card key={r.id} pad="none" className="cl-row">
+              <button type="button" className="cl-open" onClick={() => onOpen(r.id)}>
+                <div className="cl-main">
+                  <div className="cl-name">{r.name}</div>
+                  <div className="cl-domain" dir="ltr">
+                    {r.domainStatus && (
+                      <span
+                        className={`dotmark ${domainStatusMeta(r.domainStatus, ar).tone}`}
+                        title={domainStatusMeta(r.domainStatus, ar).label}
+                      />
+                    )}
+                    {r.domain}{r.isPrimary ? ' ★' : ''}
+                  </div>
+                  {/* Who this workspace belongs to. Without it, a client who loses
+                      their password cannot even be identified from here. */}
+                  <div className="cl-who" dir="ltr">
+                    {r.member
+                      ? <>{r.member.email}{r.member.username ? ` · ${r.member.username}` : ''}</>
+                      : <span className="cl-none">{ar ? 'لا يوجد عميل مرتبط' : 'no client account'}</span>}
+                  </div>
                 </div>
-              </div>
-              <Badge tone={r.status === 'disabled' ? 'danger' : 'success'}>
-                {r.status === 'disabled' ? (ar ? 'معلّق' : 'Suspended') : (ar ? 'نشط' : 'Active')}
-              </Badge>
-              <span className="cl-pct">{r.percent}%</span>
+                <Badge tone={r.status === 'disabled' ? 'danger' : 'success'}>
+                  {r.status === 'disabled' ? (ar ? 'معلّق' : 'Suspended') : (ar ? 'نشط' : 'Active')}
+                </Badge>
+                <span className="cl-pct">{r.percent}%</span>
+              </button>
+              {r.member && (
+                <div className="cl-actions">
+                  {r.member.must_set_password && (
+                    <span className="cl-flag">{ar ? 'لم يغيّر كلمة المرور بعد' : 'password not set yet'}</span>
+                  )}
+                  <Button
+                    type="button" variant="secondary" size="sm"
+                    loading={resettingId === r.member.user_id}
+                    onClick={() => resetPassword(r)}
+                  >
+                    {ar ? 'إعادة تعيين كلمة المرور' : 'Reset password'}
+                  </Button>
+                </div>
+              )}
             </Card>
           ))}
         </div>
@@ -3592,6 +3711,18 @@ function OwnerClientsOverview({ lang, onOpen }) {
         }
         .add-close:hover { color: var(--text-primary); }
         .cl-list { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
+        .cl-open { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; background: none; border: none; cursor: pointer; font-family: inherit; text-align: inherit; color: inherit; }
+        .cl-open:hover .cl-name { color: var(--accent); }
+        .cl-who { font-size: 11px; color: var(--text-tertiary); margin-top: 3px; }
+        .cl-none { color: var(--text-muted); font-style: italic; }
+        .cl-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 14px 12px; flex-wrap: wrap; }
+        .cl-flag { font-size: 11px; color: var(--warning, var(--text-tertiary)); }
+        .creds { max-width: 720px; padding: 16px; background: var(--success-bg); border: 1px solid var(--success-border); border-radius: var(--radius-md); }
+        .creds h3 { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+        .creds-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
+        .creds-row span { color: var(--text-secondary); }
+        .creds-row code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--text-primary); user-select: all; }
+        .ts-err { padding: 8px 12px; background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); border-radius: var(--radius-md); font-size: 12px; margin-bottom: 12px; }
         /* surface comes from Card; only the row layout is local */
         .cl-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; min-height: 56px; }
         .cl-main { flex: 1; min-width: 0; }

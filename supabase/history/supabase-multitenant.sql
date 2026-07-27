@@ -1,3 +1,16 @@
+-- ############################################################################
+-- ##  SUPERSEDED — DO NOT RUN THIS FILE AGAINST ANY DATABASE.               ##
+-- ##                                                                        ##
+-- ##  Kept only as a record of how the schema used to look. Parts of it are ##
+-- ##  actively WRONG for the live database, most dangerously any            ##
+-- ##  single-tenant assumption such as `CHECK (id = 1)` on profile, which   ##
+-- ##  multi-tenancy required removing. Copying table definitions out of     ##
+-- ##  here silently reintroduces them.                                      ##
+-- ##                                                                        ##
+-- ##  For what the database IS:      ../SCHEMA.sql                          ##
+-- ##  To CHANGE the database:        add a file to ../sections/             ##
+-- ############################################################################
+
 -- ============================================================================
 -- Portfolio Platform — MULTI-TENANT SCHEMA (PLAN / NOT YET APPLIED)
 -- ============================================================================

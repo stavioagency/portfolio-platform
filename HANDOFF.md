@@ -134,8 +134,21 @@ supabase/
   functions/invite-client/index.ts   Owner-only onboarding Edge Function (DEPLOYED,
                   v2). Creates the account WITH a generated password and returns it
                   to the owner. It no longer emails a magic link — see §7.
+  functions/reset-client-password/index.ts   Owner-only recovery (DEPLOYED, v1).
+                  Generates a fresh password for a CLIENT and returns it to the
+                  owner, re-arming must_set_password. Refuses to touch a platform
+                  owner's account — co-owners are peers, and one resetting the
+                  other silently is takeover, not support.
   AUDIT-AND-ROADMAP.md, PRODUCTION-AB-RUNBOOK.md   docs.
 ```
+
+**Client RECOVERY, as of 2026-07-27:** Clients lists every workspace with the email
+and username attached to it, and a "Reset password" button per row. That answers
+"who owns this workspace" and "this client is locked out" without deleting and
+rebuilding the workspace, which was previously the only option. The workspace->email
+join needs the `list_workspace_members()` RPC because tenant_admins and
+admin_usernames are both own-rows-only; it is owner-gated inside the function and
+never returns platform owners.
 
 **Client onboarding, as of 2026-07-27:** Clients → "+ Add client" → workspace name,
 slug, email, username → the workspace AND the account are created together, and the
