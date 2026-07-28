@@ -1,7 +1,11 @@
 /** @type {import('next').NextConfig} */
 const securityHeaders = [
-  // Prevent clickjacking. SAMEORIGIN allows the AppearanceEditor iframe preview (admin loading /) to work.
-  { key: 'X-Frame-Options',        value: 'SAMEORIGIN' },
+  // Prevent clickjacking. 'self' allows the AppearanceEditor iframe preview
+  // (admin loading /) to work, exactly as SAMEORIGIN did; designakum.com is
+  // allowed so the marketing site can embed a live preview of a portfolio.
+  // Using CSP rather than X-Frame-Options because XFO cannot allow a specific
+  // third-party origin (its ALLOW-FROM directive is obsolete and unsupported).
+  { key: 'Content-Security-Policy', value: "frame-ancestors 'self' https://designakum.com" },
   // Prevent MIME-type sniffing.
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   // Don't leak full referrer URLs to third parties.
