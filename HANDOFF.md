@@ -151,12 +151,35 @@ admin_usernames are both own-rows-only; it is owner-gated inside the function an
 never returns platform owners.
 
 **Client onboarding, as of 2026-07-27:** Clients → "+ Add client" → workspace name,
-slug, email, username → the workspace AND the account are created together, and the
-generated password is shown ONCE with a copy button. You pass it to the client
-yourself; nothing is emailed. On first sign-in they hit a password gate that cannot
-be dismissed (`user_metadata.must_set_password`). This replaced magic-link invites,
+slug, email, username → the workspace AND the account are created together with a
+generated password. On first sign-in they hit a password gate that cannot be
+dismissed (`user_metadata.must_set_password`). This replaced magic-link invites,
 which failed because the link is single-use, the account had no password until it was
 clicked, and the whole thing depended on email.
+
+**How the password reaches the client — READ THIS, it was documented wrong.** An
+earlier version of this section said "nothing is emailed". That has been FALSE since
+f261119: `invite-client` posts the credentials to the Resend API and emails them to
+the client, and the secrets to enable it are set. The password is ALSO shown once in
+the admin, which is the fallback and the only channel if the send fails.
+
+Two consequences that follow from emailing a plaintext temporary password:
+
+  * **A typo in the email address hands a working password to a stranger.** The
+    account is protected only by must_set_password — whoever signs in FIRST sets the
+    real password and owns the workspace. If an address is wrong, treat the emailed
+    password as compromised and use Clients → **Reset password** immediately; that
+    regenerates it and re-arms the gate, invalidating what was sent.
+  * **There is no "re-invite".** `invite-client` creates a NEW auth user, so running
+    it again for an existing client fails on `email_taken`/`username_taken`. Reset
+    password is the recovery path, and it hands you a fresh password on screen.
+
+**Changing a client's email address:** there is no UI for it. `reset-client-password`
+only touches the password and metadata, and nothing else calls `updateUserById` with
+an email. Do it in Supabase Dashboard → Authentication → Users → edit the user's
+email; the workspace, username and all content stay intact. Note a wrong email does
+NOT lock a client out — sign-in resolves their USERNAME to an email server-side — it
+only breaks Supabase's own recovery and misdirects future credential emails.
 
 ---
 
