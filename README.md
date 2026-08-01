@@ -1,8 +1,10 @@
 # Portfolio Platform
 
-A self-hosted, bilingual (Arabic / English) portfolio site + admin dashboard. Built on Next.js + Supabase, deployed on Vercel.
+A multi-tenant, bilingual (Arabic / English) portfolio platform. Built on Next.js + Supabase, deployed on Vercel.
 
-The public site is a "linktree-style" card showing your brand logo, name, banners, stats, and CTA buttons. The admin lets you edit every piece of it without writing code.
+One app and one Supabase project serve every client. Each client is a **tenant** with their own public site — a card showing their logo, name, banners, stats, projects and links — and their own dashboard to edit it without writing code. Tenant isolation is enforced by Postgres RLS.
+
+**Engineers: read [HANDOFF.md](HANDOFF.md) first.** It is the single source of project context. The live database schema is documented in [supabase/SCHEMA.sql](supabase/SCHEMA.sql).
 
 ---
 
@@ -16,28 +18,25 @@ The public site is a "linktree-style" card showing your brand logo, name, banner
 
 ---
 
-## First-time setup (single-tenant)
+## Running it locally
 
-1. **Create Supabase project** → https://supabase.com/dashboard
-2. **Run the SQL migrations in order**, each in Supabase SQL Editor:
-   - `supabase-setup.sql`        (base schema)
-   - `supabase-migration-v2.sql` (bilingual fields, analytics, usernames)
-   - `supabase-migration-v3.sql` (banners, stats, CTA buttons, brand logo)
-   - `supabase-migration-v4.sql` (project metadata: client / year / role)
-   - `supabase-migration-v5.sql` (icon backfill fix)
-   - `supabase-migration-v6.sql` (RLS hardening — admins only can write)
-3. **Create the `media` storage bucket** in Supabase → Storage → New bucket → Public
-4. **Create an admin auth user** in Supabase → Authentication → Users → Add user (with Auto Confirm)
-5. **Create a username for that user**:
-   ```sql
-   INSERT INTO admin_usernames (username, user_id)
-   SELECT 'yourusername', id FROM auth.users WHERE email = 'you@example.com';
+1. Clone the repo and `npm install`.
+2. Create `.env.local` (gitignored) with the two public Supabase values:
    ```
-6. **Deploy to Vercel**:
-   - Connect this GitHub repo
-   - Add env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - Deploy
-7. **Sign in at `/admin`** with your username + password
+   NEXT_PUBLIC_SUPABASE_URL=...
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+   ```
+   Without them the build fails on `supabaseUrl is required`. Placeholders are
+   enough to build or run tests, but every data-driven screen will be empty.
+3. `npm run dev`, then sign in at `/admin` with a username and password.
+
+**There is no per-client setup.** Clients are onboarded from inside the admin
+(Clients → "+ Add client"), which creates their workspace and account together.
+See HANDOFF.md section 7.
+
+**Database changes** go in `supabase/sections/` and are applied by hand; then
+update `supabase/SCHEMA.sql` to match. Never run anything in `supabase/history/` —
+those scripts are superseded and some are actively wrong for this database.
 
 ---
 
@@ -45,26 +44,26 @@ The public site is a "linktree-style" card showing your brand logo, name, banner
 
 ```
 pages/
-  index.js          # Public site — the linktree-style card
-  admin.js          # Admin dashboard — 7 tabs
-  _app.js           # Next.js root + react-image-crop CSS
-  _document.js      # HTML lang/dir default + favicon
-lib/
-  supabase.js       # Supabase client
-  i18n.js           # Bilingual JSON helpers (pick / setLangValue)
-  translations.js   # UI strings (EN + AR)
-  brand-icons.js    # Inline SVG paths for 25+ social platforms
-styles/
-  globals.css       # Design tokens (colors, fonts, spacing, radii)
-public/
-  favicon.svg
-next.config.js      # Image domains + security headers
-package.json
+  index.js          # Public site (client-side rendered); also serves "/"
+  [slug].js         # Per-tenant public route; reuses <Home> from index.js
+  admin.js          # The entire admin dashboard
+lib/                # tenant resolver, onboarding guide, auth helpers, i18n, ...
+components/ui/      # Button, Card, Badge, Toast, ConfirmDialog, ...
+supabase/
+  SCHEMA.sql        # The live schema, documented. Not a migration.
+  sections/         # Applied migrations — new changes go here
+  history/          # Superseded scripts. DO NOT RUN.
+  functions/        # Edge Functions (onboarding, password reset)
+tests/              # Node test runner; pure lib modules only
+styles/globals.css  # Design tokens
 ```
 
 ---
 
-## Admin dashboard — 7 tabs
+## Admin dashboard
+
+Owners additionally get **Clients** (the list, plus onboarding) and **Workspace**
+(the active tenant's settings and custom domain). Clients see only their own site.
 
 | Tab | What it controls |
 |---|---|
@@ -161,10 +160,10 @@ Things on the roadmap but not built:
 ## Maintenance notes for future deploys
 
 When making schema changes:
-1. Create a new `supabase-migration-vN.sql`
-2. Make it idempotent (`IF NOT EXISTS`, guard with checks)
-3. Add it to the migration list in this README
-4. Run it in Supabase BEFORE pushing the corresponding code
+1. Add a new file to `supabase/sections/`
+2. Make it idempotent (`IF NOT EXISTS`, `CREATE OR REPLACE`, guarded drops)
+3. Apply it to Supabase BEFORE pushing the corresponding code
+4. Update `supabase/SCHEMA.sql` so it still describes reality
 
 When making code changes:
 - Files in `pages/` are routed automatically by Next.js
