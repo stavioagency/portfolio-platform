@@ -913,27 +913,44 @@ export default function Home({ slug = null } = {}) {
           overflow: hidden;
           margin-bottom: var(--card-stack);
         }
+        /* Grid stretches every cell to the tallest, so a label that wraps to two
+           lines used to leave the single-line cells top-heavy with dead space
+           beneath them. Centring the content vertically makes all three read as
+           balanced whatever the copy does. Padding raised from 14/8 to sit on
+           the same rhythm as the buttons below. */
         .stat {
-          padding: 14px 8px;
+          padding: 16px 10px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
           text-align: center;
           background: rgba(20,20,28,0.6);
         }
-        .stat-value { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
-        .stat-label { font-size: 11px; color: rgba(255,255,255,0.5); }
+        /* unicode-bidi on both: a stat is a self-contained string, and without
+           it the RTL page reorders neutral characters against the author's
+           intent — "2+" renders as "+2" and "connect." as ".connect". A rating
+           or a count displayed backwards is a correctness bug, not a nicety. */
+        .stat-value {
+          font-size: 18px; font-weight: 700; color: #fff;
+          margin-bottom: 3px; line-height: 1.2;
+          unicode-bidi: plaintext;
+        }
+        .stat-label {
+          font-size: 11px; color: rgba(255,255,255,0.5); line-height: 1.45;
+          unicode-bidi: plaintext;
+        }
 
         /* ---- CTA SYSTEM -----------------------------------------------------
-           Two fixed columns: a 24px icon column and a text column capped at
-           16ch. The icon column never flexes, so the glyph sits at the same x in
-           EVERY button regardless of how long its label is. A label longer than
-           the cap is clipped with an ellipsis rather than widening the button;
-           the admin caps input at CTA_LABEL_MAX so that is a backstop, not the
-           normal case.
+           A 24px icon column that never flexes, so the glyph sits at the same
+           offset in EVERY button whatever its label. The label takes the
+           remaining room and ellipsises only if it genuinely overflows.
 
-           The icon column is on the LEFT in both LTR and RTL. Deliberate, not an
-           RTL bug: the buttons read as one aligned set across a bilingual page,
-           so the column does not move when a visitor switches language. A forced
-           LTR base direction pins the column; unicode-bidi on the label lets
-           Arabic shape and order correctly inside it.
+           The column sits at the INLINE START, so it mirrors: left in English,
+           right in Arabic. An earlier version pinned it left in both directions
+           for cross-language consistency, which rendered as Arabic text stranded
+           against a left icon with a dead gutter on the right — the eye starts
+           on the right in Arabic and found nothing there. Alignment discipline
+           holds within each direction instead of across them.
 
            NOTE: no backticks in these comments — the whole block is a template
            literal and one would end it mid-stylesheet. */
@@ -950,7 +967,6 @@ export default function Home({ slug = null } = {}) {
           align-items: center;
           gap: 14px;
           padding: 0 16px;
-          direction: ltr; /* pins the icon column to the left in both languages */
           background: rgba(255,255,255,0.06);
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: 14px;
@@ -985,10 +1001,11 @@ export default function Home({ slug = null } = {}) {
                         0 2px 6px -2px rgba(0,0,0,0.35);
             transform: translateY(-2px);
           }
-          .cta:hover .cta-icon { color: #fff; }
-          /* A brand-coloured glyph keeps its colour — that colour is the
-             recognition, and washing it to white on hover would undo it. */
-          .cta:hover .cta-icon.tinted { color: var(--brand); }
+          /* NOTE: the icon colour deliberately does not change on hover. Every
+             glyph now carries an identity colour — a brand mark or the site
+             accent — and washing it to white would throw that away for the one
+             moment the user is looking straight at it. The lift and shadow are
+             the hover feedback. */
           .cta.primary:hover {
             box-shadow: 0 14px 30px -10px rgba(0,0,0,0.6),
                         0 3px 8px -3px rgba(0,0,0,0.4);
@@ -1031,29 +1048,41 @@ export default function Home({ slug = null } = {}) {
           width: var(--cta-icon-col);
           height: var(--cta-icon-col);
           display: flex; align-items: center; justify-content: center;
-          color: rgba(255,255,255,0.9);
-          /* Colour only — the box never changes, so the glyph cannot move. */
-          transition: color 160ms cubic-bezier(0.4, 0, 0.2, 1);
+          /* Generic glyphs (website, email, location, phone, link) wear the
+             tenant's accent rather than plain white. With one branded icon in a
+             row of white ones the colour looked like an accident; this makes it
+             a rule — brand marks in brand colours, everything else in the site's
+             own accent. */
+          color: var(--accent);
         }
         /* Each platform in its own colour, same as the social row. brandColor()
-           returns null for the generic email/website glyphs and for anything
-           unknown, and those keep the neutral colour above. */
+           returns null for the generic glyphs and for anything unknown, and
+           those keep the accent above. */
         .cta-icon.tinted { color: var(--brand); }
         .cta-icon svg { width: 19px; height: 19px; fill: currentColor; }
 
         .cta-label {
           flex: 1 1 auto;
+          /* min-width:0 is what actually permits the ellipsis: a flex item
+             defaults to min-width:auto and would otherwise refuse to shrink
+             below its text. */
           min-width: 0;
-          max-width: 16ch;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          text-align: left;
-          unicode-bidi: plaintext; /* Arabic shapes correctly inside the ltr button */
+          text-align: start;
+          /* Each label is its own bidi paragraph, so an English label on an
+             Arabic page keeps its trailing punctuation at the end instead of
+             having it flipped to the front by the surrounding direction. */
+          unicode-bidi: plaintext;
         }
-        /* No icon means no gutter to align to, so the label takes the whole
-           button and centres instead of sitting against an empty 24px column. */
-        .cta.no-icon .cta-label { max-width: none; text-align: center; }
+        /* NO max-width here, deliberately. A hard 16ch cap truncated labels
+           while half the button sat empty, which reads as a rendering fault
+           rather than a design choice. The label now takes the room it has and
+           ellipsises only when the text genuinely does not fit — the admin's
+           22-character cap is what keeps labels sane, and this is the backstop
+           for content saved before that cap existed. */
+        .cta.no-icon .cta-label { text-align: center; }
 
         /* PRIMARY CTA — a SOLID fill of the tenant's accent, so the first action
            reads as the action rather than as another ghost button. Fill and
