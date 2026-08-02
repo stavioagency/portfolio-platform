@@ -1,6 +1,18 @@
 -- ############################################################################
--- SECTION G — pending handoff on a newly created workspace
+-- SECTION G — pending handover on a newly created workspace
 -- ############################################################################
+-- ┌──────────────────────────────────────────────────────────────────────────┐
+-- │ APPLIED + VERIFIED IN PRODUCTION 2026-08-02 (gphrzvjlstznhypcfgre):       │
+-- │   ✅ tenants.handed_over_at added (timestamptz, nullable)                 │
+-- │   ✅ backfill ran: 7/7 existing tenants stamped with their created_at     │
+-- │   ✅ tenants_pending_handoff_idx created                                  │
+-- │                                                                          │
+-- │ Verified by query: total 7, backfilled 7, still_pending 0 — so the        │
+-- │ pending queue opens EMPTY rather than listing the whole customer base as  │
+-- │ outstanding, which was the point of the backfill. Security advisor shows  │
+-- │ no new findings; tenants already had RLS and policies, so adding a column │
+-- │ raised nothing.                                                          │
+-- └──────────────────────────────────────────────────────────────────────────┘
 --
 -- The problem this fixes
 -- ----------------------

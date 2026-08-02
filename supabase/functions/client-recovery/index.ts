@@ -1,10 +1,14 @@
 // client-recovery — fix a client's onboarding without rebuilding it.
 //
 // ┌──────────────────────────────────────────────────────────────────────────┐
-// │ NOT YET DEPLOYED. Written against gphrzvjlstznhypcfgre but never pushed  │
-// │ to it — see supabase/SCHEMA.sql. Until it is deployed the admin's Edit   │
-// │ email / Send welcome actions report "not available yet" and every other  │
-// │ recovery route (copy, WhatsApp, PDF, reset password) keeps working.      │
+// │ DEPLOYED to gphrzvjlstznhypcfgre 2026-08-02, verify_jwt on, matching the │
+// │ two sibling functions. The admin degrades gracefully if it ever goes     │
+// │ missing: recoveryError() in pages/admin.js reports it plainly and copy / │
+// │ WhatsApp / PDF / reset-password keep working.                            │
+// │                                                                          │
+// │ NOTE: send_welcome needs RESEND_API_KEY / MAIL_FROM / ADMIN_URL as        │
+// │ function secrets, the same ones invite-client uses. Without them it       │
+// │ still rotates the password and returns it, reporting "not_configured".   │
 // └──────────────────────────────────────────────────────────────────────────┘
 //
 // THE PROBLEM IT SOLVES

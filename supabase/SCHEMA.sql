@@ -29,14 +29,17 @@
 -- owner. Login accepts a username, resolved to an email by get_email_for_username.
 
 
--- >>> EDGE FUNCTION NOT YET DEPLOYED <<<
--- supabase/functions/client-recovery/ handles onboarding recovery: correcting a
--- mistyped client email on the EXISTING auth user, and re-sending the welcome
--- (which necessarily issues a fresh temporary password, since the original is
--- only ever a hash). It is committed but has NOT been deployed to this project.
--- Until it is, the admin's "Edit email" and "Send welcome email" actions report
--- that plainly; copy / WhatsApp / PDF / Reset password all keep working.
--- Deploy it, then delete this notice.
+-- EDGE FUNCTIONS — three, all ACTIVE with verify_jwt on:
+--   invite-client          creates a workspace + account + password, emails it
+--   reset-client-password  rotates a client's password, returns it to the owner
+--   client-recovery        (v1, deployed 2026-08-02) onboarding recovery —
+--                          update_email rewrites the address on the EXISTING
+--                          auth user, send_welcome re-sends the onboarding mail
+--                          and necessarily issues a fresh password because the
+--                          original is only ever a hash. Never creates a user,
+--                          a workspace or a membership.
+--   All three are owner-gated by re-checking is_platform_owner() against the
+--   caller's own JWT, and refuse to act on a platform owner.
 --
 -- ============================================================================
 -- TABLES
@@ -47,16 +50,13 @@
 --   status text ('active' | 'disabled'; 'disabled' makes the public site 404)
 --   created_at timestamptz
 --   TRIGGER trg_enroll_platform_owners AFTER INSERT -> enroll_platform_owners()
---
---   >>> NOT YET APPLIED <<<
 --   handed_over_at timestamptz NULL — operator state: NULL means the workspace
---   was created but the admin has not confirmed the client received their
---   credentials. Does NOT affect public site resolution. Ships in
---   supabase/sections/section-g-handoff.sql, which has NOT been run against
---   this database. Until it is, the admin's Clients list detects the missing
---   column, logs a console warning, and treats every workspace as handed over —
---   so the pending section simply does not appear. Apply the section file, then
---   delete this notice.
+--     was created but the admin has not confirmed the client received their
+--     credentials, which is what puts it in the admin's Pending handover queue.
+--     Does NOT affect public site resolution. Applied 2026-08-02 via
+--     supabase/sections/section-g-handoff.sql; all 7 tenants existing at that
+--     point were backfilled to their created_at.
+--     INDEX tenants_pending_handoff_idx (created_at desc) WHERE handed_over_at IS NULL
 
 -- tenant_domains — custom domains pointing at a tenant.
 --   id uuid PK · tenant_id uuid NOT NULL -> tenants ON DELETE CASCADE
