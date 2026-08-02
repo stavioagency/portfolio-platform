@@ -5,9 +5,10 @@ import { getTranslator } from '../lib/translations';
 import { pick } from '../lib/i18n';
 import { resolveTenant } from '../lib/tenant';
 import { privacyContent, termsContent } from '../lib/legal-content';
-import { BRAND_ICONS, normalizeIcon } from '../lib/brand-icons';
+import { BRAND_ICONS, normalizeIcon, brandColor } from '../lib/brand-icons';
 import { safeUrl } from '../lib/safe-url';
 import { hasPublicContent } from '../lib/profile-content';
+import { readableInkOn } from '../lib/contrast';
 
 const BANNER_BGS = {
   purple: 'linear-gradient(135deg, #7a72d6, #9FA7FF)',
@@ -232,14 +233,93 @@ export default function Home({ slug = null } = {}) {
     });
   }, [bannerIdx, profile?.banners?.length]);
 
+  // A centred spinner on an empty page tells a visitor nothing except that
+  // something is missing. This is the same card, at the same width, in the same
+  // place, with its real blocks blanked — so the page never jumps when the data
+  // lands, and the shape of what is coming is legible immediately.
   if (loading) {
     return (
-      <div className="loader-wrap">
-        <div className="loader-spinner" />
+      <div className="skel-page" dir={dir}>
+        {/* role="status" already implies aria-live="polite" */}
+        <div className="skel-card" role="status" aria-busy="true">
+          <span className="sr-only">{t('loading')}</span>
+          {/* Holds the top bar's height without inventing a social-icon count —
+              that row is variable-length, so any fixed number of dots would be
+              wrong for most tenants. */}
+          <div className="skel-top">
+            <span className="sk sk-pill" />
+          </div>
+          <div className="skel-name">
+            <span className="sk sk-avatar" />
+            <div className="skel-name-text">
+              <span className="sk sk-line lg" />
+              <span className="sk sk-line sm" />
+            </div>
+          </div>
+          <span className="sk sk-banner" />
+          <div className="skel-ctas">
+            <span className="sk sk-cta" />
+            <span className="sk sk-cta" />
+          </div>
+        </div>
         <style jsx>{`
-          .loader-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg-primary); }
-          .loader-spinner { width: 32px; height: 32px; border: 2.5px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
-          @keyframes spin { to { transform: rotate(360deg); } }
+          .skel-page {
+            min-height: 100vh;
+            background:
+              radial-gradient(ellipse 900px 600px at 50% 0%, rgba(159,167,255,0.18), transparent 60%),
+              radial-gradient(ellipse 600px 400px at 50% 100%, rgba(159,167,255,0.08), transparent 60%),
+              var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 80px 20px 40px;
+          }
+          /* geometry copied from .card below — the two must stay identical or
+             the swap from skeleton to content becomes a visible jump */
+          .skel-card {
+            width: 100%;
+            max-width: 440px;
+            background: linear-gradient(180deg, rgba(30,30,42,0.7), rgba(20,20,28,0.5));
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: var(--card-radius, 24px);
+            padding: 20px;
+          }
+          .sr-only {
+            position: absolute; width: 1px; height: 1px;
+            padding: 0; margin: -1px; overflow: hidden;
+            clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+          }
+          .sk {
+            display: block;
+            background: rgba(255,255,255,0.07);
+            background-image: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%);
+            background-size: 220% 100%;
+            animation: skelSweep 1.4s ease-in-out infinite;
+            border-radius: 8px;
+          }
+          :global(html[dir='rtl']) .sk { animation-direction: reverse; }
+          @keyframes skelSweep {
+            0%   { background-position: 120% 0; }
+            100% { background-position: -120% 0; }
+          }
+          /* 30px keeps the row at the real top bar's height (the social icons
+             are 30px, taller than the 28px pill). */
+          .skel-top { display: flex; align-items: center; min-height: 30px; margin-bottom: 20px; }
+          .sk-pill { width: 56px; height: 28px; border-radius: 999px; }
+          .skel-name { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; padding: 0 6px; }
+          .sk-avatar { width: 56px; height: 56px; border-radius: 50%; flex-shrink: 0; }
+          .skel-name-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+          .sk-line.lg { height: 20px; width: 65%; }
+          .sk-line.sm { height: 12px; width: 45%; }
+          /* 20px matches --card-stack on the real card — the skeleton and the
+             content it becomes must agree, or the swap is a visible jump. */
+          .sk-banner { width: 100%; aspect-ratio: 3 / 2; border-radius: 18px; margin-bottom: 20px; }
+          .skel-ctas { display: flex; flex-direction: column; gap: 8px; }
+          .sk-cta { width: 100%; height: 48px; border-radius: var(--card-radius, 14px); }
+          @media (max-width: 480px) {
+            .skel-page { padding: 24px 12px; }
+            .skel-card { padding: 16px; border-radius: var(--card-radius, 20px); }
+          }
         `}</style>
       </div>
     );
@@ -310,6 +390,14 @@ export default function Home({ slug = null } = {}) {
     : [];
 
   const initial = (name || '?').trim()[0] || '?';
+
+  // The accent this tenant actually renders with, resolved the same way the
+  // appearance effect above applies it (tokens win over the legacy field).
+  // The primary CTA is a SOLID fill of it, so it needs a foreground that stays
+  // readable whichever colour the client picked — see lib/contrast.js. A colour
+  // we cannot parse falls back to white, which is what the button used before.
+  const accentColor = profile.appearance?.tokens?.accent || profile.appearance?.accent_color || '#9FA7FF';
+  const accentInk = readableInkOn(accentColor) || '#ffffff';
 
   function logEvent(payload) {
     if (typeof window === 'undefined') return;
@@ -398,8 +486,23 @@ export default function Home({ slug = null } = {}) {
                 const isMail = iconKey === 'email' && (l.href || '').includes('@');
                 const href = safeUrl(isMail ? `mailto:${l.href}` : rawHref);
                 if (!href) return null; // drop links with an unsafe/empty scheme
+                // Paint the glyph in the platform's own colour — a grey
+                // Instagram mark is not recognisable, and recognition is the
+                // entire job of this row. brandColor() returns null for the
+                // generic email/website icons and for anything unknown, and
+                // those keep inheriting the neutral currentColor below.
+                const tint = brandColor(iconKey, 'dark');
                 return (
-                  <a key={i} href={href} target="_blank" rel="noopener noreferrer" className="social-icon" aria-label={pick(l.label, lang)} onClick={() => onSocialClick(iconKey)}>
+                  <a
+                    key={i}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`social-icon ${tint ? 'tinted' : ''}`}
+                    style={tint ? { '--brand': tint } : undefined}
+                    aria-label={pick(l.label, lang)}
+                    onClick={() => onSocialClick(iconKey)}
+                  >
                     <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
                   </a>
                 );
@@ -411,7 +514,15 @@ export default function Home({ slug = null } = {}) {
           <div className="name-block">
             <div className="brand-logo">
               {avatarSrc
-                ? <img src={avatarSrc} alt={name} />
+                ? <img
+                    src={avatarSrc}
+                    alt={name}
+                    width="56"
+                    height="56"
+                    decoding="async"
+                    /* above the fold and an LCP candidate — never lazy */
+                    fetchPriority="high"
+                  />
                 : <span>{initial}</span>}
             </div>
             <div className="name-text">
@@ -463,8 +574,26 @@ export default function Home({ slug = null } = {}) {
                 <div key={b.id || i}
                   className={`banner ${i === bannerIdx ? 'active' : ''}`}
                   style={b.type === 'image'
-                    ? { backgroundImage: loadedBanners.has(i) ? `url(${b.image_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }
+                    ? undefined
                     : { background: BANNER_BGS[b.bg || 'purple'] }}>
+                  {/* A real <img> rather than a CSS background-image. The banner
+                      is the biggest thing on the card and usually the LCP
+                      element, and a background-image cannot carry a priority
+                      hint, cannot be decoded off the main thread, and is
+                      invisible to the preload scanner — so the browser only
+                      discovers it after the stylesheet resolves. The
+                      `loadedBanners` gate is unchanged: slides beyond the
+                      active+next pair still render no <img> at all. */}
+                  {b.type === 'image' && loadedBanners.has(i) && (
+                    <img
+                      className="banner-img"
+                      src={b.image_url}
+                      alt=""
+                      decoding="async"
+                      loading={i === 0 ? 'eager' : 'lazy'}
+                      fetchPriority={i === 0 ? 'high' : 'low'}
+                    />
+                  )}
                   {b.type === 'text' && (
                     <div className="banner-content">
                       <div className="banner-text">{pick(b.text, lang) || pick(b.text, 'en')}</div>
@@ -506,7 +635,12 @@ export default function Home({ slug = null } = {}) {
                 const label = pick(b.label, lang) || pick(b.label, 'en');
                 const isPrimary = i === 0;
                 return (
-                  <button key={b.id || i} className={`cta ${isPrimary ? 'primary' : ''}`} onClick={() => onCtaClick(b)}>
+                  <button
+                    key={b.id || i}
+                    className={`cta ${isPrimary ? 'primary' : ''}`}
+                    style={isPrimary ? { '--cta-bg': accentColor, '--cta-ink': accentInk } : undefined}
+                    onClick={() => onCtaClick(b)}
+                  >
                     {ic && (
                       <span className="cta-icon">
                         <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
@@ -531,9 +665,9 @@ export default function Home({ slug = null } = {}) {
         <footer className="footer" style={{ color: footerColor }}>
           <span>{customFooterText || `© ${name} ${new Date().getFullYear()}`}</span>
           <div className="footer-credit">
-            <button type="button" className="footer-legal-link" onClick={() => setLegalModal('privacy')}>{lang === 'ar' ? 'الخصوصية' : 'Privacy'}</button>
+            <button type="button" className="footer-legal-link" onClick={() => setLegalModal('privacy')}>{t('legal_privacy')}</button>
             <span className="footer-sep" aria-hidden="true">·</span>
-            <button type="button" className="footer-legal-link" onClick={() => setLegalModal('terms')}>{lang === 'ar' ? 'الشروط' : 'Terms'}</button>
+            <button type="button" className="footer-legal-link" onClick={() => setLegalModal('terms')}>{t('legal_terms')}</button>
           </div>
         </footer>
 
@@ -609,6 +743,14 @@ export default function Home({ slug = null } = {}) {
           .ticker-track { animation: none; transform: none; padding-inline-start: 20px; }
         }
         .card {
+          /* ONE vertical rhythm for the whole card. Its blocks previously sat on
+             five different gaps (10 / 14 / 16 / 18 / 20px) picked per block,
+             which is what made the stack read as slightly-off rather than
+             composed. Every sibling block now separates by --card-stack and
+             every nested one by --card-stack-sm, so the spacing is a rule
+             rather than a series of one-off decisions. */
+          --card-stack: 20px;
+          --card-stack-sm: 12px;
           width: 100%;
           max-width: 440px;
           background: linear-gradient(180deg, rgba(30,30,42,0.7), rgba(20,20,28,0.5));
@@ -619,7 +761,7 @@ export default function Home({ slug = null } = {}) {
           padding: 20px;
           box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
         }
-        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 8px; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--card-stack); gap: 8px; }
 
         /* Lang pill (replaces share button) */
         .lang-pill {
@@ -644,10 +786,20 @@ export default function Home({ slug = null } = {}) {
         .social-icon {
           width: 30px; height: 30px;
           display: flex; align-items: center; justify-content: center;
+          border-radius: 8px;
           color: rgba(255,255,255,0.7);
           transition: var(--transition);
         }
+        /* Brand-coloured glyphs. Every icon keeps the same 30px box, the same
+           gap and the same hit area, so the row still reads as one set rather
+           than as a strip of stickers — only the glyph's colour changes. */
+        .social-icon.tinted { color: var(--brand); }
         .social-icon:hover { color: #fff; transform: translateY(-1px); }
+        /* A tinted icon KEEPS its brand colour on hover — turning it white would
+           undo the recognition it exists for — and gets its lift from a neutral
+           backplate instead. */
+        .social-icon.tinted:hover { color: var(--brand); background: rgba(255,255,255,0.09); }
+        .social-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         .social-icon svg { width: 15px; height: 15px; fill: currentColor; }
 
         /* BIGGER brand logo (56px) with accent glow */
@@ -667,7 +819,7 @@ export default function Home({ slug = null } = {}) {
           display: flex;
           align-items: center;
           gap: 14px;
-          margin-bottom: 20px;
+          margin-bottom: var(--card-stack);
           padding: 0 6px;
         }
         .name-text {
@@ -700,10 +852,10 @@ export default function Home({ slug = null } = {}) {
         }
         .about-toggle:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
 
-        .about-section { margin-bottom: 14px; animation: aboutIn 0.25s ease; }
+        .about-section { margin-bottom: var(--card-stack); animation: aboutIn 0.25s ease; }
         @keyframes aboutIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 
-        .bio-block { padding: 12px 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; margin-bottom: 10px; }
+        .bio-block { padding: 12px 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; margin-bottom: var(--card-stack-sm); }
         .bio-block p { font-size: 13px; line-height: 1.6; color: rgba(255,255,255,0.75); text-align: start; }
         .cf-grid { display: flex; flex-direction: column; gap: 1px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden; }
         .cf-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(20,20,28,0.6); font-size: 12px; }
@@ -717,7 +869,7 @@ export default function Home({ slug = null } = {}) {
           aspect-ratio: 3 / 2;
           border-radius: 18px;
           overflow: hidden;
-          margin-bottom: 18px;
+          margin-bottom: var(--card-stack);
           background: rgba(0,0,0,0.2);
         }
         .banner {
@@ -727,7 +879,9 @@ export default function Home({ slug = null } = {}) {
           transition: opacity 0.5s ease;
         }
         .banner.active { opacity: 1; }
-        .banner-content { text-align: center; padding: 28px; }
+        /* replaces background-size:cover / background-position:center */
+        .banner-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .banner-content { position: relative; text-align: center; padding: 28px; }
         .banner-text {
           font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif;
           font-size: 36px; font-weight: 700; color: #fff; margin-bottom: 10px;
@@ -748,7 +902,7 @@ export default function Home({ slug = null } = {}) {
           border: 1px solid rgba(255,255,255,0.06);
           border-radius: 14px;
           overflow: hidden;
-          margin-bottom: 16px;
+          margin-bottom: var(--card-stack);
         }
         .stat {
           padding: 14px 8px;
@@ -779,17 +933,28 @@ export default function Home({ slug = null } = {}) {
         }
         .cta:active { transform: translateY(0); }
 
-        /* PRIMARY CTA — accent border, subtle accent tint, soft accent shadow */
+        /* PRIMARY CTA — a SOLID fill of the tenant's accent.
+           It used to be an 18%-opacity tint of the accent, which on this dark
+           card landed a few percent away from the ghost buttons stacked under
+           it: technically legible, but it did not read as "this is the action".
+           A solid fill separates the two tiers at a glance. The fill and its
+           foreground both come from the tenant's own accent (readableInkOn
+           picks the ink), so this stays on-brand for every client and never
+           produces white-on-yellow. */
         .cta.primary {
-          background: linear-gradient(180deg, rgba(159,167,255,0.18), rgba(159,167,255,0.08));
-          border: 1px solid rgba(159,167,255,0.35);
-          box-shadow: 0 4px 14px rgba(159,167,255,0.15), inset 0 1px 0 rgba(255,255,255,0.08);
+          background: var(--cta-bg, #9FA7FF);
+          color: var(--cta-ink, #0a0a0c);
+          border: 1px solid transparent;
+          box-shadow: 0 6px 18px rgba(0,0,0,0.28);
         }
-        .cta.primary:hover {
-          background: linear-gradient(180deg, rgba(159,167,255,0.25), rgba(159,167,255,0.12));
-          border-color: rgba(159,167,255,0.5);
-          box-shadow: 0 6px 18px rgba(159,167,255,0.22), inset 0 1px 0 rgba(255,255,255,0.1);
-        }
+        /* Deliberately NOT filter: brightness(). That brightens the label and
+           icon along with the fill, so on a light accent (dark ink) hovering
+           would wash the text out — a contrast REGRESSION exactly where the
+           user is about to click. The lift comes from .cta:hover's translateY
+           plus a deeper shadow, which cannot touch the foreground. */
+        .cta.primary:hover { box-shadow: 0 8px 22px rgba(0,0,0,0.34); }
+        .cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+        .cta.primary:focus-visible { outline-color: var(--cta-ink, #ffffff); outline-offset: 2px; }
 
         .cta-icon {
           width: 28px; height: 28px;
@@ -798,6 +963,15 @@ export default function Home({ slug = null } = {}) {
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: 7px;
           color: rgba(255,255,255,0.9);
+        }
+        /* On the filled primary the icon sits directly on the accent. The
+           white plate the ghost buttons use is for lifting an icon off a dark
+           card; over a saturated fill it just muddies it, and any fixed tint
+           would be wrong for half the accents a client can pick. Ink only. */
+        .cta.primary .cta-icon {
+          background: none;
+          border-color: transparent;
+          color: var(--cta-ink, #0a0a0c);
         }
         .cta-icon svg { width: 14px; height: 14px; fill: currentColor; }
 
@@ -809,7 +983,7 @@ export default function Home({ slug = null } = {}) {
           background: rgba(159,167,255,0.06);
           border: 1px dashed rgba(159,167,255,0.2);
           border-radius: 12px;
-          margin-top: 12px;
+          margin-top: var(--card-stack-sm);
         }
         .setup-hint a { color: var(--accent); text-decoration: underline; }
 
@@ -929,7 +1103,7 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
                     <button type="button" className="pcard-trigger" onClick={() => openProject(p, title, desc)} aria-label={title}>
                       {p.cover_image && (
                         <div className="pcard-cover">
-                          <img src={p.cover_image} alt={title} loading="lazy" />
+                          <img src={p.cover_image} alt={title} loading="lazy" decoding="async" />
                           {count > 1 && <span className="pcard-badge" dir="ltr">{count}</span>}
                         </div>
                       )}
@@ -984,6 +1158,8 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
               src={lightbox.images[lightbox.index]}
               alt={lightbox.title || ''}
               decoding="async"
+              /* the visitor is staring straight at it — jump the queue */
+              fetchPriority="high"
               onLoad={() => setImgLoaded(true)}
               onClick={(e) => e.stopPropagation()}
             />
@@ -1200,11 +1376,11 @@ function LegalModal({ content, lang, onClose }) {
         }
         .legal-modal-top {
           display: flex; align-items: center; justify-content: space-between;
-          gap: 12px; padding: 20px 24px;
+          gap: var(--space-3); padding: var(--space-4) var(--space-5);
           border-bottom: 1px solid var(--border);
           flex-shrink: 0;
         }
-        .legal-modal-top h2 { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+        .legal-modal-top h2 { font-size: var(--text-xl); font-weight: 700; color: var(--text-primary); }
         .legal-close {
           display: flex; align-items: center; justify-content: center;
           width: 36px; height: 36px; flex-shrink: 0;
@@ -1218,18 +1394,21 @@ function LegalModal({ content, lang, onClose }) {
         }
         .legal-close:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
         .legal-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-        .legal-modal-body { padding: 24px; overflow-y: auto; }
-        .lm-updated { font-size: 12px; color: var(--text-muted); margin-bottom: 18px; }
-        .lm-intro { font-size: 14px; line-height: 1.7; color: var(--text-secondary); margin-bottom: 26px; }
-        .legal-modal-body section { margin-bottom: 20px; }
-        .legal-modal-body h3 { font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
-        .legal-modal-body section p { font-size: 14px; line-height: 1.7; color: var(--text-secondary); }
-        .lm-note { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); font-style: italic; }
+        /* Same scale as the standalone /privacy and /terms pages, which render
+           this identical copy — the two presentations of one document should
+           not have two different rhythms. */
+        .legal-modal-body { padding: var(--space-5); overflow-y: auto; }
+        .lm-updated { font-size: var(--text-sm); color: var(--text-muted); margin-bottom: var(--space-5); }
+        .lm-intro { font-size: var(--text-md); line-height: 1.7; color: var(--text-secondary); margin-bottom: var(--space-6); }
+        .legal-modal-body section { margin-bottom: var(--space-5); }
+        .legal-modal-body h3 { font-size: var(--text-lg); font-weight: 600; color: var(--text-primary); margin-bottom: var(--space-1); }
+        .legal-modal-body section p { font-size: var(--text-md); line-height: 1.7; color: var(--text-secondary); }
+        .lm-note { margin-top: var(--space-6); padding-top: var(--space-5); border-top: 1px solid var(--border); font-size: var(--text-sm); color: var(--text-muted); font-style: italic; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @media (max-width: 480px) {
-          .legal-modal-top { padding: 16px 18px; }
-          .legal-modal-body { padding: 18px; }
+          .legal-modal-top { padding: var(--space-4); }
+          .legal-modal-body { padding: var(--space-4); }
         }
       `}</style>
     </div>

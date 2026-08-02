@@ -5,6 +5,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;900&display=swap');
 
 :root {
+  /* Raw "ink on this background" channel, for rgba(var(--on-bg), a) tinting.
+     The admin's light theme flips it below. It is declared HERE, not only on
+     the admin's own theme blocks, because the admin persists literal
+     `rgba(var(--on-bg),0.3)` strings into profile.footer.color — which are then
+     rendered on the PUBLIC page, where the token previously did not exist and
+     the colour silently resolved to nothing. */
+  --on-bg: 255, 255, 255;
+
   /* Design tokens — premium minimal dark */
   --bg-primary: #0a0a0c;
   --bg-secondary: #131318;

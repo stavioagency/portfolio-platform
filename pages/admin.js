@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { normalizeHost } from '../lib/tenant';
 import { getTranslator } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
-import { BRAND_ICONS, BRAND_KEYS, normalizeIcon } from '../lib/brand-icons';
+import { BRAND_ICONS, BRAND_KEYS, normalizeIcon, brandColor } from '../lib/brand-icons';
 import { navGroups } from '../lib/admin-nav';
 import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_CHARS } from '../lib/password-policy';
 import { isPwnedPassword } from '../lib/pwned-password';
@@ -22,6 +22,7 @@ import {
   ToastProvider, useToast, ConfirmProvider, useConfirm,
 } from '../components/ui';
 import PreviewPane from '../components/PreviewPane';
+import ThemePreview from '../components/ThemePreview';
 
 // A recovery link lands as `#...type=recovery...` and supabase-js STRIPS that hash
 // while it exchanges the token — which can happen before our onAuthStateChange
@@ -244,7 +245,29 @@ export default function Admin() {
   }, [theme]);
 
 
-  if (loading) return <div style={{ padding: 40, color: 'var(--text-secondary)' }}>{t('loading')}</div>;
+  // Restoring a session is a network round-trip, and a bare "Loading…" string on
+  // an empty page is the first thing a returning client sees. Draw the shape of
+  // the sign-in card instead, so the screen resolves into it rather than
+  // replacing it.
+  if (loading) {
+    return (
+      <div className={`signin-wrap ${theme || 'dark'}`}>
+        <div
+          className="signin-card signin-skel"
+          role="status"
+          aria-busy="true"
+          aria-label={t('loading')}
+        >
+          <Skeleton width="55%" height={20} />
+          <Skeleton width="100%" height={12} />
+          <Skeleton width="100%" height={42} radius="var(--radius-md)" />
+          <Skeleton width="100%" height={42} radius="var(--radius-md)" />
+          <Skeleton width="100%" height={44} radius="var(--radius-md)" />
+        </div>
+        <AuthStyles />
+      </div>
+    );
+  }
 
   // Toast + Confirm are mounted here (not in _app) so only the admin carries them.
   return (
@@ -490,10 +513,16 @@ function AuthStyles() {
   return (
     <style jsx global>{`
       .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --accent-fg: #ffffff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
-      .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
+      /* Same four-step ramp as .dashboard.dark — see the note there. This is the
+         first screen anyone sees, so a flat-white hint sitting at the same weight
+         as the heading is the platform's whole first impression. */
+      .signin-wrap.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: rgba(255,255,255,0.72); --text-tertiary: rgba(255,255,255,0.5); --text-muted: rgba(255,255,255,0.36); background-color: #060912; }
       /* tokens come from [data-admin-theme='light'] in globals.css */
       .signin-wrap.light { background-color: #ffffff; }
       .signin-card { width: 100%; max-width: 360px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
+      /* The session-restore placeholder: the same card, with the form's blocks
+         blanked. One gap rather than per-element spacers. */
+      .signin-skel { display: flex; flex-direction: column; gap: var(--space-5); }
       .signin-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 12px; }
       .signin-card h1 { font-size: var(--text-xl); font-weight: 700; }
       .signin-hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-5); }
@@ -868,6 +897,15 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
             <Icon name="logout" size={14} mirror />
             {t('sign_out')}
           </button>
+          {/* The public site links to these from its footer, but a signed-in
+              client had no route to them at all — the terms they are operating
+              under were unreachable from inside the product. New tab so an
+              unsaved editor is never navigated away from. */}
+          <div className="sidebar-legal">
+            <a href="/privacy" target="_blank" rel="noopener noreferrer">{t('legal_privacy')}</a>
+            <span aria-hidden="true">·</span>
+            <a href="/terms" target="_blank" rel="noopener noreferrer">{t('legal_terms')}</a>
+          </div>
         </div>
       </aside>
 
@@ -911,7 +949,13 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
       <style jsx>{`
         .dashboard { display: flex; min-height: 100vh; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
-        .dashboard.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: #ffffff; --text-tertiary: #ffffff; --text-muted: #ffffff; background-color: #060912; }
+        /* Four DISTINCT text steps, mirroring the light ramp in globals.css
+           (1 / .72 / .5 / .36). These four tokens were previously all #ffffff,
+           which collapsed every hierarchy the components express through them:
+           a section label, a hint and a value all rendered as the same flat
+           white. globals.css already calls this bug out and fixes it for the
+           light theme — the dark block was reintroducing it underneath. */
+        .dashboard.dark { --on-bg: 255,255,255; --bg-primary: #060912; --bg-secondary: #0c1428; --bg-elevated: #141d38; --bg-hover: #1d2747; --text-primary: #ffffff; --text-secondary: rgba(255,255,255,0.72); --text-tertiary: rgba(255,255,255,0.5); --text-muted: rgba(255,255,255,0.36); background-color: #060912; }
         /* tokens come from [data-admin-theme='light'] in globals.css */
         .dashboard.light { background-color: #ffffff; }
         .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
@@ -932,6 +976,10 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
         .nav { display: flex; flex-direction: column; gap: var(--space-4); flex: 1; }
         .sidebar-footer { padding: var(--space-3); border-top: 1px solid var(--border); }
+        .sidebar-legal { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); font-size: var(--text-xs); color: var(--text-muted); }
+        .sidebar-legal a { color: var(--text-muted); text-decoration: underline; }
+        .sidebar-legal a:hover { color: var(--text-secondary); }
+        .sidebar-legal a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
         .view-site-btn { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: var(--space-3); padding: 7px 12px; background: var(--bg-hover); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-sm); font-weight: 600; text-decoration: none; transition: var(--transition); }
         .view-site-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
         .signout-btn { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--text-tertiary); padding: 6px 0; background: none; border: none; cursor: pointer; font-family: inherit; }
@@ -2233,12 +2281,26 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
         </div>
         <input autoFocus placeholder={t('icon_picker_search')} value={q} onChange={(e) => setQ(e.target.value)} className="picker-search" />
         <div className="picker-grid">
-          {filtered.map(k => (
-            <button key={k} type="button" className={`picker-cell ${selected === k ? 'sel' : ''}`} onClick={() => onPick(k)} title={BRAND_ICONS[k].label}>
-              <svg viewBox="0 0 24 24"><path d={BRAND_ICONS[k].path} /></svg>
-              <span>{BRAND_ICONS[k].label}</span>
-            </button>
-          ))}
+          {filtered.map(k => {
+            // Both surface variants are handed to CSS rather than resolved here,
+            // so the picker follows the admin's own light/dark theme without
+            // this component having to know which one is active.
+            const dark = brandColor(k, 'dark');
+            const light = brandColor(k, 'light');
+            return (
+              <button
+                key={k}
+                type="button"
+                className={`picker-cell ${selected === k ? 'sel' : ''} ${dark ? 'tinted' : ''}`}
+                style={dark ? { '--brand': dark, '--brand-light': light } : undefined}
+                onClick={() => onPick(k)}
+                title={BRAND_ICONS[k].label}
+              >
+                <svg viewBox="0 0 24 24"><path d={BRAND_ICONS[k].path} /></svg>
+                <span>{BRAND_ICONS[k].label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
       <style jsx>{`
@@ -2255,6 +2317,11 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
         .picker-cell:hover { border-color: var(--border-strong); background: var(--bg-hover); }
         .picker-cell.sel { border-color: var(--accent); background: rgba(79,110,242,0.1); }
         .picker-cell svg { width: 20px; height: 20px; fill: currentColor; }
+        /* Brand-coloured glyphs make the grid scannable by logo instead of by
+           reading 20+ labels. Cell size, padding and the label below are
+           unchanged, so the grid still reads as one set. */
+        .picker-cell.tinted svg { fill: var(--brand); }
+        :global(html[data-admin-theme='light']) .picker-cell.tinted svg { fill: var(--brand-light, var(--brand)); }
         .picker-cell span { font-size: 10px; color: var(--text-tertiary); text-align: center; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; max-width: 100%; white-space: nowrap; }
       `}</style>
     </div>
@@ -2307,10 +2374,18 @@ function AppearanceEditor({ t, lang }) {
       <h1>{t('appearance_title')}</h1>
 
       <h2>{t('theme_preset')}</h2>
+      <p className="hint">{t('theme_preset_hint')}</p>
       <div className="preset-grid">
         {Object.entries(THEME_PRESETS).map(([k, v]) => (
-          <button key={k} type="button" className={`preset ${appearance.theme === k ? 'active' : ''}`} onClick={() => applyPreset(k)}>
-            <div className="preset-swatch" style={{ background: v.tokens.bg, color: v.tokens.accent, borderColor: v.tokens.border }}>Aa</div>
+          <button
+            key={k}
+            type="button"
+            className={`preset ${appearance.theme === k ? 'active' : ''}`}
+            onClick={() => applyPreset(k)}
+            aria-pressed={appearance.theme === k}
+          >
+            {/* a miniature of the real card, not a colour chip — see ThemePreview */}
+            <div className="preset-shot"><ThemePreview tokens={v.tokens} /></div>
             <div className="preset-name">{t(`preset_${k}`)}</div>
           </button>
         ))}
@@ -2358,12 +2433,14 @@ function AppearanceEditor({ t, lang }) {
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
       <AdminStyles />
       <style jsx>{`
-        .preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: var(--space-5); max-width: 640px; }
-        .preset { background: var(--bg-secondary); border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: 12px; cursor: pointer; text-align: center; transition: var(--transition); font-family: inherit; }
+        .preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-5); max-width: 640px; }
+        .preset { background: var(--bg-secondary); border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2); cursor: pointer; text-align: center; transition: var(--transition); font-family: inherit; }
         .preset:hover { border-color: var(--border-strong); }
-        .preset.active { border-color: var(--accent); }
-        .preset-swatch { height: 42px; border-radius: var(--radius-sm); margin-bottom: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; border: 1px solid; }
-        .preset-name { font-size: 12px; color: var(--text-secondary); }
+        .preset.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+        .preset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .preset-shot { border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); margin-bottom: var(--space-2); }
+        .preset-name { font-size: var(--text-sm); color: var(--text-secondary); padding-bottom: var(--space-1); }
+        .preset.active .preset-name { color: var(--text-primary); font-weight: 600; }
         .color-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; max-width: 500px; margin-bottom: var(--space-4); }
         .color-item { display: flex; align-items: center; gap: 10px; padding: 8px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); }
         .color-item input[type="color"] { width: 36px; height: 36px; padding: 2px; border-radius: 6px; cursor: pointer; }
@@ -2524,7 +2601,14 @@ function AnalyticsEditor({ t, lang }) {
       </div>
 
       {loading ? (
-        <p className="hint">{t('loading')}</p>
+        // Switching the range refetches; a text "Loading…" collapsed the whole
+        // stat grid to one line and bounced the page every time. Hold the grid's
+        // real geometry instead.
+        <div className="stat-grid" aria-busy="true">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} width="100%" height={86} radius="var(--radius-md)" />
+          ))}
+        </div>
       ) : events.length === 0 ? (
         <EmptyState icon={<Icon name="chart" size={24} />} title={t('no_data_yet')} compact />
       ) : (
@@ -2839,7 +2923,12 @@ function DomainManager({ lang, isOwner }) {
 
   return (
     <div className="dm">
-      {loading ? <div className="hint">…</div> : domains.length === 0 ? (
+      {loading ? (
+        <div className="list-skel" aria-busy="true">
+          <Skeleton width="100%" height={56} radius="var(--radius-md)" />
+          <Skeleton width="100%" height={56} radius="var(--radius-md)" />
+        </div>
+      ) : domains.length === 0 ? (
         <EmptyState
           icon={<Icon name="globe" size={24} />}
           title={ar ? 'لا يوجد نطاق مخصص بعد' : 'No custom domain yet'}
@@ -3484,8 +3573,14 @@ function ClientHome({ lang, onNavigate }) {
         </Card>
         <Card pad="sm" className="ch-card">
           <div className="ch-label">{ar ? 'الاكتمال' : 'Completion'}</div>
-          <div className="ch-status">{loading ? '—' : `${setup.percent}%`}</div>
-          <div className="ch-bar"><div className="ch-bar-fill" style={{ width: `${loading ? 0 : setup.percent}%` }} /></div>
+          {/* An em-dash and an empty bar are indistinguishable from "0% done".
+              A skeleton says "not known yet", which is the truth. */}
+          <div className="ch-status">
+            {loading ? <Skeleton width={52} height={22} /> : `${setup.percent}%`}
+          </div>
+          {!loading && (
+            <div className="ch-bar"><div className="ch-bar-fill" style={{ width: `${setup.percent}%` }} /></div>
+          )}
         </Card>
       </div>
 
@@ -3497,7 +3592,18 @@ function ClientHome({ lang, onNavigate }) {
         <button className="ch-action" onClick={() => onNavigate('account')}>🌐 {ar ? 'ربط نطاق' : 'Connect domain'}</button>
       </div>
 
-      <h2>{ar ? 'أكمل موقعك' : 'Complete your website'} <span className="meta">· {loading ? '…' : `${setup.done}/${setup.total}`}</span></h2>
+      {/* the whole "· 3/7" meta is withheld until the count is known — an
+          orphaned separator is worse than no separator */}
+      <h2>{ar ? 'أكمل موقعك' : 'Complete your website'}{!loading && <span className="meta">· {setup.done}/{setup.total}</span>}</h2>
+      {loading && (
+        // Mirrors the guide's own rhythm so the steps fade in place rather than
+        // pushing the page down when they arrive.
+        <div className="ch-guide-skel" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} width="100%" height={64} radius="var(--radius-md)" />
+          ))}
+        </div>
+      )}
       {!loading && (
         <>
           {/* Progress before the steps: seeing a filled bar is what makes the
@@ -3522,6 +3628,7 @@ function ClientHome({ lang, onNavigate }) {
 
       <AdminStyles />
       <style jsx>{`
+        .ch-guide-skel { display: flex; flex-direction: column; gap: var(--space-2); max-width: 640px; margin-bottom: var(--space-4); }
         .ch-progress { height: 6px; border-radius: 999px; background: var(--bg-elevated); border: 1px solid var(--border); max-width: 640px; overflow: hidden; margin-bottom: 10px; }
         .ch-progress-fill { height: 100%; background: var(--accent); transition: width 0.4s ease; }
         .ch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; max-width: 640px; margin-bottom: var(--space-5); }
@@ -3694,7 +3801,13 @@ function OwnerClientsOverview({ lang, onOpen }) {
         </div>
       )}
 
-      {loading ? <div className="hint">…</div> : rows.length === 0 ? (
+      {loading ? (
+        <div className="list-skel" aria-busy="true">
+          <Skeleton width="100%" height={56} radius="var(--radius-md)" />
+          <Skeleton width="100%" height={56} radius="var(--radius-md)" />
+          <Skeleton width="100%" height={56} radius="var(--radius-md)" />
+        </div>
+      ) : rows.length === 0 ? (
         <div className="hint">{ar ? 'لا يوجد عملاء بعد.' : 'No clients yet.'}</div>
       ) : (
         <div className="cl-list">
@@ -4227,6 +4340,9 @@ function AdminStyles() {
         }
       }
       /* ---- Repeating row/card patterns shared by the list editors ---- */
+      /* Shared shape for "a list is being fetched" — used by the domain list and
+         the workspace-members list, which both previously rendered a lone "…". */
+      .list-skel { display: flex; flex-direction: column; gap: var(--space-2); max-width: 640px; margin-bottom: var(--space-4); }
       .img-hint { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.5; max-width: 360px; text-align: start; }
       .editor .hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-4); max-width: 560px; line-height: 1.5; }
       .editor .meta { font-size: 11px; color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-inline-start: 6px; }

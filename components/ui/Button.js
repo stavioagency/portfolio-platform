@@ -15,6 +15,10 @@ export default function Button({
     <button
       type="button"
       disabled={disabled || loading}
+      // A loading button goes disabled and grows a spinner, both of which are
+      // purely visual — a screen reader otherwise announces it as an ordinary
+      // disabled button with no indication that work is in flight.
+      aria-busy={loading || undefined}
       className={`ui-btn ${variant} ${size} ${block ? 'block' : ''} ${className}`}
       {...rest}
     >
@@ -40,7 +44,13 @@ export default function Button({
           outline: 2px solid var(--accent);
           outline-offset: 2px;
         }
-        .ui-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        /* 0.5 dropped an already-secondary label under the 4.5:1 line and made
+           "disabled" read as "broken". 0.65 still reads as clearly inactive
+           while keeping the label legible — and a button that is merely BUSY
+           stays at full strength, because its text is the only thing telling
+           the user what is happening. */
+        .ui-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+        .ui-btn[aria-busy='true']:disabled { opacity: 1; cursor: progress; }
         .block { width: 100%; }
 
         /* sizes — md meets the 44px mobile tap target everywhere; sm is compact on
