@@ -1884,7 +1884,7 @@ function ButtonRow({ btn, lang, onChange, onRemove, onUp, onDown, canUp, canDown
     <div className="card-row">
       <div className="row-head">
         <button type="button" className="brand-mini" onClick={() => setPickerOpen(true)} title={t('pick_icon')} aria-label={t('pick_icon')}>
-          {icon ? <BrandGlyph icon={btn.icon} /> : '?'}
+          {icon ? <BrandGlyph icon={btn.icon} size={15} /> : '?'}
         </button>
         <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{icon?.label || t('pick_icon')}</span>
         <div className="row-actions">
@@ -2258,7 +2258,7 @@ function LinksEditor({ t, lang }) {
               <button type="button" className="x-small" aria-label={t('move_down')} disabled={i === links.length - 1} onClick={() => move(l.id, 1)}>↓</button>
             </div>
             <button type="button" className="brand" onClick={() => setPickerForId(l.id)} title={t('pick_icon')} aria-label={t('pick_icon')}>
-              <BrandGlyph icon={l.icon} />
+              <BrandGlyph icon={l.icon} size={17} />
             </button>
             <input className="input-sm" placeholder={icon.label} value={pick(l.label, lang)} onChange={(e) => update(l.id, { label: setLangValue(l.label, lang, e.target.value) })} style={{ width: 160 }} />
             <input className="input-sm" type="text" dir="ltr" placeholder="https://..." value={l.href || ''} onChange={(e) => update(l.id, { href: e.target.value })} style={{ flex: 1 }} />
@@ -2280,7 +2280,6 @@ function LinksEditor({ t, lang }) {
         .link-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; max-width: 720px; flex-wrap: wrap; }
         .link-actions { display: flex; flex-direction: column; gap: 2px; }
         .brand { width: 38px; height: 38px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: rgba(var(--on-bg),0.92); background: rgba(var(--on-bg),0.05); border: 1px solid rgba(var(--on-bg),0.07); cursor: pointer; flex-shrink: 0; }
-        .brand svg { width: 17px; height: 17px; fill: currentColor; }
         .brand:hover { background: rgba(var(--on-bg),0.08); }
         .input-sm { padding: 9px 12px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 13px; font-family: inherit; min-width: 0; }
         @media (max-width: 720px) {
@@ -2338,7 +2337,7 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
                 onClick={() => onPick(k)}
                 title={BRAND_ICONS[k].label}
               >
-                <BrandGlyph icon={k} />
+                <BrandGlyph icon={k} size={20} />
                 <span>{BRAND_ICONS[k].label}</span>
               </button>
             );
@@ -2358,7 +2357,6 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
         .picker-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 6px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; color: rgba(var(--on-bg),0.92); transition: var(--transition); font-family: inherit; }
         .picker-cell:hover { border-color: var(--border-strong); background: var(--bg-hover); }
         .picker-cell.sel { border-color: var(--accent); background: rgba(79,110,242,0.1); }
-        .picker-cell svg { width: 20px; height: 20px; fill: currentColor; }
         /* Brand-coloured glyphs make the grid scannable by logo instead of by
            reading 20+ labels. Cell size, padding and the label below are
            unchanged, so the grid still reads as one set. */
@@ -4471,7 +4469,6 @@ function AdminStyles() {
       .banner-text { font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif; font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 4px; line-height: 1.2; }
       .banner-sub { font-size: 13px; color: rgba(var(--on-bg),0.85); }
       .brand-mini { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: rgba(var(--on-bg),0.92); background: rgba(var(--on-bg),0.05); border: 1px solid rgba(var(--on-bg),0.07); border-radius: 7px; cursor: pointer; font-family: inherit; }
-      .brand-mini svg { width: 15px; height: 15px; fill: currentColor; }
       .brand-mini:hover { background: rgba(var(--on-bg),0.08); }
       /* ---- Toggle rows + switches ---- */
       .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }

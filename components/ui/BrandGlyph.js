@@ -19,21 +19,41 @@
 
 import { brandIcon } from '../../lib/brand-icons';
 
-export default function BrandGlyph({ icon, className = '' }) {
+// SIZE IS A PROP, NOT CSS — and this is load-bearing.
+//
+// Every call site used to size its own inline <svg> from a styled-jsx rule like
+// `.cta-icon svg { width: 19px }`. styled-jsx scopes that to
+// `.cta-icon.jsx-hash svg.jsx-hash`, and an <svg> rendered by THIS component
+// never receives the caller's hash class — so the moment the markup moved in
+// here, all five of those rules stopped matching and every glyph in the app
+// rendered at zero size. Invisible, with no error.
+//
+// Sizing on the element itself means the glyph cannot be broken by a stylesheet
+// that does not know it exists.
+export default function BrandGlyph({ icon, size = 18, className = '' }) {
   const ic = brandIcon(icon);
   if (!ic) return null;
 
+  const common = {
+    className,
+    viewBox: '0 0 24 24',
+    width: size,
+    height: size,
+    'aria-hidden': 'true',
+    focusable: 'false',
+  };
+
+  // Generic actions are stroke geometry; brand marks are solid silhouettes.
+  // fill/stroke go inline because callers still carry `svg { fill: currentColor }`
+  // rules that would otherwise flood a stroke glyph solid.
   if (ic.stroke) {
     return (
       <svg
-        className={className}
-        viewBox="0 0 24 24"
+        {...common}
         style={{ fill: 'none', stroke: 'currentColor' }}
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
-        aria-hidden="true"
-        focusable="false"
       >
         {ic.paths.map((d, i) => <path key={i} d={d} />)}
       </svg>
@@ -41,13 +61,7 @@ export default function BrandGlyph({ icon, className = '' }) {
   }
 
   return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      style={{ fill: 'currentColor' }}
-      aria-hidden="true"
-      focusable="false"
-    >
+    <svg {...common} style={{ fill: 'currentColor' }}>
       <path d={ic.path} />
     </svg>
   );

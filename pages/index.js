@@ -504,7 +504,7 @@ export default function Home({ slug = null } = {}) {
                     aria-label={pick(l.label, lang)}
                     onClick={() => onSocialClick(iconKey)}
                   >
-                    <BrandGlyph icon={iconKey} />
+                    <BrandGlyph icon={iconKey} size={15} />
                   </a>
                 );
               })}
@@ -653,7 +653,7 @@ export default function Home({ slug = null } = {}) {
                   >
                     {ic && (
                       <span className={`cta-icon ${ctaTint ? 'tinted' : ''}`}>
-                        <BrandGlyph icon={iconKey} />
+                        <BrandGlyph icon={iconKey} size={19} />
                       </span>
                     )}
                     <span className="cta-label">{label}</span>
@@ -810,7 +810,6 @@ export default function Home({ slug = null } = {}) {
            backplate instead. */
         .social-icon.tinted:hover { color: var(--brand); background: rgba(255,255,255,0.09); }
         .social-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-        .social-icon svg { width: 15px; height: 15px; fill: currentColor; }
 
         /* BIGGER brand logo (56px) with accent glow */
         .brand-logo {
@@ -1060,7 +1059,6 @@ export default function Home({ slug = null } = {}) {
            returns null for the generic glyphs and for anything unknown, and
            those keep the accent above. */
         .cta-icon.tinted { color: var(--brand); }
-        .cta-icon svg { width: 19px; height: 19px; fill: currentColor; }
 
         .cta-label {
           flex: 1 1 auto;
