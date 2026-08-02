@@ -1848,6 +1848,34 @@ function StatRow({ stat, lang, onChange, onRemove, onUp, onDown, canUp, canDown,
   );
 }
 
+// The public CTA gives its label a 16ch column. 22 leaves a little headroom for
+// narrow glyphs while still guaranteeing a label that reads as one line.
+const CTA_LABEL_MAX = 22;
+
+// Quiet counter that only speaks up as the limit approaches — a permanent
+// "3 / 22" on every field is noise.
+function CharCount({ value, max }) {
+  const n = (value || '').length;
+  if (n < max * 0.7) return null;
+  return (
+    <span className={`char-count ${n >= max ? 'at-limit' : ''}`} aria-live="polite">
+      {n} / {max}
+      <style jsx>{`
+        .char-count {
+          display: block;
+          margin-top: 4px;
+          font-size: var(--text-xs);
+          color: var(--text-muted);
+          font-variant-numeric: tabular-nums;
+          direction: ltr;
+          text-align: start;
+        }
+        .at-limit { color: var(--warning); }
+      `}</style>
+    </span>
+  );
+}
+
 function ButtonRow({ btn, lang, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const icon = btn.icon && BRAND_ICONS[normalizeIcon(btn.icon)];
@@ -1866,7 +1894,18 @@ function ButtonRow({ btn, lang, onChange, onRemove, onUp, onDown, canUp, canDown
       </div>
       <div className="row-grid-2">
         <Field id={`bt-l-${btn.id}`} label={t('button_label')}>
-          <input id={`bt-l-${btn.id}`} value={pick(btn.label, lang)} onChange={(e) => onChange({ label: setLangValue(btn.label, lang, e.target.value) })} placeholder={lang === 'ar' ? 'تواصل معي' : 'Contact me'} />
+          {/* Capped at the source. The public button gives a label 16ch and
+              ellipsises the rest, so anything much past that was never going to
+              be readable — better to stop it being typed than to silently trim
+              it on someone's live site. */}
+          <input
+            id={`bt-l-${btn.id}`}
+            value={pick(btn.label, lang)}
+            maxLength={CTA_LABEL_MAX}
+            onChange={(e) => onChange({ label: setLangValue(btn.label, lang, e.target.value) })}
+            placeholder={lang === 'ar' ? 'تواصل معي' : 'Contact me'}
+          />
+          <CharCount value={pick(btn.label, lang)} max={CTA_LABEL_MAX} />
         </Field>
         <Field id={`bt-a-${btn.id}`} label={t('button_action')}>
           <select id={`bt-a-${btn.id}`} value={btn.action || 'link'} onChange={(e) => onChange({ action: e.target.value })}>

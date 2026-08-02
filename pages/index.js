@@ -634,25 +634,27 @@ export default function Home({ slug = null } = {}) {
                 const ic = iconKey && BRAND_ICONS[iconKey];
                 const label = pick(b.label, lang) || pick(b.label, 'en');
                 const isPrimary = i === 0;
+                // Same brand colours as the social row, so a platform looks
+                // like itself wherever it appears on the card.
+                const ctaTint = ic ? brandColor(iconKey, 'dark') : null;
                 return (
                   <button
                     key={b.id || i}
-                    // A CTA with no icon cannot collapse to a square — there
-                    // would be nothing in it. Those stay permanently expanded
-                    // rather than rendering an empty button. Icons are optional
-                    // in the admin, so this is a normal case, not a fallback.
+                    // Icons are optional in the admin. Without one there is no
+                    // gutter to align to, so the label centres instead.
                     className={`cta ${isPrimary ? 'primary' : ''} ${ic ? '' : 'no-icon'}`}
-                    style={isPrimary ? { '--cta-bg': accentColor, '--cta-ink': accentInk } : undefined}
+                    style={{
+                      ...(isPrimary ? { '--cta-bg': accentColor, '--cta-ink': accentInk } : null),
+                      ...(ctaTint ? { '--brand': ctaTint } : null),
+                    }}
                     onClick={() => onCtaClick(b)}
+                    title={label}
                   >
                     {ic && (
-                      <span className="cta-icon">
+                      <span className={`cta-icon ${ctaTint ? 'tinted' : ''}`}>
                         <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
                       </span>
                     )}
-                    {/* Always in the DOM and never display:none — it is the
-                        button's accessible name. Collapsed state hides it
-                        visually (opacity + clip), which assistive tech ignores. */}
                     <span className="cta-label">{label}</span>
                   </button>
                 );
@@ -919,142 +921,162 @@ export default function Home({ slug = null } = {}) {
         .stat-value { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
         .stat-label { font-size: 11px; color: rgba(255,255,255,0.5); }
 
-        /* ---- EXPANDABLE CTA SYSTEM ------------------------------------------
-           Was a column of identical full-width bars — the Linktree shape. Now
-           each action is a compact square that expands on hover to reveal its
-           label.
+        /* ---- CTA SYSTEM -----------------------------------------------------
+           Two fixed columns: a 24px icon column and a text column capped at
+           16ch. The icon column never flexes, so the glyph sits at the same x in
+           EVERY button regardless of how long its label is. A label longer than
+           the cap is clipped with an ellipsis rather than widening the button;
+           the admin caps input at CTA_LABEL_MAX so that is a backstop, not the
+           normal case.
 
-           The geometry is what makes it feel engineered rather than animated:
-           the icon column is EXACTLY the collapsed square (--cta-size), so it
-           is centred at rest and, because the container only ever grows toward
-           the inline-end, the glyph does not move by a single pixel during the
-           expansion. Every button expands to the same --cta-open, so an open
-           button is always the same width whatever its label. */
-        /* ONE PER ROW, not a wrapping strip. In a wrapping row, opening one
-           button by (210 - 52)px reflows every sibling after it, so hovering
-           the first action makes the rest visibly jump — the exact instability
-           this system is meant to remove. Giving each action its own line means
-           a button can only ever grow into empty space beside itself, and no
-           other button moves by a pixel. */
+           The icon column is on the LEFT in both LTR and RTL. Deliberate, not an
+           RTL bug: the buttons read as one aligned set across a bilingual page,
+           so the column does not move when a visitor switches language. A forced
+           LTR base direction pins the column; unicode-bidi on the label lets
+           Arabic shape and order correctly inside it.
+
+           NOTE: no backticks in these comments — the whole block is a template
+           literal and one would end it mid-stylesheet. */
         .ctas {
-          --cta-size: 52px;
-          --cta-open: 210px;
+          --cta-icon-col: 24px;
           display: flex;
           flex-direction: column;
-          align-items: flex-start;
           gap: 8px;
         }
         .cta {
-          flex: 0 0 auto;
-          width: var(--cta-size);
-          height: var(--cta-size);
-          display: flex; align-items: center;
-          padding: 0;
-          overflow: hidden;
+          width: 100%;
+          min-height: 52px;
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 0 16px;
+          direction: ltr; /* pins the icon column to the left in both languages */
           background: rgba(255,255,255,0.06);
           border: 1px solid rgba(255,255,255,0.08);
-          border-radius: var(--card-radius, 14px);
+          border-radius: 14px;
           color: #fff;
           font-family: inherit;
           font-size: 14px; font-weight: 600;
           cursor: pointer;
-          /* 200ms, matching --transition's curve. Width is the only animated
-             geometry; the label rides in behind it (see .cta-label). */
-          transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1),
-                      background var(--transition),
-                      border-color var(--transition),
-                      box-shadow var(--transition),
-                      transform var(--transition);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.20);
+          /* PAINT-ONLY STATE CHANGES.
+             Every property below is composited or repaint-only — none can
+             reflow. Width, padding, gap, the icon column and the text column are
+             therefore byte-identical at rest, on hover and on press: the button
+             lifts, it never resizes. 160ms to respond and 220ms to settle reads
+             as responsive rather than springy. */
+          transition:
+            background-color 160ms cubic-bezier(0.4, 0, 0.2, 1),
+            border-color 160ms cubic-bezier(0.4, 0, 0.2, 1),
+            box-shadow 220ms cubic-bezier(0.4, 0, 0.2, 1),
+            transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
         }
-        /* Keyboard focus opens it too — otherwise a keyboard user could reach a
-           button and never learn what it does. */
-        .cta:hover, .cta:focus-visible { width: var(--cta-open); }
-        .cta:hover {
-          background: rgba(255,255,255,0.1);
-          border-color: rgba(255,255,255,0.14);
-          transform: translateY(-1px);
+
+        /* Hover is gated on a real hovering pointer. Touch browsers otherwise
+           latch :hover after a tap and leave the button stuck in the lifted
+           state until something else is tapped. */
+        @media (hover: hover) {
+          .cta:hover {
+            background: rgba(255,255,255,0.10);
+            border-color: rgba(255,255,255,0.18);
+            /* Wide soft ambient shadow for the lift, plus a tight contact shadow
+               so the button still feels attached to the card. */
+            box-shadow: 0 10px 24px -8px rgba(0,0,0,0.55),
+                        0 2px 6px -2px rgba(0,0,0,0.35);
+            transform: translateY(-2px);
+          }
+          .cta:hover .cta-icon { color: #fff; }
+          /* A brand-coloured glyph keeps its colour — that colour is the
+             recognition, and washing it to white on hover would undo it. */
+          .cta:hover .cta-icon.tinted { color: var(--brand); }
+          .cta.primary:hover {
+            box-shadow: 0 14px 30px -10px rgba(0,0,0,0.6),
+                        0 3px 8px -3px rgba(0,0,0,0.4);
+          }
         }
-        .cta:active { transform: translateY(0); }
+
+        /* Press settles back to the surface faster than it rose. */
+        .cta:active {
+          transform: translateY(0);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+          transition-duration: 90ms;
+        }
+        .cta.primary:active { box-shadow: 0 2px 6px -2px rgba(0,0,0,0.4); }
+
+        /* Keyboard focus gets the same lift as hover, so it is as legible as a
+           mouse state rather than a ring on a flat button. */
+        .cta:focus-visible {
+          outline: 2px solid var(--accent);
+          outline-offset: 3px;
+          border-color: rgba(255,255,255,0.18);
+          box-shadow: 0 10px 24px -8px rgba(0,0,0,0.55);
+          transform: translateY(-2px);
+        }
+        .cta.primary:focus-visible {
+          outline-color: var(--cta-ink, #ffffff);
+          outline-offset: 2px;
+          box-shadow: 0 14px 30px -10px rgba(0,0,0,0.6),
+                      0 3px 8px -3px rgba(0,0,0,0.4);
+        }
+
+        /* The lift is the only thing that genuinely moves. Drop it when motion is
+           unwelcome; colour and shadow still carry the state. */
+        @media (prefers-reduced-motion: reduce) {
+          .cta:hover, .cta:active, .cta:focus-visible { transform: none; }
+        }
+
+        /* THE fixed column — 24px, never flexes, never shrinks. */
+        .cta-icon {
+          flex: 0 0 var(--cta-icon-col);
+          width: var(--cta-icon-col);
+          height: var(--cta-icon-col);
+          display: flex; align-items: center; justify-content: center;
+          color: rgba(255,255,255,0.9);
+          /* Colour only — the box never changes, so the glyph cannot move. */
+          transition: color 160ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        /* Each platform in its own colour, same as the social row. brandColor()
+           returns null for the generic email/website glyphs and for anything
+           unknown, and those keep the neutral colour above. */
+        .cta-icon.tinted { color: var(--brand); }
+        .cta-icon svg { width: 19px; height: 19px; fill: currentColor; }
 
         .cta-label {
           flex: 1 1 auto;
           min-width: 0;
-          /* a label longer than the fixed open width is clipped, never widens it */
+          max-width: 16ch;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          text-align: start;
-          padding-inline-end: 16px;
-          opacity: 0;
-          transform: translateX(-6px);
-          /* starts 60ms in, so the text follows the container opening rather
-             than racing it */
-          transition: opacity 150ms ease 60ms, transform 150ms ease 60ms;
+          text-align: left;
+          unicode-bidi: plaintext; /* Arabic shapes correctly inside the ltr button */
         }
-        :global(html[dir='rtl']) .cta-label { transform: translateX(6px); }
-        .cta:hover .cta-label,
-        .cta:focus-visible .cta-label { opacity: 1; transform: none; }
+        /* No icon means no gutter to align to, so the label takes the whole
+           button and centres instead of sitting against an empty 24px column. */
+        .cta.no-icon .cta-label { max-width: none; text-align: center; }
 
-        /* No icon to collapse around — stays open. */
-        .cta.no-icon { width: var(--cta-open); }
-        .cta.no-icon .cta-label {
-          opacity: 1;
-          transform: none;
-          text-align: center;
-          padding-inline: 16px;
-        }
+        /* PRIMARY CTA — a SOLID fill of the tenant's accent, so the first action
+           reads as the action rather than as another ghost button. Fill and
+           foreground both derive from the tenant's own accent (readableInkOn
+           picks the ink), so it stays on-brand for every client and never
+           produces white-on-yellow.
 
-        /* Touch and hover-less pointers get no hover state at all, so the
-           collapsed form would be a dead end. Full-width and open, which is
-           also the better mobile target. */
-        @media (hover: none), (max-width: 480px) {
-          .ctas { align-items: stretch; }
-          .cta, .cta.no-icon { width: 100%; }
-          .cta-label { opacity: 1; transform: none; }
-        }
-        /* Reduced motion: skip the reveal entirely and show the open state,
-           rather than snapping between two widths on every hover. */
-        @media (prefers-reduced-motion: reduce) {
-          .cta, .cta.no-icon { width: var(--cta-open); }
-          .cta-label { opacity: 1; transform: none; }
-        }
-
-        /* PRIMARY CTA — a SOLID fill of the tenant's accent.
-           It used to be an 18%-opacity tint of the accent, which on this dark
-           card landed a few percent away from the ghost buttons stacked under
-           it: technically legible, but it did not read as "this is the action".
-           A solid fill separates the two tiers at a glance. The fill and its
-           foreground both come from the tenant's own accent (readableInkOn
-           picks the ink), so this stays on-brand for every client and never
-           produces white-on-yellow. */
+           The fill colour deliberately does NOT change on hover: filter:
+           brightness() would lift the label and icon along with it, washing out
+           dark ink on a light accent — a contrast regression exactly where the
+           user is about to click. The lift lives entirely in the shadow. */
         .cta.primary {
           background: var(--cta-bg, #9FA7FF);
           color: var(--cta-ink, #0a0a0c);
           border: 1px solid transparent;
-          box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+          box-shadow: 0 4px 12px -2px rgba(0,0,0,0.35);
         }
-        /* Deliberately NOT filter: brightness(). That brightens the label and
-           icon along with the fill, so on a light accent (dark ink) hovering
-           would wash the text out — a contrast REGRESSION exactly where the
-           user is about to click. The lift comes from .cta:hover's translateY
-           plus a deeper shadow, which cannot touch the foreground. */
-        .cta.primary:hover { box-shadow: 0 8px 22px rgba(0,0,0,0.34); }
-        .cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-        .cta.primary:focus-visible { outline-color: var(--cta-ink, #ffffff); outline-offset: 2px; }
-
-        /* THE fixed column. Its width equals the collapsed square exactly, and
-           it never flexes — that is the whole reason the glyph holds still
-           while the button opens. The old 28px plate is gone: at rest the
-           button IS the plate. */
-        .cta-icon {
-          flex: 0 0 var(--cta-size);
-          width: var(--cta-size);
-          align-self: stretch;
-          display: flex; align-items: center; justify-content: center;
-          color: rgba(255,255,255,0.9);
-        }
-        .cta.primary .cta-icon { color: var(--cta-ink, #0a0a0c); }
-        .cta-icon svg { width: 17px; height: 17px; fill: currentColor; }
+        /* On a filled button a brand colour sits on an unpredictable accent —
+           WhatsApp green on a green accent disappears. The primary uses its
+           contrast-checked ink; the secondaries carry the brand colours against
+           the known dark card. */
+        .cta.primary .cta-icon,
+        .cta.primary .cta-icon.tinted { color: var(--cta-ink, #0a0a0c); }
 
         .setup-hint {
           padding: 20px;
