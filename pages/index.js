@@ -637,7 +637,11 @@ export default function Home({ slug = null } = {}) {
                 return (
                   <button
                     key={b.id || i}
-                    className={`cta ${isPrimary ? 'primary' : ''}`}
+                    // A CTA with no icon cannot collapse to a square — there
+                    // would be nothing in it. Those stay permanently expanded
+                    // rather than rendering an empty button. Icons are optional
+                    // in the admin, so this is a normal case, not a fallback.
+                    className={`cta ${isPrimary ? 'primary' : ''} ${ic ? '' : 'no-icon'}`}
                     style={isPrimary ? { '--cta-bg': accentColor, '--cta-ink': accentInk } : undefined}
                     onClick={() => onCtaClick(b)}
                   >
@@ -646,7 +650,10 @@ export default function Home({ slug = null } = {}) {
                         <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
                       </span>
                     )}
-                    <span>{label}</span>
+                    {/* Always in the DOM and never display:none — it is the
+                        button's accessible name. Collapsed state hides it
+                        visually (opacity + clip), which assistive tech ignores. */}
+                    <span className="cta-label">{label}</span>
                   </button>
                 );
               })}
@@ -912,11 +919,38 @@ export default function Home({ slug = null } = {}) {
         .stat-value { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
         .stat-label { font-size: 11px; color: rgba(255,255,255,0.5); }
 
-        .ctas { display: flex; flex-direction: column; gap: 8px; }
+        /* ---- EXPANDABLE CTA SYSTEM ------------------------------------------
+           Was a column of identical full-width bars — the Linktree shape. Now
+           each action is a compact square that expands on hover to reveal its
+           label.
+
+           The geometry is what makes it feel engineered rather than animated:
+           the icon column is EXACTLY the collapsed square (--cta-size), so it
+           is centred at rest and, because the container only ever grows toward
+           the inline-end, the glyph does not move by a single pixel during the
+           expansion. Every button expands to the same --cta-open, so an open
+           button is always the same width whatever its label. */
+        /* ONE PER ROW, not a wrapping strip. In a wrapping row, opening one
+           button by (210 - 52)px reflows every sibling after it, so hovering
+           the first action makes the rest visibly jump — the exact instability
+           this system is meant to remove. Giving each action its own line means
+           a button can only ever grow into empty space beside itself, and no
+           other button moves by a pixel. */
+        .ctas {
+          --cta-size: 52px;
+          --cta-open: 210px;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 8px;
+        }
         .cta {
-          width: 100%;
-          display: flex; align-items: center; justify-content: center; gap: 10px;
-          padding: 14px;
+          flex: 0 0 auto;
+          width: var(--cta-size);
+          height: var(--cta-size);
+          display: flex; align-items: center;
+          padding: 0;
+          overflow: hidden;
           background: rgba(255,255,255,0.06);
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: var(--card-radius, 14px);
@@ -924,14 +958,66 @@ export default function Home({ slug = null } = {}) {
           font-family: inherit;
           font-size: 14px; font-weight: 600;
           cursor: pointer;
-          transition: var(--transition);
+          /* 200ms, matching --transition's curve. Width is the only animated
+             geometry; the label rides in behind it (see .cta-label). */
+          transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1),
+                      background var(--transition),
+                      border-color var(--transition),
+                      box-shadow var(--transition),
+                      transform var(--transition);
         }
+        /* Keyboard focus opens it too — otherwise a keyboard user could reach a
+           button and never learn what it does. */
+        .cta:hover, .cta:focus-visible { width: var(--cta-open); }
         .cta:hover {
           background: rgba(255,255,255,0.1);
           border-color: rgba(255,255,255,0.14);
           transform: translateY(-1px);
         }
         .cta:active { transform: translateY(0); }
+
+        .cta-label {
+          flex: 1 1 auto;
+          min-width: 0;
+          /* a label longer than the fixed open width is clipped, never widens it */
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          text-align: start;
+          padding-inline-end: 16px;
+          opacity: 0;
+          transform: translateX(-6px);
+          /* starts 60ms in, so the text follows the container opening rather
+             than racing it */
+          transition: opacity 150ms ease 60ms, transform 150ms ease 60ms;
+        }
+        :global(html[dir='rtl']) .cta-label { transform: translateX(6px); }
+        .cta:hover .cta-label,
+        .cta:focus-visible .cta-label { opacity: 1; transform: none; }
+
+        /* No icon to collapse around — stays open. */
+        .cta.no-icon { width: var(--cta-open); }
+        .cta.no-icon .cta-label {
+          opacity: 1;
+          transform: none;
+          text-align: center;
+          padding-inline: 16px;
+        }
+
+        /* Touch and hover-less pointers get no hover state at all, so the
+           collapsed form would be a dead end. Full-width and open, which is
+           also the better mobile target. */
+        @media (hover: none), (max-width: 480px) {
+          .ctas { align-items: stretch; }
+          .cta, .cta.no-icon { width: 100%; }
+          .cta-label { opacity: 1; transform: none; }
+        }
+        /* Reduced motion: skip the reveal entirely and show the open state,
+           rather than snapping between two widths on every hover. */
+        @media (prefers-reduced-motion: reduce) {
+          .cta, .cta.no-icon { width: var(--cta-open); }
+          .cta-label { opacity: 1; transform: none; }
+        }
 
         /* PRIMARY CTA — a SOLID fill of the tenant's accent.
            It used to be an 18%-opacity tint of the accent, which on this dark
@@ -956,24 +1042,19 @@ export default function Home({ slug = null } = {}) {
         .cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
         .cta.primary:focus-visible { outline-color: var(--cta-ink, #ffffff); outline-offset: 2px; }
 
+        /* THE fixed column. Its width equals the collapsed square exactly, and
+           it never flexes — that is the whole reason the glyph holds still
+           while the button opens. The old 28px plate is gone: at rest the
+           button IS the plate. */
         .cta-icon {
-          width: 28px; height: 28px;
+          flex: 0 0 var(--cta-size);
+          width: var(--cta-size);
+          align-self: stretch;
           display: flex; align-items: center; justify-content: center;
-          background: rgba(255,255,255,0.08);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 7px;
           color: rgba(255,255,255,0.9);
         }
-        /* On the filled primary the icon sits directly on the accent. The
-           white plate the ghost buttons use is for lifting an icon off a dark
-           card; over a saturated fill it just muddies it, and any fixed tint
-           would be wrong for half the accents a client can pick. Ink only. */
-        .cta.primary .cta-icon {
-          background: none;
-          border-color: transparent;
-          color: var(--cta-ink, #0a0a0c);
-        }
-        .cta-icon svg { width: 14px; height: 14px; fill: currentColor; }
+        .cta.primary .cta-icon { color: var(--cta-ink, #0a0a0c); }
+        .cta-icon svg { width: 17px; height: 17px; fill: currentColor; }
 
         .setup-hint {
           padding: 20px;

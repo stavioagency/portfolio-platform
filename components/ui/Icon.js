@@ -91,6 +91,45 @@ const ICONS = {
       <line x1="6" y1="6" x2="18" y2="18" />
     </>
   ),
+  // "add" — replaces the literal "+ " that used to be typed into button labels
+  plus: (
+    <>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </>
+  ),
+  check: <polyline points="20 6 9 17 4 12" />,
+  download: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </>
+  ),
+  mail: (
+    <>
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <polyline points="2 7 12 13 22 7" />
+    </>
+  ),
+  // generic chat bubble, used for the WhatsApp handoff action. Deliberately NOT
+  // the WhatsApp brand mark: BRAND_ICONS glyphs are solid fills, and one filled
+  // glyph in a row of stroked ones breaks the uniform weight the button system
+  // exists to hold. The label says WhatsApp.
+  message: <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" />,
+  key: (
+    <>
+      <circle cx="7.5" cy="15.5" r="4.5" />
+      <line x1="10.7" y1="12.3" x2="21" y2="2" />
+      <line x1="18" y1="5" x2="21" y2="8" />
+    </>
+  ),
 };
 
 export const ICON_NAMES = Object.keys(ICONS);

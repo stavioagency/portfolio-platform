@@ -17,12 +17,14 @@ import {
 } from '../lib/auth-link';
 import { parseLoginIdentifier } from '../lib/resolve-login';
 import { compressImage, fileExtension, MAX_AVATAR_DIMENSION } from '../lib/image-compress';
+import { portfolioUrl, workspaceLabel } from '../lib/credentials';
 import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
 } from '../components/ui';
 import PreviewPane from '../components/PreviewPane';
 import ThemePreview from '../components/ThemePreview';
+import CredentialsHandoff from '../components/CredentialsHandoff';
 
 // A recovery link lands as `#...type=recovery...` and supabase-js STRIPS that hash
 // while it exchanges the token — which can happen before our onAuthStateChange
@@ -3011,7 +3013,6 @@ function TenantAdminSection({ lang, part = 'settings' }) {
   const invSlugPreview = normalizeSlug(invSlug || invName);
   // Credentials to hand to the client. Held only in memory, shown once.
   const [invCreds, setInvCreds] = useState(null);
-  const [invCopied, setInvCopied] = useState(false);
   // Inviting a client CREATES THAT CLIENT'S OWN WORKSPACE. It used to attach them to
   // whichever workspace happened to be selected in the switcher, which meant an
   // invite silently added someone to an unrelated client's site and no new workspace
@@ -3087,7 +3088,11 @@ function TenantAdminSection({ lang, part = 'settings' }) {
       // The password is shown ONCE, here. It is not stored and not emailed, so if
       // this is dismissed without copying it the only way back is a reset.
       setInvCreds({
-        workspace: tRow.name || tRow.slug,
+        workspace: workspaceLabel(tRow),
+        // The client's public address, so the handoff message can point at the
+        // site as well as the dashboard.
+        url: portfolioUrl(typeof window !== 'undefined' ? window.location.origin : '', tRow.slug),
+        signInUrl: adminRedirectUrl(),
         email: data?.email || invEmail.trim(),
         username: data?.username || invUser.trim(),
         password: data?.temp_password || '',
@@ -3332,41 +3337,15 @@ function TenantAdminSection({ lang, part = 'settings' }) {
       </form>
 
       {invCreds && (
-        <div className="creds">
-          <h3>{ar ? `جاهز — مساحة «${invCreds.workspace}»` : `Ready — workspace "${invCreds.workspace}"`}</h3>
-          <p className="hint">{invCreds.emailed
-            ? (ar
-              ? `تم إرسال التفاصيل تلقائيًا إلى ${invCreds.email}. تظهر هنا أيضًا في حال لم تصله.`
-              : `Details were emailed automatically to ${invCreds.email}. Shown here too, in case it never arrives.`)
-            : (ar
-              ? 'لم يُرسَل بريد — أرسل هذه البيانات للعميل بنفسك. لن تظهر كلمة المرور مرة أخرى، وسيُطلب منه تغييرها عند أول تسجيل دخول.'
-              : 'No email was sent — pass these to the client yourself. The password is not shown again, and they must change it on first sign-in.')}</p>
-          {!invCreds.emailed && invCreds.emailError && invCreds.emailError !== 'not_configured' && (
-            <p className="hint" style={{ opacity: 0.75 }} dir="ltr">{invCreds.emailError}</p>
-          )}
-          <div className="creds-row"><span>{ar ? 'اسم المستخدم' : 'Username'}</span><code dir="ltr">{invCreds.username}</code></div>
-          <div className="creds-row"><span>{ar ? 'كلمة المرور' : 'Password'}</span><code dir="ltr">{invCreds.password}</code></div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-            <Button
-              type="button" size="sm"
-              onClick={async () => {
-                const text = ar
-                  ? `رابط الدخول: ${adminRedirectUrl()}\nاسم المستخدم: ${invCreds.username}\nكلمة المرور: ${invCreds.password}`
-                  : `Sign in: ${adminRedirectUrl()}\nUsername: ${invCreds.username}\nPassword: ${invCreds.password}`;
-                try {
-                  await navigator.clipboard.writeText(text);
-                  setInvCopied(true);
-                  setTimeout(() => setInvCopied(false), 2000);
-                } catch (_) { /* clipboard blocked — the values are on screen to copy by hand */ }
-              }}
-            >
-              {invCopied ? (ar ? 'تم النسخ ✓' : 'Copied ✓') : (ar ? 'نسخ التفاصيل' : 'Copy details')}
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => { setInvCreds(null); setInvCopied(false); }}>
-              {ar ? 'تم' : 'Done'}
-            </Button>
-          </div>
-        </div>
+        <CredentialsHandoff
+          creds={invCreds}
+          lang={lang}
+          title={ar ? 'المساحة جاهزة 🎉' : 'Workspace ready 🎉'}
+          intro={ar
+            ? 'سلّم هذه البيانات للعميل بأي طريقة تناسبك. ستبقى المساحة في «بانتظار التسليم» حتى تؤكد وصولها.'
+            : 'Hand these to the client any way you like. The workspace stays in Pending handoff until you confirm they have them.'}
+          onClose={() => setInvCreds(null)}
+        />
       )}
 
       </>
@@ -3388,11 +3367,6 @@ function TenantAdminSection({ lang, part = 'settings' }) {
         .advanced summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); user-select: none; }
         .advanced summary:hover { color: var(--text-primary); }
         .advanced[open] summary { margin-bottom: 8px; }
-        .creds { max-width: 500px; margin-top: 16px; padding: 16px; background: var(--success-bg); border: 1px solid var(--success-border); border-radius: var(--radius-md); }
-        .creds h3 { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
-        .creds-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
-        .creds-row span { color: var(--text-secondary); }
-        .creds-row code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--text-primary); user-select: all; }
         .ts-err { padding: 8px 12px; background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
         .ts-ok { padding: 8px 12px; background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); border-radius: var(--radius-md); font-size: 12px; margin-top: 8px; }
       `}</style>
@@ -3659,8 +3633,38 @@ function OwnerClientsOverview({ lang, onOpen }) {
   const [resettingId, setResettingId] = useState(null);
   const [resetCreds, setResetCreds] = useState(null);
   const [resetErr, setResetErr] = useState('');
-  const [resetCopied, setResetCopied] = useState(false);
+  // False until section-g-handoff.sql is applied; suppresses the whole pending
+  // section rather than showing an empty or wrong one.
+  const [handoffReady, setHandoffReady] = useState(false);
+  const [markingId, setMarkingId] = useState(null);
   const confirm = useConfirm();
+
+  // The client has the credentials — move the workspace into the normal list.
+  async function markHandedOver(row) {
+    setResetErr('');
+    setMarkingId(row.id);
+    try {
+      // An RLS-filtered UPDATE reports success having changed nothing
+      // (HANDOFF §6), so the affected rows are what we check, not `error`.
+      const { data, error } = await supabase
+        .from('tenants')
+        .update({ handed_over_at: new Date().toISOString() })
+        .eq('id', row.id)
+        .select('id');
+      if (error || !data || data.length === 0) {
+        setResetErr(ar
+          ? 'تعذّر تحديث حالة التسليم. أعد المحاولة.'
+          : 'Could not update the handoff status. Try again.');
+        return;
+      }
+      setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, pendingHandoff: false } : r)));
+    } catch (err) {
+      console.error('[handoff] mark failed:', err);
+      setResetErr(ar ? 'تعذّر تحديث حالة التسليم.' : 'Could not update the handoff status.');
+    } finally {
+      setMarkingId(null);
+    }
+  }
 
   // Recovery path for a client who lost their password. Without this the only fix was
   // deleting the workspace and rebuilding it, which loses their site — and a reset
@@ -3695,10 +3699,15 @@ function OwnerClientsOverview({ lang, onOpen }) {
       }
       if (data?.error) { setResetErr(data.detail ? `${data.error}: ${data.detail}` : data.error); return; }
       setResetCreds({
-        workspace: row.name,
+        workspace: workspaceLabel(row),
+        url: portfolioUrl(typeof window !== 'undefined' ? window.location.origin : '', row.slug),
+        signInUrl: adminRedirectUrl(),
         email: data?.email || m.email,
         username: data?.username || m.username,
         password: data?.temp_password || '',
+        // reset-client-password does not send mail; the owner delivers it.
+        emailed: false,
+        emailError: null,
       });
     } catch (err) {
       console.error('[reset] failed:', err);
@@ -3714,7 +3723,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
       setLoading(true);
       const ids = tenants.map((x) => x.id);
       if (ids.length === 0) { if (!cancelled) { setRows([]); setLoading(false); } return; }
-      const [{ data: profiles }, { data: projects }, { data: domains }, { data: members }] = await Promise.all([
+      const [{ data: profiles }, { data: projects }, { data: domains }, { data: members }, handoff] = await Promise.all([
         supabase.from('profile').select('tenant_id,name,bio,profile_image,brand_logo,custom_links,appearance').in('tenant_id', ids),
         supabase.from('projects').select('tenant_id').in('tenant_id', ids),
         supabase.from('tenant_domains').select('tenant_id,domain,is_primary').in('tenant_id', ids),
@@ -3723,7 +3732,17 @@ function OwnerClientsOverview({ lang, onOpen }) {
         // cannot join a workspace to its client. Owner-gated inside the function, and
         // it never returns platform owners — only clients.
         supabase.rpc('list_workspace_members'),
+        // Pending-handoff state. Its own query, and its own failure mode: the
+        // column arrives with supabase/sections/section-g-handoff.sql, so until
+        // that migration is applied this SELECT errors with 42703 and every
+        // workspace is treated as already handed over. The Clients list then
+        // behaves exactly as it did before the feature rather than breaking.
+        supabase.from('tenants').select('id,handed_over_at').in('id', ids),
       ]);
+      const handoffReady = !handoff.error;
+      if (handoff.error) console.warn('[handoff] column not available yet:', handoff.error.message);
+      const hmap = {};
+      (handoff.data || []).forEach((t) => { hmap[t.id] = t.handed_over_at; });
       const pcount = {}; (projects || []).forEach((p) => { pcount[p.tenant_id] = (pcount[p.tenant_id] || 0) + 1; });
       const pmap = {}; (profiles || []).forEach((p) => { pmap[p.tenant_id] = p; });
       const dmap = {}; (domains || []).forEach((d) => { (dmap[d.tenant_id] = dmap[d.tenant_id] || []).push(d); });
@@ -3732,17 +3751,23 @@ function OwnerClientsOverview({ lang, onOpen }) {
         const s = computeSetup({ profile: pmap[x.id], projectCount: pcount[x.id] || 0, domainCount: (dmap[x.id] || []).length });
         const dom = (dmap[x.id] || []).find((d) => d.is_primary) || (dmap[x.id] || [])[0];
         return {
-          id: x.id, name: x.name || x.slug, status: x.status, percent: s.percent,
+          id: x.id, slug: x.slug, name: x.name || x.slug, status: x.status, percent: s.percent,
           domain: dom?.domain || `/${x.slug}`,
           domainStatus: dom ? dom.status : null,
           isPrimary: !!dom?.is_primary,
           member: mmap[x.id] || null,
+          pendingHandoff: handoffReady && !hmap[x.id],
         };
       }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-      if (!cancelled) { setRows(out); setLoading(false); }
+      if (!cancelled) { setRows(out); setHandoffReady(handoffReady); setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [tenants, adding]);
+
+  // Split once. When the handoff column is missing every row reports
+  // pendingHandoff:false, so `pending` is empty and this renders as one list.
+  const pending = rows.filter((r) => r.pendingHandoff);
+  const active = rows.filter((r) => !r.pendingHandoff);
 
   return (
     <div className="editor">
@@ -3768,37 +3793,15 @@ function OwnerClientsOverview({ lang, onOpen }) {
       {resetErr && <div className="ts-err" style={{ maxWidth: 720 }}>{resetErr}</div>}
 
       {resetCreds && (
-        <div className="creds" style={{ marginBottom: 16 }}>
-          <h3>{ar ? `كلمة مرور جديدة — ${resetCreds.workspace}` : `New password — ${resetCreds.workspace}`}</h3>
-          <p className="hint">{ar
-            ? 'كلمتهم القديمة توقّفت الآن. أرسل لهم هذه، وسيُطلب منهم تغييرها عند الدخول. لن تظهر مرة أخرى.'
-            : 'Their old password has stopped working. Send them this — they will be asked to change it on sign-in. It is not shown again.'}</p>
-          <div className="creds-row"><span>{ar ? 'البريد' : 'Email'}</span><code dir="ltr">{resetCreds.email}</code></div>
-          {resetCreds.username && (
-            <div className="creds-row"><span>{ar ? 'اسم المستخدم' : 'Username'}</span><code dir="ltr">{resetCreds.username}</code></div>
-          )}
-          <div className="creds-row"><span>{ar ? 'كلمة المرور' : 'Password'}</span><code dir="ltr">{resetCreds.password}</code></div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-            <Button
-              type="button" size="sm"
-              onClick={async () => {
-                const text = ar
-                  ? `رابط الدخول: ${adminRedirectUrl()}\nاسم المستخدم: ${resetCreds.username || resetCreds.email}\nكلمة المرور: ${resetCreds.password}`
-                  : `Sign in: ${adminRedirectUrl()}\nUsername: ${resetCreds.username || resetCreds.email}\nPassword: ${resetCreds.password}`;
-                try {
-                  await navigator.clipboard.writeText(text);
-                  setResetCopied(true);
-                  setTimeout(() => setResetCopied(false), 2000);
-                } catch (_) { /* clipboard blocked — values are on screen */ }
-              }}
-            >
-              {resetCopied ? (ar ? 'تم النسخ ✓' : 'Copied ✓') : (ar ? 'نسخ التفاصيل' : 'Copy details')}
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => { setResetCreds(null); setResetCopied(false); }}>
-              {ar ? 'تم' : 'Done'}
-            </Button>
-          </div>
-        </div>
+        <CredentialsHandoff
+          creds={resetCreds}
+          lang={lang}
+          title={ar ? 'كلمة مرور جديدة' : 'New password'}
+          intro={ar
+            ? 'كلمتهم القديمة توقّفت الآن. سلّم هذه البيانات، وسيُطلب منهم تغييرها عند الدخول.'
+            : 'Their old password has stopped working. Hand these over — they will be asked to change it on sign-in.'}
+          onClose={() => setResetCreds(null)}
+        />
       )}
 
       {loading ? (
@@ -3810,8 +3813,63 @@ function OwnerClientsOverview({ lang, onOpen }) {
       ) : rows.length === 0 ? (
         <div className="hint">{ar ? 'لا يوجد عملاء بعد.' : 'No clients yet.'}</div>
       ) : (
+        <>
+        {/* PENDING HANDOFF — created, but nobody has confirmed the client
+            actually received their login. These sit above the normal list
+            because each one is an open task, not a running client. */}
+        {pending.length > 0 && (
+          <section className="ph">
+            <h2 className="ph-title">
+              {ar ? 'بانتظار التسليم' : 'Pending handoff'}
+              <span className="meta">· {pending.length}</span>
+            </h2>
+            <p className="hint">{ar
+              ? 'أُنشئت هذه المساحات ولم تؤكد بعد أن العميل استلم بياناته. كلمة المرور تُعرض مرة واحدة فقط — استخدم «توليد بيانات جديدة» للحصول على كلمة تعمل.'
+              : 'These workspaces exist but you have not confirmed the client has their login. The password is only ever shown once — use "Get new credentials" to produce a working one.'}</p>
+            <div className="cl-list">
+              {pending.map((r) => (
+                <Card key={r.id} pad="none" className="cl-row ph-row">
+                  <button type="button" className="cl-open" onClick={() => onOpen(r.id)}>
+                    <div className="cl-main">
+                      <div className="cl-name">{r.name}</div>
+                      <div className="cl-domain" dir="ltr">{r.domain}</div>
+                      <div className="cl-who" dir="ltr">
+                        {r.member
+                          ? <>{r.member.email}{r.member.username ? ` · ${r.member.username}` : ''}</>
+                          : <span className="cl-none">{ar ? 'لا يوجد عميل مرتبط' : 'no client account'}</span>}
+                      </div>
+                    </div>
+                    <Badge tone="warning" dot>{ar ? 'بانتظار التسليم' : 'Pending'}</Badge>
+                  </button>
+                  <div className="cl-actions">
+                    {r.member && (
+                      <Button
+                        type="button" size="sm"
+                        loading={resettingId === r.member.user_id}
+                        onClick={() => resetPassword(r)}
+                      >
+                        {ar ? 'توليد بيانات جديدة' : 'Get new credentials'}
+                      </Button>
+                    )}
+                    <Button
+                      type="button" variant="secondary" size="sm"
+                      loading={markingId === r.id}
+                      onClick={() => markHandedOver(r)}
+                    >
+                      {ar ? 'تم التسليم' : 'Mark as handed over'}
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {pending.length > 0 && active.length > 0 && (
+          <h2 className="ph-title">{ar ? 'العملاء النشطون' : 'Active clients'} <span className="meta">· {active.length}</span></h2>
+        )}
         <div className="cl-list">
-          {rows.map((r) => (
+          {active.map((r) => (
             /* The row is a DIV, not a button: it now contains its own buttons, and a
                button inside a button is invalid and unclickable in places. */
             <Card key={r.id} pad="none" className="cl-row">
@@ -3857,9 +3915,14 @@ function OwnerClientsOverview({ lang, onOpen }) {
             </Card>
           ))}
         </div>
+        </>
       )}
       <AdminStyles />
       <style jsx>{`
+        .ph { margin-bottom: var(--space-6); }
+        .ph-title { margin-top: var(--space-5); }
+        /* A pending workspace is an open task, not a fault — warning, not danger. */
+        .ph :global(.ph-row) { border-color: var(--warning-border); background: var(--warning-bg); }
         .add-bg {
           position: fixed; inset: 0; z-index: 200;
           background: rgba(0,0,0,0.6);
@@ -3889,11 +3952,6 @@ function OwnerClientsOverview({ lang, onOpen }) {
         .cl-none { color: var(--text-muted); font-style: italic; }
         .cl-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 14px 12px; flex-wrap: wrap; }
         .cl-flag { font-size: 11px; color: var(--warning, var(--text-tertiary)); }
-        .creds { max-width: 720px; padding: 16px; background: var(--success-bg); border: 1px solid var(--success-border); border-radius: var(--radius-md); }
-        .creds h3 { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
-        .creds-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
-        .creds-row span { color: var(--text-secondary); }
-        .creds-row code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: var(--text-primary); user-select: all; }
         .ts-err { padding: 8px 12px; background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); border-radius: var(--radius-md); font-size: 12px; margin-bottom: 12px; }
         /* surface comes from Card; only the row layout is local */
         .cl-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; min-height: 56px; }

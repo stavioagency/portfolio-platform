@@ -38,6 +38,16 @@
 --   status text ('active' | 'disabled'; 'disabled' makes the public site 404)
 --   created_at timestamptz
 --   TRIGGER trg_enroll_platform_owners AFTER INSERT -> enroll_platform_owners()
+--
+--   >>> NOT YET APPLIED <<<
+--   handed_over_at timestamptz NULL — operator state: NULL means the workspace
+--   was created but the admin has not confirmed the client received their
+--   credentials. Does NOT affect public site resolution. Ships in
+--   supabase/sections/section-g-handoff.sql, which has NOT been run against
+--   this database. Until it is, the admin's Clients list detects the missing
+--   column, logs a console warning, and treats every workspace as handed over —
+--   so the pending section simply does not appear. Apply the section file, then
+--   delete this notice.
 
 -- tenant_domains — custom domains pointing at a tenant.
 --   id uuid PK · tenant_id uuid NOT NULL -> tenants ON DELETE CASCADE
