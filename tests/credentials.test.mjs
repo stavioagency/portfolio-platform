@@ -100,6 +100,7 @@ test('emailSubject names the workspace, and degrades when it has none', () => {
 
 test('credentialsFilename is filesystem-safe for any workspace name', () => {
   assert.equal(credentialsFilename(FULL), 'acme-studio-credentials.txt');
+  assert.equal(credentialsFilename(FULL, 'pdf'), 'acme-studio-credentials.pdf');
   assert.equal(credentialsFilename({ workspace: 'استوديو' }), 'workspace-credentials.txt');
   assert.equal(credentialsFilename({ workspace: '  //A B//  ' }), 'a-b-credentials.txt');
   assert.equal(credentialsFilename({}), 'workspace-credentials.txt');

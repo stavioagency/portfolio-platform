@@ -3127,6 +3127,7 @@ function TenantAdminSection({ lang, part = 'settings' }) {
       // this is dismissed without copying it the only way back is a reset.
       setInvCreds({
         workspace: workspaceLabel(tRow),
+        createdAt: tRow.created_at || null,
         // The client's public address, so the handoff message can point at the
         // site as well as the dashboard.
         url: portfolioUrl(typeof window !== 'undefined' ? window.location.origin : '', tRow.slug),
