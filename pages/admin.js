@@ -23,6 +23,7 @@ import {
   ToastProvider, useToast, ConfirmProvider, useConfirm,
 } from '../components/ui';
 import PreviewPane from '../components/PreviewPane';
+import BrandGlyph from '../components/ui/BrandGlyph';
 import ThemePreview from '../components/ThemePreview';
 import CredentialsHandoff from '../components/CredentialsHandoff';
 
@@ -1883,7 +1884,7 @@ function ButtonRow({ btn, lang, onChange, onRemove, onUp, onDown, canUp, canDown
     <div className="card-row">
       <div className="row-head">
         <button type="button" className="brand-mini" onClick={() => setPickerOpen(true)} title={t('pick_icon')} aria-label={t('pick_icon')}>
-          {icon ? <svg viewBox="0 0 24 24"><path d={icon.path} /></svg> : '?'}
+          {icon ? <BrandGlyph icon={btn.icon} /> : '?'}
         </button>
         <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{icon?.label || t('pick_icon')}</span>
         <div className="row-actions">
@@ -2257,7 +2258,7 @@ function LinksEditor({ t, lang }) {
               <button type="button" className="x-small" aria-label={t('move_down')} disabled={i === links.length - 1} onClick={() => move(l.id, 1)}>↓</button>
             </div>
             <button type="button" className="brand" onClick={() => setPickerForId(l.id)} title={t('pick_icon')} aria-label={t('pick_icon')}>
-              <svg viewBox="0 0 24 24"><path d={icon.path} /></svg>
+              <BrandGlyph icon={l.icon} />
             </button>
             <input className="input-sm" placeholder={icon.label} value={pick(l.label, lang)} onChange={(e) => update(l.id, { label: setLangValue(l.label, lang, e.target.value) })} style={{ width: 160 }} />
             <input className="input-sm" type="text" dir="ltr" placeholder="https://..." value={l.href || ''} onChange={(e) => update(l.id, { href: e.target.value })} style={{ flex: 1 }} />
@@ -2337,7 +2338,7 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
                 onClick={() => onPick(k)}
                 title={BRAND_ICONS[k].label}
               >
-                <svg viewBox="0 0 24 24"><path d={BRAND_ICONS[k].path} /></svg>
+                <BrandGlyph icon={k} />
                 <span>{BRAND_ICONS[k].label}</span>
               </button>
             );

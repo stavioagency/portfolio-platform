@@ -24,6 +24,35 @@ test('every brand colour is a parseable hex', () => {
   }
 });
 
+// BrandGlyph picks its render mode off `stroke`. An entry that declares neither
+// shape, or declares the wrong one for its mode, renders as an empty box —
+// silently, since a missing <path> throws nothing.
+test('every entry carries exactly the geometry its render mode needs', () => {
+  for (const key of BRAND_KEYS) {
+    const ic = BRAND_ICONS[key];
+    if (ic.stroke) {
+      assert.ok(Array.isArray(ic.paths) && ic.paths.length > 0, `${key} is stroke but has no paths[]`);
+      ic.paths.forEach((d, i) => {
+        assert.equal(typeof d, 'string', `${key}.paths[${i}] is not a string`);
+        assert.match(d, /^M/, `${key}.paths[${i}] does not start with a moveto`);
+      });
+      assert.equal(ic.path, undefined, `${key} is stroke but also carries a fill path`);
+    } else {
+      assert.equal(typeof ic.path, 'string', `${key} has no fill path`);
+      assert.match(ic.path, /^M/, `${key}.path does not start with a moveto`);
+      assert.equal(ic.paths, undefined, `${key} is fill but also carries stroke paths`);
+    }
+  }
+});
+
+// Stroke glyphs are the generic actions; brand marks stay solid silhouettes.
+test('only colourless generic actions are drawn as strokes', () => {
+  for (const key of BRAND_KEYS) {
+    if (!BRAND_ICONS[key].stroke) continue;
+    assert.equal(brandColor(key), null, `${key} is a stroke glyph but carries a brand colour`);
+  }
+});
+
 test('generic actions stay colourless so callers keep their neutral styling', () => {
   assert.equal(brandColor('email'), null);
   assert.equal(brandColor('website'), null);

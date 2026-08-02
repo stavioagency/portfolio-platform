@@ -8,6 +8,7 @@ import { privacyContent, termsContent } from '../lib/legal-content';
 import { BRAND_ICONS, normalizeIcon, brandColor } from '../lib/brand-icons';
 import { safeUrl } from '../lib/safe-url';
 import { hasPublicContent } from '../lib/profile-content';
+import BrandGlyph from '../components/ui/BrandGlyph';
 import { readableInkOn } from '../lib/contrast';
 
 const BANNER_BGS = {
@@ -503,7 +504,7 @@ export default function Home({ slug = null } = {}) {
                     aria-label={pick(l.label, lang)}
                     onClick={() => onSocialClick(iconKey)}
                   >
-                    <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
+                    <BrandGlyph icon={iconKey} />
                   </a>
                 );
               })}
@@ -652,7 +653,7 @@ export default function Home({ slug = null } = {}) {
                   >
                     {ic && (
                       <span className={`cta-icon ${ctaTint ? 'tinted' : ''}`}>
-                        <svg viewBox="0 0 24 24"><path d={ic.path} /></svg>
+                        <BrandGlyph icon={iconKey} />
                       </span>
                     )}
                     <span className="cta-label">{label}</span>
@@ -1070,12 +1071,16 @@ export default function Home({ slug = null } = {}) {
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          text-align: start;
-          /* Each label is its own bidi paragraph, so an English label on an
-             Arabic page keeps its trailing punctuation at the end instead of
-             having it flipped to the front by the surrounding direction. */
+          /* plaintext makes each label its own bidi paragraph, so an English
+             label on an Arabic page keeps its trailing punctuation at the end
+             instead of having it flipped to the front. It also makes the start
+             keyword resolve to the TEXT's direction, which would push an English label
+             away from its icon on an Arabic page — so alignment is pinned to the
+             page direction explicitly rather than left to the start keyword. */
           unicode-bidi: plaintext;
+          text-align: left;
         }
+        :global(html[dir='rtl']) .cta-label { text-align: right; }
         /* NO max-width here, deliberately. A hard 16ch cap truncated labels
            while half the button sat empty, which reads as a rendering fault
            rather than a design choice. The label now takes the room it has and
