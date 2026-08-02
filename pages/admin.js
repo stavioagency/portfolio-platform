@@ -17,7 +17,8 @@ import {
 } from '../lib/auth-link';
 import { parseLoginIdentifier } from '../lib/resolve-login';
 import { compressImage, fileExtension, MAX_AVATAR_DIMENSION } from '../lib/image-compress';
-import { portfolioUrl, workspaceLabel } from '../lib/credentials';
+import { portfolioUrl, workspaceLabel, credentialsText, whatsappMessage, credentialsFilename } from '../lib/credentials';
+import { rememberCredentials, recallCredentials, forgetCredentials, clearAllCredentials } from '../lib/handoff-store';
 import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
@@ -737,7 +738,10 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
     setActiveTab(tab);
     setSidebarOpen(false); // auto-close drawer on mobile after picking a tab
   }
-  async function signOut() { await supabase.auth.signOut(); }
+  // Issued passwords are held in memory for the session (lib/handoff-store.js).
+  // Signing out must drop them, or the next person at this browser inherits
+  // every credential set the previous operator had open.
+  async function signOut() { clearAllCredentials(); await supabase.auth.signOut(); }
 
   // Which workspaces may this admin edit? Exposed via context so the Create-Tenant
   // flow can refresh the list after onboarding.
@@ -3125,7 +3129,11 @@ function TenantAdminSection({ lang, part = 'settings' }) {
 
       // The password is shown ONCE, here. It is not stored and not emailed, so if
       // this is dismissed without copying it the only way back is a reset.
-      setInvCreds({
+      // Held in the session store as well as local state: this component lives
+      // inside the "Add client" panel, so closing that panel used to destroy the
+      // only copy of the password in existence. See lib/handoff-store.js.
+      const issued = {
+        tenantId: tRow.id,
         workspace: workspaceLabel(tRow),
         createdAt: tRow.created_at || null,
         // The client's public address, so the handoff message can point at the
@@ -3139,7 +3147,10 @@ function TenantAdminSection({ lang, part = 'settings' }) {
         // request over email, so this can be false while everything else succeeded.
         emailed: data?.emailed === true,
         emailError: data?.email_error || null,
-      });
+        userId: data?.user_id || null,
+      };
+      rememberCredentials(tRow.id, issued);
+      setInvCreds(issued);
       setInvEmail(''); setInvUser(''); setInvName(''); setInvSlug('');
       setInvMsg('');
       await reloadTenants();
@@ -3662,6 +3673,123 @@ function ClientHome({ lang, onNavigate }) {
   );
 }
 
+// One row of the onboarding queue. Every way out of a botched handover lives
+// here: re-read the credentials if they are still in this session, correct a
+// mistyped address, re-send the welcome, rotate the password, or declare it
+// done. None of these create a second user or a second workspace.
+function PendingRow({ row, lang, busy, onOpen, onViewCreds, onSendWelcome, onResetPassword, onSaveEmail, onMarkDone }) {
+  const ar = lang === 'ar';
+  const [editing, setEditing] = useState(false);
+  const [email, setEmail] = useState(row.member?.email || '');
+  const m = row.member;
+  const working = busy === row.id;
+  // Whether the password issued for this workspace is still readable in this
+  // session. Once it is not, the honest options are re-send or reset — both of
+  // which issue a fresh one.
+  const stored = recallCredentials(row.id);
+
+  return (
+    <Card pad="none" className="cl-row ph-row">
+      <button type="button" className="cl-open" onClick={onOpen}>
+        <div className="cl-main">
+          <div className="cl-name">{row.name}</div>
+          <div className="cl-domain" dir="ltr">{row.domain}</div>
+          <div className="cl-who" dir="ltr">
+            {m
+              ? <>{m.email}{m.username ? ` · ${m.username}` : ''}</>
+              : <span className="cl-none">{ar ? 'لا يوجد عميل مرتبط' : 'no client account'}</span>}
+          </div>
+        </div>
+        <Badge tone="warning" dot>{ar ? 'بانتظار التسليم' : 'Pending'}</Badge>
+      </button>
+
+      {editing ? (
+        <form
+          className="ph-edit"
+          onSubmit={(e) => { e.preventDefault(); onSaveEmail(email.trim()); setEditing(false); }}
+        >
+          <label htmlFor={`ph-em-${row.id}`}>{ar ? 'بريد العميل' : 'Client email'}</label>
+          <div className="ph-edit-row">
+            <input
+              id={`ph-em-${row.id}`} type="email" dir="ltr" value={email} required
+              onChange={(e) => setEmail(e.target.value)} placeholder="client@email.com"
+            />
+            <Button type="submit" size="sm" loading={working}>{ar ? 'حفظ' : 'Save'}</Button>
+            <Button type="button" size="sm" variant="ghost"
+              onClick={() => { setEmail(m?.email || ''); setEditing(false); }}>
+              {ar ? 'إلغاء' : 'Cancel'}
+            </Button>
+          </div>
+          <p className="ph-note">{ar
+            ? 'يغيّر عنوان الحساب نفسه — لا يُنشئ حسابًا جديدًا.'
+            : 'Changes the address on the existing account — it does not create a new one.'}</p>
+        </form>
+      ) : (
+        <div className="cl-actions ph-actions">
+          {stored && (
+            <Button type="button" size="sm" onClick={onViewCreds}>
+              {ar ? 'عرض البيانات' : 'View credentials'}
+            </Button>
+          )}
+          {m && (
+            <>
+              <Button type="button" variant="secondary" size="sm" loading={working} onClick={onSendWelcome}>
+                {ar ? 'إرسال الترحيب' : 'Send welcome email'}
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => setEditing(true)}>
+                {ar ? 'تعديل البريد' : 'Edit email'}
+              </Button>
+              <Button type="button" variant="secondary" size="sm" loading={working} onClick={onResetPassword}>
+                {ar ? 'كلمة مرور جديدة' : 'Reset password'}
+              </Button>
+            </>
+          )}
+          <Button type="button" variant="secondary" size="sm" loading={working} onClick={onMarkDone}>
+            {ar ? 'تم التسليم' : 'Mark as handed over'}
+          </Button>
+        </div>
+      )}
+      <AdminStyles />
+      <style jsx>{`
+        .ph-actions { flex-wrap: wrap; }
+        .ph-edit { padding: var(--space-3) var(--space-4) var(--space-4); border-top: 1px solid var(--border); }
+        .ph-edit label { display: block; font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: 6px; }
+        .ph-edit-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+        .ph-edit-row input { flex: 1 1 220px; min-width: 0; }
+        .ph-note { margin-top: 8px; font-size: var(--text-xs); color: var(--text-muted); }
+      `}</style>
+    </Card>
+  );
+}
+
+// Turns a client-recovery failure into something an owner can act on.
+//
+// The first case is the one that matters day to day: supabase/functions/
+// client-recovery is committed but NOT DEPLOYED, so until it is, invoking it
+// fails at the network layer. Saying so plainly beats a raw "Failed to fetch",
+// and every other recovery route on the row still works meanwhile.
+function recoveryError(failed, data, ar) {
+  const code = String(data?.error || failed?.message || failed || '');
+  if (/not.?found|failed to send|fetch|404/i.test(code)) {
+    return ar
+      ? 'وظيفة الاسترجاع غير منشورة بعد على Supabase. استخدم النسخ أو واتساب أو إعادة تعيين كلمة المرور حتى يتم نشرها.'
+      : 'The recovery function is not deployed to Supabase yet. Use copy, WhatsApp or Reset password until it is.';
+  }
+  if (/email_taken/i.test(code)) {
+    return ar ? 'هذا البريد مستخدم بحساب آخر.' : 'That email already belongs to another account.';
+  }
+  if (/invalid_email/i.test(code)) {
+    return ar ? 'صيغة البريد غير صحيحة.' : 'That email address is not valid.';
+  }
+  if (/cannot_modify_platform_owner/i.test(code)) {
+    return ar ? 'لا يمكن تعديل حساب مالك المنصة من هنا.' : 'A platform owner cannot be modified from here.';
+  }
+  if (/not_a_client/i.test(code)) {
+    return ar ? 'هذا الحساب ليس عميلًا لأي مساحة.' : 'That account is not a client of any workspace.';
+  }
+  return data?.detail ? `${code}: ${data.detail}` : (code || (ar ? 'فشلت العملية' : 'That did not work'));
+}
+
 // Owner-only simple overview: name, domain, status, completion. Click to open.
 function OwnerClientsOverview({ lang, onOpen }) {
   const { tenants } = useTenant();
@@ -3677,6 +3805,79 @@ function OwnerClientsOverview({ lang, onOpen }) {
   const [handoffReady, setHandoffReady] = useState(false);
   const [markingId, setMarkingId] = useState(null);
   const confirm = useConfirm();
+
+  // Row-level busy flag, so one row's spinner never freezes the whole queue.
+  const [rowBusy, setRowBusy] = useState(null);
+
+  // Re-open the handoff modal for credentials still held in this session. This
+  // is the whole point of lib/handoff-store.js: closing the modal is no longer
+  // destructive.
+  function openStoredCreds(row) {
+    const held = recallCredentials(row.id);
+    if (held) setResetCreds(held);
+  }
+
+  // Correct a mistyped address on the EXISTING account. No new user, no new
+  // workspace — that path (invite-client) would fail on email_taken anyway.
+  async function saveClientEmail(row, email) {
+    const m = row.member;
+    if (!m || !email) return;
+    setResetErr(''); setRowBusy(row.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('client-recovery', {
+        body: { action: 'update_email', user_id: m.user_id, email },
+      });
+      const failed = error || data?.error;
+      if (failed) { setResetErr(recoveryError(failed, data, ar)); return; }
+      // Reflect it immediately; the next load re-reads it from the RPC anyway.
+      setRows((rs) => rs.map((r) => (r.id === row.id
+        ? { ...r, member: { ...r.member, email } } : r)));
+    } catch (err) {
+      console.error('[recovery] email update failed:', err);
+      setResetErr(ar ? 'تعذّر تحديث البريد.' : 'Could not update the email.');
+    } finally { setRowBusy(null); }
+  }
+
+  // Re-send the welcome. This ISSUES A NEW PASSWORD by necessity — the original
+  // is only a hash server-side — so the fresh set is stored and shown, exactly
+  // like a first invite.
+  async function sendWelcome(row) {
+    const m = row.member;
+    if (!m) return;
+    const ok = await confirm({
+      title: ar ? 'إرسال بريد الترحيب؟' : 'Send the welcome email?',
+      description: ar
+        ? `سيُرسل إلى ${m.email} بكلمة مرور مؤقتة جديدة. الكلمة الحالية ستتوقف فورًا.`
+        : `This goes to ${m.email} with a NEW temporary password. Their current one stops working immediately.`,
+      confirmLabel: ar ? 'إرسال' : 'Send',
+      cancelLabel: ar ? 'إلغاء' : 'Cancel',
+    });
+    if (!ok) return;
+    setResetErr(''); setRowBusy(row.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('client-recovery', {
+        body: { action: 'send_welcome', user_id: m.user_id },
+      });
+      const failed = error || data?.error;
+      if (failed) { setResetErr(recoveryError(failed, data, ar)); return; }
+      const issued = {
+        tenantId: row.id,
+        workspace: workspaceLabel(row),
+        url: portfolioUrl(typeof window !== 'undefined' ? window.location.origin : '', row.slug),
+        signInUrl: adminRedirectUrl(),
+        email: data?.email || m.email,
+        username: data?.username || m.username,
+        password: data?.temp_password || '',
+        emailed: data?.emailed === true,
+        emailError: data?.email_error || null,
+      };
+      rememberCredentials(row.id, issued);
+      setResetCreds(issued);
+    } catch (err) {
+      console.error('[recovery] send welcome failed:', err);
+      setResetErr(ar ? 'تعذّر إرسال البريد.' : 'Could not send the email.');
+    } finally { setRowBusy(null); }
+  }
 
   // The client has the credentials — move the workspace into the normal list.
   async function markHandedOver(row) {
@@ -3696,6 +3897,8 @@ function OwnerClientsOverview({ lang, onOpen }) {
           : 'Could not update the handoff status. Try again.');
         return;
       }
+      // Declared delivered: the password must stop being readable from here.
+      forgetCredentials(row.id);
       setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, pendingHandoff: false } : r)));
     } catch (err) {
       console.error('[handoff] mark failed:', err);
@@ -3737,7 +3940,8 @@ function OwnerClientsOverview({ lang, onOpen }) {
         return;
       }
       if (data?.error) { setResetErr(data.detail ? `${data.error}: ${data.detail}` : data.error); return; }
-      setResetCreds({
+      const issued = {
+        tenantId: row.id,
         workspace: workspaceLabel(row),
         url: portfolioUrl(typeof window !== 'undefined' ? window.location.origin : '', row.slug),
         signInUrl: adminRedirectUrl(),
@@ -3747,7 +3951,9 @@ function OwnerClientsOverview({ lang, onOpen }) {
         // reset-client-password does not send mail; the owner delivers it.
         emailed: false,
         emailError: null,
-      });
+      };
+      rememberCredentials(row.id, issued);
+      setResetCreds(issued);
     } catch (err) {
       console.error('[reset] failed:', err);
       setResetErr(ar ? 'فشلت إعادة التعيين' : 'Reset failed');
@@ -3853,52 +4059,33 @@ function OwnerClientsOverview({ lang, onOpen }) {
         <div className="hint">{ar ? 'لا يوجد عملاء بعد.' : 'No clients yet.'}</div>
       ) : (
         <>
-        {/* PENDING HANDOFF — created, but nobody has confirmed the client
-            actually received their login. These sit above the normal list
-            because each one is an open task, not a running client. */}
+        {/* PENDING HANDOVER — the onboarding queue. A workspace sits here from
+            the moment it is created until the admin confirms the client actually
+            received their login. Every recovery route lives on the row, so a
+            mistyped address is a two-click fix rather than a lost workspace. */}
         {pending.length > 0 && (
           <section className="ph">
             <h2 className="ph-title">
-              {ar ? 'بانتظار التسليم' : 'Pending handoff'}
+              {ar ? 'بانتظار التسليم' : 'Pending handover'}
               <span className="meta">· {pending.length}</span>
             </h2>
             <p className="hint">{ar
-              ? 'أُنشئت هذه المساحات ولم تؤكد بعد أن العميل استلم بياناته. كلمة المرور تُعرض مرة واحدة فقط — استخدم «توليد بيانات جديدة» للحصول على كلمة تعمل.'
-              : 'These workspaces exist but you have not confirmed the client has their login. The password is only ever shown once — use "Get new credentials" to produce a working one.'}</p>
+              ? 'أُنشئت هذه المساحات ولم تؤكد بعد أن العميل استلم بياناته. صحّح البريد أو أعد إرسال الترحيب من هنا — لا حاجة لإنشاء مساحة جديدة.'
+              : 'Created, but you have not confirmed the client has their login. Fix the address or re-send the welcome from here — never by making a second workspace.'}</p>
             <div className="cl-list">
               {pending.map((r) => (
-                <Card key={r.id} pad="none" className="cl-row ph-row">
-                  <button type="button" className="cl-open" onClick={() => onOpen(r.id)}>
-                    <div className="cl-main">
-                      <div className="cl-name">{r.name}</div>
-                      <div className="cl-domain" dir="ltr">{r.domain}</div>
-                      <div className="cl-who" dir="ltr">
-                        {r.member
-                          ? <>{r.member.email}{r.member.username ? ` · ${r.member.username}` : ''}</>
-                          : <span className="cl-none">{ar ? 'لا يوجد عميل مرتبط' : 'no client account'}</span>}
-                      </div>
-                    </div>
-                    <Badge tone="warning" dot>{ar ? 'بانتظار التسليم' : 'Pending'}</Badge>
-                  </button>
-                  <div className="cl-actions">
-                    {r.member && (
-                      <Button
-                        type="button" size="sm"
-                        loading={resettingId === r.member.user_id}
-                        onClick={() => resetPassword(r)}
-                      >
-                        {ar ? 'توليد بيانات جديدة' : 'Get new credentials'}
-                      </Button>
-                    )}
-                    <Button
-                      type="button" variant="secondary" size="sm"
-                      loading={markingId === r.id}
-                      onClick={() => markHandedOver(r)}
-                    >
-                      {ar ? 'تم التسليم' : 'Mark as handed over'}
-                    </Button>
-                  </div>
-                </Card>
+                <PendingRow
+                  key={r.id}
+                  row={r}
+                  lang={lang}
+                  busy={rowBusy}
+                  onOpen={() => onOpen(r.id)}
+                  onViewCreds={() => openStoredCreds(r)}
+                  onSendWelcome={() => sendWelcome(r)}
+                  onResetPassword={() => resetPassword(r)}
+                  onSaveEmail={(email) => saveClientEmail(r, email)}
+                  onMarkDone={() => markHandedOver(r)}
+                />
               ))}
             </div>
           </section>

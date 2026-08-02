@@ -29,6 +29,15 @@
 -- owner. Login accepts a username, resolved to an email by get_email_for_username.
 
 
+-- >>> EDGE FUNCTION NOT YET DEPLOYED <<<
+-- supabase/functions/client-recovery/ handles onboarding recovery: correcting a
+-- mistyped client email on the EXISTING auth user, and re-sending the welcome
+-- (which necessarily issues a fresh temporary password, since the original is
+-- only ever a hash). It is committed but has NOT been deployed to this project.
+-- Until it is, the admin's "Edit email" and "Send welcome email" actions report
+-- that plainly; copy / WhatsApp / PDF / Reset password all keep working.
+-- Deploy it, then delete this notice.
+--
 -- ============================================================================
 -- TABLES
 -- ============================================================================
