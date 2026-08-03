@@ -3120,10 +3120,24 @@ function TenantAdminSection({ lang, part = 'settings' }) {
           if (b?.detail) msg = `${b.error || 'invite_failed'}: ${b.detail}`;
           else if (b?.error) msg = b.error;
         } catch (_) {}
+        if (/email_taken|username_taken/i.test(String(msg))) {
+          setInvErr(await explainTakenIdentity(msg, invEmail.trim(), ar));
+          return;
+        }
         setInvErr(msg || (ar ? 'فشلت الدعوة' : 'Invite failed'));
         return;
       }
-      if (data?.error) { setInvErr(data.detail ? `${data.error}: ${data.detail}` : data.error); return; }
+      if (data?.error) {
+        // "Taken" is the failure that used to strand an onboarding. Find out WHO
+        // holds the address: if it is an account with no workspace, the fix is
+        // one click away in Unattached logins rather than a dead end.
+        if (/email_taken|username_taken/i.test(String(data.error))) {
+          setInvErr(await explainTakenIdentity(data.error, invEmail.trim(), ar));
+          return;
+        }
+        setInvErr(data.detail ? `${data.error}: ${data.detail}` : data.error);
+        return;
+      }
 
       created = null; // succeeded — do not roll back
 
@@ -3768,6 +3782,40 @@ function PendingRow({ row, lang, busy, onOpen, onViewCreds, onSendWelcome, onRes
 // client-recovery is committed but NOT DEPLOYED, so until it is, invoking it
 // fails at the network layer. Saying so plainly beats a raw "Failed to fetch",
 // and every other recovery route on the row still works meanwhile.
+// A "taken" email or username is the single most stranding failure in
+// onboarding: the workspace has already been created by the time it fires. This
+// asks who actually holds the address so the message can point at the remedy —
+// an account with no workspace can be released in one click, whereas a live
+// client genuinely needs a different address.
+async function explainTakenIdentity(code, email, ar) {
+  const taken = /username_taken/i.test(String(code));
+  const generic = taken
+    ? (ar ? 'اسم المستخدم هذا مستخدم بالفعل.' : 'That username is already taken.')
+    : (ar ? 'هذا البريد مستخدم بحساب آخر.' : 'That email already belongs to an account.');
+  if (taken || !email) return generic;
+  try {
+    const { data, error } = await supabase.functions.invoke('client-recovery', {
+      body: { action: 'lookup_email', email },
+    });
+    if (error || data?.error || !data?.exists) return generic;
+    if (data.is_owner) {
+      return ar
+        ? 'هذا البريد يخص حساب مالك للمنصة — استخدم بريدًا آخر.'
+        : 'That email belongs to a platform owner account — use a different one.';
+    }
+    if (data.orphaned) {
+      return ar
+        ? `${generic} لكن حسابه بلا مساحة عمل — حرّره من قسم «حسابات بلا مساحة» بالأسفل ثم أعد المحاولة.`
+        : `${generic} It has no workspace though — release it under "Unattached logins" below, then try again.`;
+    }
+    return ar
+      ? `${generic} وهو مرتبط بعميل نشط، لذا استخدم بريدًا مختلفًا.`
+      : `${generic} It belongs to an active client, so use a different address.`;
+  } catch (_) {
+    return generic;
+  }
+}
+
 function recoveryError(failed, data, ar) {
   const code = String(data?.error || failed?.message || failed || '');
   if (/not.?found|failed to send|fetch|404/i.test(code)) {
@@ -3787,6 +3835,11 @@ function recoveryError(failed, data, ar) {
   if (/not_a_client/i.test(code)) {
     return ar ? 'هذا الحساب ليس عميلًا لأي مساحة.' : 'That account is not a client of any workspace.';
   }
+  if (/still_has_workspace/i.test(code)) {
+    return ar
+      ? 'لا يمكن تحرير حساب ما زال مرتبطًا بمساحة عمل — احذف المساحة أولًا.'
+      : 'That account still belongs to a workspace — delete the workspace first.';
+  }
   return data?.detail ? `${code}: ${data.detail}` : (code || (ar ? 'فشلت العملية' : 'That did not work'));
 }
 
@@ -3805,6 +3858,51 @@ function OwnerClientsOverview({ lang, onOpen }) {
   const [handoffReady, setHandoffReady] = useState(false);
   const [markingId, setMarkingId] = useState(null);
   const confirm = useConfirm();
+
+  // Accounts holding an email/username but belonging to no workspace. They are
+  // invisible to list_workspace_members (it JOINs tenant_admins), so they come
+  // from the recovery function instead. Empty for most people, most of the time.
+  const [orphans, setOrphans] = useState([]);
+  const [orphanBusy, setOrphanBusy] = useState(null);
+
+  async function loadOrphans() {
+    try {
+      const { data, error } = await supabase.functions.invoke('client-recovery', {
+        body: { action: 'list_orphans' },
+      });
+      if (error || data?.error) { setOrphans([]); return; }
+      setOrphans(data?.orphans || []);
+    } catch (_) {
+      // Non-fatal: the Clients list is useful without this section.
+      setOrphans([]);
+    }
+  }
+
+  // Frees the email and username WITHOUT deleting the account — the address is
+  // parked on an unroutable domain and the originals are kept in metadata.
+  async function releaseAccount(o) {
+    const ok = await confirm({
+      title: ar ? 'تحرير هذا البريد؟' : 'Release this email?',
+      description: ar
+        ? `سيصبح ${o.email} متاحًا للاستخدام من جديد. لا يُحذف الحساب — يُنقل بريده إلى عنوان محفوظ ويمكن التراجع.`
+        : `${o.email} becomes available again. The account is NOT deleted — its address is parked and the original is kept, so this can be undone.`,
+      confirmLabel: ar ? 'تحرير' : 'Release',
+      cancelLabel: ar ? 'إلغاء' : 'Cancel',
+    });
+    if (!ok) return;
+    setResetErr(''); setOrphanBusy(o.user_id);
+    try {
+      const { data, error } = await supabase.functions.invoke('client-recovery', {
+        body: { action: 'release_account', user_id: o.user_id },
+      });
+      const failed = error || data?.error;
+      if (failed) { setResetErr(recoveryError(failed, data, ar)); return; }
+      setOrphans((list) => list.filter((x) => x.user_id !== o.user_id));
+    } catch (err) {
+      console.error('[recovery] release failed:', err);
+      setResetErr(ar ? 'تعذّر تحرير الحساب.' : 'Could not release the account.');
+    } finally { setOrphanBusy(null); }
+  }
 
   // Row-level busy flag, so one row's spinner never freezes the whole queue.
   const [rowBusy, setRowBusy] = useState(null);
@@ -4005,6 +4103,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
         };
       }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
       if (!cancelled) { setRows(out); setHandoffReady(handoffReady); setLoading(false); }
+      if (!cancelled) loadOrphans();
     })();
     return () => { cancelled = true; };
   }, [tenants, adding]);
@@ -4059,6 +4158,55 @@ function OwnerClientsOverview({ lang, onOpen }) {
         <div className="hint">{ar ? 'لا يوجد عملاء بعد.' : 'No clients yet.'}</div>
       ) : (
         <>
+        {/* UNATTACHED LOGINS — accounts whose workspace was deleted. They keep
+            holding an email and a username, which is why that address cannot be
+            reused; releasing frees both without destroying the account. Hidden
+            entirely when there are none, which is the normal state. */}
+        {orphans.length > 0 && (
+          <section className="orph">
+            <h2 className="ph-title">
+              {ar ? 'حسابات بلا مساحة' : 'Unattached logins'}
+              <span className="meta">· {orphans.length}</span>
+            </h2>
+            <p className="hint">{ar
+              ? 'مساحاتها حُذفت لكن الحساب بقي محتفظًا بالبريد واسم المستخدم — لذلك لا يمكن إعادة استخدامهما. التحرير يعيدهما دون حذف الحساب.'
+              : 'Their workspace was deleted but the account kept the email and username — which is why that address cannot be reused. Releasing frees both without deleting anything.'}</p>
+            <div className="cl-list">
+              {orphans.map((o) => (
+                <Card key={o.user_id} pad="none" className="cl-row orph-row">
+                  <div className="cl-open orph-main">
+                    <div className="cl-main">
+                      <div className="cl-name" dir="ltr">{o.email || '—'}</div>
+                      <div className="cl-who" dir="ltr">
+                        {o.username ? `@${o.username} · ` : ''}
+                        {ar ? 'أُنشئ' : 'created'} {o.created_at ? String(o.created_at).slice(0, 10) : '—'}
+                        {' · '}
+                        {o.last_sign_in_at
+                          ? (ar ? 'سجّل دخوله من قبل' : 'has signed in before')
+                          : (ar ? 'لم يسجّل دخوله قط' : 'never signed in')}
+                      </div>
+                    </div>
+                    {o.released
+                      ? <Badge tone="success" dot>{ar ? 'محرَّر' : 'Released'}</Badge>
+                      : <Badge tone="warning" dot>{ar ? 'يحجز بريدًا' : 'Holding an email'}</Badge>}
+                  </div>
+                  {!o.released && (
+                    <div className="cl-actions">
+                      <Button
+                        type="button" variant="secondary" size="sm"
+                        loading={orphanBusy === o.user_id}
+                        onClick={() => releaseAccount(o)}
+                      >
+                        {ar ? 'تحرير البريد' : 'Release email'}
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* PENDING HANDOVER — the onboarding queue. A workspace sits here from
             the moment it is created until the admin confirms the client actually
             received their login. Every recovery route lives on the row, so a
@@ -4146,6 +4294,9 @@ function OwnerClientsOverview({ lang, onOpen }) {
       <AdminStyles />
       <style jsx>{`
         .ph { margin-bottom: var(--space-6); }
+        .orph { margin-bottom: var(--space-6); }
+        .orph :global(.orph-row) { border-color: var(--border-strong); }
+        .orph-main { cursor: default; }
         .ph-title { margin-top: var(--space-5); }
         /* A pending workspace is an open task, not a fault — warning, not danger. */
         .ph :global(.ph-row) { border-color: var(--warning-border); background: var(--warning-bg); }

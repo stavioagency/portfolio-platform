@@ -1,7 +1,7 @@
 // client-recovery — fix a client's onboarding without rebuilding it.
 //
 // ┌──────────────────────────────────────────────────────────────────────────┐
-// │ DEPLOYED to gphrzvjlstznhypcfgre 2026-08-02, verify_jwt on, matching the │
+// │ DEPLOYED to gphrzvjlstznhypcfgre, verify_jwt on, matching the two sibling │
 // │ two sibling functions. The admin degrades gracefully if it ever goes     │
 // │ missing: recoveryError() in pages/admin.js reports it plainly and copy / │
 // │ WhatsApp / PDF / reset-password keep working.                            │
@@ -21,10 +21,13 @@
 // There is deliberately NO re-invite: invite-client creates a NEW auth user and
 // would fail on email_taken / username_taken (HANDOFF §7). Recovery therefore
 // has to mutate the EXISTING user, which is what this does. It never creates a
-// user, a workspace or a membership.
+// user, a workspace or a membership, and it never deletes an auth account.
 //
-// Body: { action: "update_email", user_id: uuid, email: string }
-//       { action: "send_welcome", user_id: uuid }
+// Body: { action: "update_email",    user_id: uuid, email: string }
+//       { action: "send_welcome",    user_id: uuid }
+//       { action: "release_account", user_id: uuid }
+//       { action: "lookup_email",    email: string }        (read-only)
+//       { action: "list_orphans" }                          (read-only)
 // Returns: { ok, email, username?, temp_password?, emailed?, email_error? }
 //
 // WHY send_welcome ROTATES THE PASSWORD: the original is not stored anywhere —
@@ -117,6 +120,23 @@ async function emailCredentials(
   }
 }
 
+
+// listUsers() returns a single page (50 by default). Anything built on one call
+// silently stops seeing accounts past that point, so every lookup here walks the
+// whole set. Capped so a runaway cannot spin forever.
+async function allUsers(admin: ReturnType<typeof createClient>) {
+  const out: Array<Record<string, unknown>> = [];
+  const perPage = 200;
+  for (let page = 1; page <= 50; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const batch = data?.users ?? [];
+    out.push(...batch);
+    if (batch.length < perPage) break;
+  }
+  return out;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -141,12 +161,67 @@ Deno.serve(async (req: Request) => {
 
   const action = String(body.action ?? "").trim();
   const user_id = String(body.user_id ?? "").trim();
-  if (!/^[0-9a-f-]{36}$/i.test(user_id)) return json({ error: "invalid_user_id" }, 400);
-  if (action !== "update_email" && action !== "send_welcome") {
+  const READ_ACTIONS = ["lookup_email", "list_orphans"];
+  const WRITE_ACTIONS = ["update_email", "send_welcome", "release_account"];
+  if (![...READ_ACTIONS, ...WRITE_ACTIONS].includes(action)) {
     return json({ error: "invalid_action" }, 400);
+  }
+  // The read actions are not about one known account, so they skip the user_id
+  // requirement that every write action needs.
+  if (WRITE_ACTIONS.includes(action) && !/^[0-9a-f-]{36}$/i.test(user_id)) {
+    return json({ error: "invalid_user_id" }, 400);
   }
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+  // ---- READ-ONLY: which accounts belong to no workspace at all.
+  //
+  // list_workspace_members() cannot answer this: it JOINS tenant_admins, so an
+  // account with no membership is invisible to it by construction. That is
+  // exactly the population the owner needs to see — the accounts left holding an
+  // email and a username after their workspace was deleted.
+  if (action === "list_orphans" || action === "lookup_email") {
+    let users;
+    try { users = await allUsers(admin); }
+    catch (e) { return json({ error: "list_failed", detail: String(e).slice(0, 200) }, 500); }
+
+    const { data: owners } = await admin.from("platform_owners").select("user_id");
+    const { data: members } = await admin.from("tenant_admins").select("user_id");
+    const { data: names } = await admin.from("admin_usernames").select("user_id, username");
+    const ownerIds = new Set((owners ?? []).map((r) => r.user_id));
+    const memberIds = new Set((members ?? []).map((r) => r.user_id));
+    const nameOf = new Map((names ?? []).map((r) => [r.user_id, r.username]));
+
+    const describe = (u: Record<string, unknown>) => ({
+      user_id: u.id,
+      email: u.email ?? "",
+      username: nameOf.get(u.id) ?? null,
+      created_at: u.created_at ?? null,
+      last_sign_in_at: u.last_sign_in_at ?? null,
+      released: !!(u.user_metadata as Record<string, unknown> | undefined)?.released_at,
+    });
+
+    if (action === "list_orphans") {
+      const orphans = users
+        .filter((u) => !ownerIds.has(u.id) && !memberIds.has(u.id))
+        .map(describe);
+      return json({ ok: true, orphans });
+    }
+
+    // lookup_email — used by the invite screen to explain a "taken" address and
+    // offer the fix inline, instead of leaving the owner at a dead end.
+    const email = String(body.email ?? "").trim().toLowerCase();
+    if (!email) return json({ error: "invalid_email" }, 400);
+    const hit = users.find((u) => String(u.email ?? "").toLowerCase() === email);
+    if (!hit) return json({ ok: true, exists: false });
+    return json({
+      ok: true,
+      exists: true,
+      orphaned: !ownerIds.has(hit.id) && !memberIds.has(hit.id),
+      is_owner: ownerIds.has(hit.id),
+      ...describe(hit),
+    });
+  }
 
   // Co-owners are peers. One silently rewriting the other's email or password is
   // account takeover, not support — the same guard reset-client-password uses.
@@ -154,10 +229,8 @@ Deno.serve(async (req: Request) => {
     .select("user_id").eq("user_id", user_id).maybeSingle();
   if (targetIsOwner) return json({ error: "cannot_modify_platform_owner" }, 403);
 
-  // Must be a real client of some workspace, not an arbitrary account id.
   const { data: membership } = await admin.from("tenant_admins")
     .select("tenant_id").eq("user_id", user_id).limit(1).maybeSingle();
-  if (!membership) return json({ error: "not_a_client" }, 404);
 
   const { data: found, error: findErr } = await admin.auth.admin.getUserById(user_id);
   if (findErr || !found?.user) return json({ error: "user_not_found" }, 404);
@@ -165,6 +238,54 @@ Deno.serve(async (req: Request) => {
   const { data: unameRow } = await admin.from("admin_usernames")
     .select("username").eq("user_id", user_id).maybeSingle();
   const username = unameRow?.username ?? "";
+
+  // ---- RELEASE: free a stranded account's email and username WITHOUT deleting it.
+  //
+  // Deleting a workspace cascades its memberships but never touches auth.users, so
+  // the account survives holding an address and a username that can then never be
+  // reused — the owner's own email got stuck this way. Deletion would fix it and is
+  // deliberately NOT what this does: an auth user is the only record that a person
+  // ever existed here, and destroying audit trail to reclaim a string is a bad
+  // trade. Instead the address is parked on a reserved, unroutable domain
+  // (RFC 2606 .invalid) and the originals are kept in user_metadata, so the move
+  // is reversible and nothing is lost.
+  //
+  // Refuses to touch an account that still belongs to a workspace: that is a live
+  // client, and releasing them would lock them out of a site they are using.
+  if (action === "release_account") {
+    if (membership) return json({ error: "still_has_workspace" }, 409);
+
+    const previous_email = String(found.user.email ?? "");
+    const short = user_id.replace(/-/g, "").slice(0, 12);
+    const parked = `released+${short}@released.invalid`;
+
+    const { error: relErr } = await admin.auth.admin.updateUserById(user_id, {
+      email: parked,
+      email_confirm: true,
+      user_metadata: {
+        ...(found.user.user_metadata ?? {}),
+        released_at: new Date().toISOString(),
+        released_email: previous_email,
+        released_username: username || null,
+      },
+    });
+    if (relErr) return json({ error: "release_failed", detail: relErr.message }, 500);
+
+    // The username mapping is a separate table and is what actually blocks reuse of
+    // the NAME. Dropping the row frees it; the account itself is untouched and can
+    // still sign in by email if it ever needs to.
+    if (username) {
+      const { error: unErr } = await admin.from("admin_usernames").delete().eq("user_id", user_id);
+      if (unErr) {
+        return json({ error: "username_release_failed", detail: unErr.message, email: parked }, 500);
+      }
+    }
+
+    return json({ ok: true, released: true, email: parked, previous_email, username });
+  }
+
+  // Every other action operates on a LIVE client of some workspace.
+  if (!membership) return json({ error: "not_a_client" }, 404);
 
   const { data: tenantRow } = await admin.from("tenants")
     .select("slug, name").eq("id", membership.tenant_id).maybeSingle();
