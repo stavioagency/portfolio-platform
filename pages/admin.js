@@ -3940,6 +3940,10 @@ function ClientPanel({ row, tenantRow, lang, onClose, onOpenEditor, actions }) {
 
   const m = row.member;
   const stage = clientStage(row);
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [draftEmail, setDraftEmail] = useState(m?.email || '');
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailErr, setEmailErr] = useState('');
 
   return (
     <div className="cp-bg" onClick={onClose}>
@@ -3967,9 +3971,50 @@ function ClientPanel({ row, tenantRow, lang, onClose, onOpenEditor, actions }) {
           <div className="cp-facts">
             <div><dt>{ar ? 'الحالة' : 'Stage'}</dt><dd><Badge tone={stage.tone} dot>{stage.label(ar)}</Badge></dd></div>
             <div><dt>{ar ? 'آخر دخول' : 'Last login'}</dt><dd>{formatSeen(m?.last_sign_in_at, ar)}</dd></div>
-            <div><dt>{ar ? 'البريد' : 'Email'}</dt><dd dir="ltr">{m?.email || '—'}</dd></div>
+            <div>
+              <dt>{ar ? 'البريد' : 'Email'}</dt>
+              <dd dir="ltr">
+                {m?.email || '—'}
+                {m && !editingEmail && (
+                  <button type="button" className="cp-inline" dir={ar ? 'rtl' : 'ltr'}
+                    onClick={() => { setDraftEmail(m.email || ''); setEmailErr(''); setEditingEmail(true); }}>
+                    {ar ? 'تعديل' : 'Edit'}
+                  </button>
+                )}
+              </dd>
+            </div>
             <div><dt>{ar ? 'اسم المستخدم' : 'Username'}</dt><dd dir="ltr">{m?.username || '—'}</dd></div>
           </div>
+
+          {editingEmail && m && (
+            <form
+              className="cp-email"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setEmailErr(''); setEmailBusy(true);
+                try {
+                  const res = await actions.onSaveEmail(draftEmail.trim());
+                  if (res?.error) { setEmailErr(res.error); return; }
+                  setEditingEmail(false);
+                } finally { setEmailBusy(false); }
+              }}
+            >
+              <label htmlFor={`cp-em-${row.id}`}>{ar ? 'بريد العميل' : 'Client email'}</label>
+              <div className="cp-email-row">
+                <input id={`cp-em-${row.id}`} type="email" dir="ltr" required autoFocus
+                  value={draftEmail} onChange={(e) => setDraftEmail(e.target.value)} />
+                <Button type="submit" size="sm" loading={emailBusy}>{ar ? 'حفظ' : 'Save'}</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setEditingEmail(false)}>
+                  {ar ? 'إلغاء' : 'Cancel'}
+                </Button>
+              </div>
+              {emailErr
+                ? <p className="cp-email-err">{emailErr}</p>
+                : <p className="cp-email-note">{ar
+                    ? 'يغيّر العنوان على الحساب نفسه. لا يُرسل شيئًا — استخدم «إرسال الترحيب» بعدها.'
+                    : 'Changes the address on the existing account. It sends nothing — use Send welcome email afterwards.'}</p>}
+            </form>
+          )}
 
           <div className="cp-actions">
             <Button onClick={onOpenEditor}>{ar ? 'فتح المحرّر' : 'Open editor'}</Button>
@@ -4030,6 +4075,21 @@ function ClientPanel({ row, tenantRow, lang, onClose, onOpenEditor, actions }) {
         .cp-facts dt { font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: 3px; }
         .cp-facts dd { margin: 0; font-size: var(--text-md); color: var(--text-primary);
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cp-inline { margin-inline-start: 8px; padding: 1px 8px; background: var(--bg-hover);
+          border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary);
+          font: inherit; font-size: var(--text-xs); font-weight: 600; cursor: pointer; vertical-align: middle; }
+        .cp-inline:hover { color: var(--text-primary); border-color: var(--border-strong); }
+        .cp-inline:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .cp-email { padding: var(--space-3); margin-bottom: var(--space-4);
+          background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-md); }
+        .cp-email label { display: block; font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: 6px; }
+        .cp-email-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+        .cp-email-row input { flex: 1 1 200px; min-width: 0; padding: 9px var(--space-3);
+          background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm);
+          color: var(--text-primary); font: inherit; font-size: var(--text-md); }
+        .cp-email-row input:focus { outline: none; border-color: var(--accent); }
+        .cp-email-note { margin-top: 8px; font-size: var(--text-xs); color: var(--text-muted); }
+        .cp-email-err { margin-top: 8px; font-size: var(--text-sm); color: var(--danger); }
         .cp-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
         .cp-h { font-size: var(--text-sm); font-weight: 700; text-transform: uppercase;
           letter-spacing: 0.05em; color: var(--text-tertiary); margin: var(--space-5) 0 var(--space-2); }
@@ -4114,6 +4174,25 @@ function OwnerClientsOverview({ lang, onOpen }) {
   function openStoredCreds(row) {
     const held = recallCredentials(row.id);
     if (held) setResetCreds(held);
+  }
+
+  // Same operation as the pending row's editor, shaped for inline display: the
+  // panel shows the reason next to the field rather than in a page-level banner.
+  async function saveClientEmailFromPanel(row, email) {
+    const m = row.member;
+    if (!m) return { error: ar ? 'لا يوجد حساب لهذه المساحة.' : 'This workspace has no account.' };
+    try {
+      const { data, error } = await supabase.functions.invoke('client-recovery', {
+        body: { action: 'update_email', user_id: m.user_id, email },
+      });
+      const failed = error || data?.error;
+      if (failed) return { error: recoveryError(failed, data, ar) };
+      setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, member: { ...r.member, email } } : r)));
+      return {};
+    } catch (err) {
+      console.error('[recovery] panel email update failed:', err);
+      return { error: ar ? 'تعذّر تحديث البريد.' : 'Could not update the email.' };
+    }
   }
 
   // Correct a mistyped address on the EXISTING account. No new user, no new
@@ -4531,6 +4610,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
             actions={{
               hasCreds: !!recallCredentials(r.id),
               onViewCreds: () => openStoredCreds(r),
+              onSaveEmail: (email) => saveClientEmailFromPanel(r, email),
               onSendWelcome: () => sendWelcome(r),
               onResetPassword: () => resetPassword(r),
             }}
