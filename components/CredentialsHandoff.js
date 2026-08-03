@@ -200,13 +200,21 @@ function ShareCard({ icon, title, hint, cta, tone, onPick, done }) {
   );
 }
 
-export default function CredentialsHandoff({ creds, lang = 'en', title, intro, onClose }) {
+export default function CredentialsHandoff({ creds, lang = 'en', title, intro, onClose, onUpdateEmail }) {
   const ar = lang === 'ar';
   // Has the admin taken the credentials out of this screen by ANY route? Closing
   // before that is the failure this whole feature exists to prevent.
   const [delivered, setDelivered] = useState(false);
   const [used, setUsed] = useState({});
   const [revealed, setRevealed] = useState(false);
+  // Correcting the address HERE is the point: this modal is the moment a typo is
+  // actually noticed, and making the owner close it, hunt the workspace down and
+  // edit it elsewhere is how onboardings got abandoned half-done.
+  const [editing, setEditing] = useState(false);
+  const [draftEmail, setDraftEmail] = useState(creds?.email || '');
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailErr, setEmailErr] = useState('');
+  const [emailFixed, setEmailFixed] = useState(false);
   const modalRef = useRef(null);
 
   useEffect(() => {
@@ -287,12 +295,62 @@ export default function CredentialsHandoff({ creds, lang = 'en', title, intro, o
             <div><dt>{ar ? 'الحالة' : 'Status'}</dt><dd><span className="ch-pill">{ar ? 'نشط' : 'Active'}</span></dd></div>
           </dl>
 
-          <div className={`ch-mail ${creds.emailed ? 'ok' : 'warn'}`}>
-            <Icon name={creds.emailed ? 'check' : 'mail'} size={14} />
+          {/* The client's address, editable in place. */}
+          <div className="ch-email">
+            <span className="ch-email-k">{ar ? 'بريد العميل' : 'Client email'}</span>
+            {editing ? (
+              <form
+                className="ch-email-edit"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setEmailErr(''); setEmailBusy(true);
+                  try {
+                    const res = await onUpdateEmail(draftEmail.trim());
+                    if (res?.error) { setEmailErr(res.error); return; }
+                    setEditing(false);
+                    setEmailFixed(true);
+                  } finally { setEmailBusy(false); }
+                }}
+              >
+                <input
+                  type="email" dir="ltr" required autoFocus value={draftEmail}
+                  onChange={(e) => setDraftEmail(e.target.value)}
+                  aria-label={ar ? 'بريد العميل' : 'Client email'}
+                />
+                <Button type="submit" size="sm" loading={emailBusy}>{ar ? 'حفظ' : 'Save'}</Button>
+                <Button type="button" size="sm" variant="ghost"
+                  onClick={() => { setDraftEmail(creds.email || ''); setEmailErr(''); setEditing(false); }}>
+                  {ar ? 'إلغاء' : 'Cancel'}
+                </Button>
+              </form>
+            ) : (
+              <div className="ch-email-view">
+                <code dir="ltr">{creds.email || '—'}</code>
+                {onUpdateEmail && creds.userId && (
+                  <button type="button" className="ch-email-btn" onClick={() => setEditing(true)}>
+                    {ar ? 'تعديل' : 'Edit'}
+                  </button>
+                )}
+              </div>
+            )}
+            {emailErr && <p className="ch-email-err">{emailErr}</p>}
+            {emailFixed && (
+              <p className="ch-email-ok">{ar ? 'تم تحديث البريد ✓' : 'Email updated ✓'}</p>
+            )}
+          </div>
+
+          {/* Once the address has been corrected, the automatic send is stale: it
+              went to the OLD address. Claiming delivery to the new one would be a
+              lie, and the most consequential kind — the owner would stop here
+              thinking the client had been reached. */}
+          <div className={`ch-mail ${creds.emailed && !emailFixed ? 'ok' : 'warn'}`}>
+            <Icon name={creds.emailed && !emailFixed ? 'check' : 'mail'} size={14} />
             <span>
-              {creds.emailed
-                ? (ar ? `أُرسل بريد تلقائي إلى ${creds.email}` : `Emailed automatically to ${creds.email}`)
-                : (ar ? 'لم يُرسل بريد — اختر طريقة تسليم من الأسفل' : 'No email was sent — pick a delivery route below')}
+              {emailFixed
+                ? (ar ? 'لم يصل شيء إلى العنوان الجديد بعد — اختر طريقة تسليم' : 'Nothing has reached the new address yet — pick a delivery route')
+                : creds.emailed
+                  ? (ar ? `أُرسل بريد تلقائي إلى ${creds.email}` : `Emailed automatically to ${creds.email}`)
+                  : (ar ? 'لم يُرسل بريد — اختر طريقة تسليم من الأسفل' : 'No email was sent — pick a delivery route below')}
             </span>
           </div>
           {!creds.emailed && creds.emailError && creds.emailError !== 'not_configured' && (
@@ -386,6 +444,24 @@ export default function CredentialsHandoff({ creds, lang = 'en', title, intro, o
           font-weight: 700; background: var(--success-bg); color: var(--success);
           border: 1px solid var(--success-border); }
 
+        .ch-email { margin-bottom: var(--space-4); padding: var(--space-3);
+          background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); }
+        .ch-email-k { display: block; font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: 6px; }
+        .ch-email-view { display: flex; align-items: center; gap: var(--space-3); }
+        .ch-email-view code { flex: 1; min-width: 0; font-family: inherit; font-size: var(--text-md);
+          color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ch-email-btn { flex-shrink: 0; padding: 4px 12px; background: var(--bg-hover);
+          border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-secondary);
+          font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
+        .ch-email-btn:hover { color: var(--text-primary); border-color: var(--border-strong); }
+        .ch-email-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .ch-email-edit { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+        .ch-email-edit input { flex: 1 1 200px; min-width: 0; padding: 9px var(--space-3);
+          background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm);
+          color: var(--text-primary); font: inherit; font-size: var(--text-md); }
+        .ch-email-edit input:focus { outline: none; border-color: var(--accent); }
+        .ch-email-err { margin-top: 6px; font-size: var(--text-sm); color: var(--danger); }
+        .ch-email-ok { margin-top: 6px; font-size: var(--text-sm); color: var(--success); }
         .ch-mail { display: flex; align-items: center; gap: var(--space-2); padding: 10px var(--space-3);
           border-radius: var(--radius-sm); font-size: var(--text-sm); margin-bottom: var(--space-4); }
         .ch-mail.ok { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success); }

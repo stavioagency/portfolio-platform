@@ -3162,7 +3162,11 @@ function TenantAdminSection({ lang, part = 'settings' }) {
         // request over email, so this can be false while everything else succeeded.
         emailed: data?.emailed === true,
         emailError: data?.email_error || null,
-        userId: data?.user_id || null,
+        // invite-client does not return the account id, and the handoff modal
+        // needs one to let you correct a mistyped address on the spot. Resolve it
+        // from the address we just used. Best-effort: if it fails the modal simply
+        // shows the email as read-only and the fix moves to the pending row.
+        userId: await resolveUserId(data?.email || invEmail.trim()),
       };
       rememberCredentials(tRow.id, issued);
       setInvCreds(issued);
@@ -3409,6 +3413,7 @@ function TenantAdminSection({ lang, part = 'settings' }) {
           intro={ar
             ? 'سلّم هذه البيانات للعميل بأي طريقة تناسبك. ستبقى المساحة في «بانتظار التسليم» حتى تؤكد وصولها.'
             : 'Hand these to the client any way you like. The workspace stays in Pending handoff until you confirm they have them.'}
+          onUpdateEmail={makeEmailUpdater(invCreds, setInvCreds, ar)}
           onClose={() => setInvCreds(null)}
         />
       )}
@@ -3817,6 +3822,49 @@ async function explainTakenIdentity(code, email, ar) {
   }
 }
 
+// The account id for an address, via the recovery function's read-only lookup.
+// Returns null rather than throwing — every caller treats "no id" as "this action
+// is unavailable", never as an error worth showing.
+// Correct a client's address from inside the handoff modal. Returns { error }
+// rather than throwing so the modal can show the reason next to the field.
+function makeEmailUpdater(creds, setCreds, ar) {
+  return async (email) => {
+    if (!creds?.userId) {
+      return { error: ar ? 'تعذّر تحديد الحساب.' : 'Could not identify the account.' };
+    }
+    try {
+      const { data, error } = await supabase.functions.invoke('client-recovery', {
+        body: { action: 'update_email', user_id: creds.userId, email },
+      });
+      const failed = error || data?.error;
+      if (failed) return { error: recoveryError(failed, data, ar) };
+      // Reflect it immediately — the modal is still open and showing the old one.
+      // emailed goes false because the automatic send went to the OLD address;
+      // nothing has reached this one yet.
+      const next = { ...creds, email, emailed: false, emailError: null };
+      rememberCredentials(creds.tenantId, next);
+      setCreds(next);
+      return {};
+    } catch (err) {
+      console.error('[handoff] email update failed:', err);
+      return { error: ar ? 'تعذّر تحديث البريد.' : 'Could not update the email.' };
+    }
+  };
+}
+
+async function resolveUserId(email) {
+  if (!email) return null;
+  try {
+    const { data, error } = await supabase.functions.invoke('client-recovery', {
+      body: { action: 'lookup_email', email },
+    });
+    if (error || data?.error || !data?.exists) return null;
+    return data.user_id || null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function recoveryError(failed, data, ar) {
   const code = String(data?.error || failed?.message || failed || '');
   if (/not.?found|failed to send|fetch|404/i.test(code)) {
@@ -4119,6 +4167,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
         email: data?.email || m.email,
         username: data?.username || m.username,
         password: data?.temp_password || '',
+        userId: m.user_id,
         emailed: data?.emailed === true,
         emailError: data?.email_error || null,
       };
@@ -4199,6 +4248,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
         email: data?.email || m.email,
         username: data?.username || m.username,
         password: data?.temp_password || '',
+        userId: m.user_id,
         // reset-client-password does not send mail; the owner delivers it.
         emailed: false,
         emailError: null,
@@ -4319,6 +4369,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
           intro={ar
             ? 'كلمتهم القديمة توقّفت الآن. سلّم هذه البيانات، وسيُطلب منهم تغييرها عند الدخول.'
             : 'Their old password has stopped working. Hand these over — they will be asked to change it on sign-in.'}
+          onUpdateEmail={makeEmailUpdater(resetCreds, setResetCreds, ar)}
           onClose={() => setResetCreds(null)}
         />
       )}
