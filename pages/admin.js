@@ -19,6 +19,7 @@ import { parseLoginIdentifier } from '../lib/resolve-login';
 import { compressImage, fileExtension, MAX_AVATAR_DIMENSION } from '../lib/image-compress';
 import { portfolioUrl, workspaceLabel, credentialsText, whatsappMessage, credentialsFilename } from '../lib/credentials';
 import { rememberCredentials, recallCredentials, forgetCredentials, clearAllCredentials } from '../lib/handoff-store';
+import { hasPublicContent } from '../lib/profile-content';
 import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
@@ -3843,6 +3844,157 @@ function recoveryError(failed, data, ar) {
   return data?.detail ? `${code}: ${data.detail}` : (code || (ar ? 'فشلت العملية' : 'That did not work'));
 }
 
+// Where a client actually is, from signals that already existed and were being
+// thrown away: handed_over_at, last_sign_in_at from list_workspace_members, and
+// whether the site has any real content. Four stages, in the order they happen.
+function clientStage(row) {
+  const m = row.member;
+  if (!m) return { id: 'nologin', tone: 'danger', label: (ar) => (ar ? 'بلا حساب' : 'No login') };
+  if (row.pendingHandoff) return { id: 'invited', tone: 'warning', label: (ar) => (ar ? 'بانتظار التسليم' : 'Pending handover') };
+  if (!m.last_sign_in_at) return { id: 'never', tone: 'warning', label: (ar) => (ar ? 'لم يدخل بعد' : 'Never signed in') };
+  if (!row.live) return { id: 'building', tone: 'default', label: (ar) => (ar ? 'قيد الإعداد' : 'Building') };
+  return { id: 'live', tone: 'success', label: (ar) => (ar ? 'منشور' : 'Live') };
+}
+
+// "6 days ago" beats a timestamp for the one question being asked: has this
+// person shown up recently, or have they gone quiet?
+function formatSeen(iso, ar) {
+  if (!iso) return ar ? 'لم يسجّل دخوله قط' : 'Never';
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (days <= 0) return ar ? 'اليوم' : 'Today';
+  if (days === 1) return ar ? 'أمس' : 'Yesterday';
+  if (days < 30) return ar ? `قبل ${days} يومًا` : `${days} days ago`;
+  const months = Math.floor(days / 30);
+  return ar ? `قبل ${months} شهرًا` : `${months} mo ago`;
+}
+
+// One client, one panel. Everything about them lives here — the workspace, its
+// address, the login, the credentials and the destructive actions — so managing a
+// client never means changing which workspace the whole admin is pointed at.
+//
+// THE TRICK that makes this cheap: it re-provides TenantContext scoped to THIS
+// client. TenantAdminSection and DomainManager already read `tenant` from that
+// context, so they work here unmodified, operating on the clicked client while
+// the global active workspace stays exactly where it was. Only "Open editor"
+// changes that, and it does so explicitly.
+function ClientPanel({ row, tenantRow, lang, onClose, onOpenEditor, actions }) {
+  const ar = lang === 'ar';
+  const outer = useTenant();
+  const panelRef = useRef(null);
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    panelRef.current?.focus();
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
+  }, [onClose]);
+
+  const m = row.member;
+  const stage = clientStage(row);
+
+  return (
+    <div className="cp-bg" onClick={onClose}>
+      <aside
+        className="cp"
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={row.name}
+        dir={ar ? 'rtl' : 'ltr'}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="cp-head">
+          <div className="cp-title">
+            <h2>{row.name}</h2>
+            <a className="cp-url" href={row.siteUrl} target="_blank" rel="noopener noreferrer" dir="ltr">
+              {row.domain}
+            </a>
+          </div>
+          <button type="button" className="cp-x" onClick={onClose} aria-label={ar ? 'إغلاق' : 'Close'}>×</button>
+        </header>
+
+        <div className="cp-body">
+          <div className="cp-facts">
+            <div><dt>{ar ? 'الحالة' : 'Stage'}</dt><dd><Badge tone={stage.tone} dot>{stage.label(ar)}</Badge></dd></div>
+            <div><dt>{ar ? 'آخر دخول' : 'Last login'}</dt><dd>{formatSeen(m?.last_sign_in_at, ar)}</dd></div>
+            <div><dt>{ar ? 'البريد' : 'Email'}</dt><dd dir="ltr">{m?.email || '—'}</dd></div>
+            <div><dt>{ar ? 'اسم المستخدم' : 'Username'}</dt><dd dir="ltr">{m?.username || '—'}</dd></div>
+          </div>
+
+          <div className="cp-actions">
+            <Button onClick={onOpenEditor}>{ar ? 'فتح المحرّر' : 'Open editor'}</Button>
+            <Button variant="secondary" onClick={() => window.open(row.siteUrl, '_blank', 'noopener')}>
+              {ar ? 'عرض الموقع' : 'Open portfolio'}
+            </Button>
+          </div>
+
+          {m && (
+            <>
+              <h3 className="cp-h">{ar ? 'بيانات الدخول' : 'Credentials'}</h3>
+              <div className="cp-actions">
+                {actions.hasCreds && (
+                  <Button size="sm" onClick={actions.onViewCreds}>{ar ? 'عرض البيانات' : 'View credentials'}</Button>
+                )}
+                <Button variant="secondary" size="sm" onClick={actions.onSendWelcome}>
+                  {ar ? 'إرسال الترحيب' : 'Send welcome email'}
+                </Button>
+                <Button variant="secondary" size="sm" onClick={actions.onResetPassword}>
+                  {ar ? 'كلمة مرور جديدة' : 'Reset password'}
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* Scoped to THIS client — see the note above the component. */}
+          <TenantContext.Provider value={{ ...outer, tenant: tenantRow }}>
+            <TenantAdminSection lang={lang} part="settings" />
+          </TenantContext.Provider>
+        </div>
+      </aside>
+      <style jsx>{`
+        .cp-bg { position: fixed; inset: 0; z-index: var(--z-modal);
+          background: rgba(0,0,0,0.55); display: flex; justify-content: flex-end;
+          animation: cpFade 0.18s ease; }
+        @keyframes cpFade { from { opacity: 0; } to { opacity: 1; } }
+        .cp { width: min(560px, 100%); height: 100%; overflow-y: auto;
+          background: var(--bg-secondary); border-inline-start: 1px solid var(--border-strong);
+          box-shadow: var(--shadow-lg); animation: cpIn 0.22s cubic-bezier(0.4,0,0.2,1); }
+        @keyframes cpIn { from { transform: translateX(var(--cp-from, 24px)); opacity: 0; }
+                          to { transform: none; opacity: 1; } }
+        :global(html[dir='rtl']) .cp { --cp-from: -24px; }
+        .cp-head { position: sticky; top: 0; z-index: 1;
+          display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3);
+          padding: var(--space-5); background: var(--bg-secondary); border-bottom: 1px solid var(--border); }
+        .cp-title h2 { font-size: var(--text-xl); font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }
+        .cp-url { font-size: var(--text-sm); color: var(--accent); }
+        .cp-x { width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
+          background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary);
+          font-size: 22px; line-height: 1; cursor: pointer; font-family: inherit; }
+        .cp-x:hover { color: var(--text-primary); }
+        .cp-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .cp-body { padding: var(--space-5); }
+        .cp-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+          background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-md);
+          overflow: hidden; margin-bottom: var(--space-4); }
+        .cp-facts > div { background: var(--bg-elevated); padding: 10px var(--space-3); min-width: 0; }
+        .cp-facts dt { font-size: var(--text-xs); color: var(--text-tertiary); margin-bottom: 3px; }
+        .cp-facts dd { margin: 0; font-size: var(--text-md); color: var(--text-primary);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cp-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+        .cp-h { font-size: var(--text-sm); font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.05em; color: var(--text-tertiary); margin: var(--space-5) 0 var(--space-2); }
+        :global(html[dir='rtl']) .cp-h { text-transform: none; letter-spacing: normal; }
+        @media (max-width: 640px) {
+          .cp { width: 100%; }
+          .cp-facts { grid-template-columns: 1fr; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 // Owner-only simple overview: name, domain, status, completion. Click to open.
 function OwnerClientsOverview({ lang, onOpen }) {
   const { tenants } = useTenant();
@@ -3862,6 +4014,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
   // Accounts holding an email/username but belonging to no workspace. They are
   // invisible to list_workspace_members (it JOINs tenant_admins), so they come
   // from the recovery function instead. Empty for most people, most of the time.
+  const [openId, setOpenId] = useState(null);
   const [orphans, setOrphans] = useState([]);
   const [orphanBusy, setOrphanBusy] = useState(null);
 
@@ -4095,6 +4248,10 @@ function OwnerClientsOverview({ lang, onOpen }) {
         const dom = (dmap[x.id] || []).find((d) => d.is_primary) || (dmap[x.id] || [])[0];
         return {
           id: x.id, slug: x.slug, name: x.name || x.slug, status: x.status, percent: s.percent,
+          // "Live" means a visitor would see a real page, not that a row exists —
+          // the same test the public site uses to decide whether to render.
+          live: hasPublicContent(pmap[x.id], pcount[x.id] || 0),
+          siteUrl: portfolioUrl(typeof window !== 'undefined' ? window.location.origin : '', x.slug) || `/${x.slug}`,
           domain: dom?.domain || `/${x.slug}`,
           domainStatus: dom ? dom.status : null,
           isPrimary: !!dom?.is_primary,
@@ -4119,12 +4276,30 @@ function OwnerClientsOverview({ lang, onOpen }) {
           Account screen, under this person's own password change, which is why
           nobody could find it or tell the two apart. */}
       <div className="editor-header">
-        <h1>{ar ? 'العملاء' : 'Clients'} <span className="meta">· {rows.length}</span></h1>
+        <h1>{ar ? 'المواقع' : 'Sites'} <span className="meta">· {rows.length}</span></h1>
         <Button size="sm" onClick={() => setAdding(true)}>+ {ar ? 'إضافة عميل' : 'Add client'}</Button>
       </div>
       <p className="hint">{ar
-        ? 'كل عميل له مساحته وموقعه. اضغط على أي عميل لفتح مساحته وتحريرها.'
-        : 'Every client has their own workspace and site. Tap a client to open and edit theirs.'}</p>
+        ? 'كل عميل هو مساحة وموقع واحد. اضغط عليه لإدارته دون تبديل مساحة العمل النشطة.'
+        : 'One client is one workspace and one site. Tap to manage them without switching the active workspace.'}</p>
+
+      {/* The four questions worth answering at a glance. Every number here comes
+          from data the list already loaded — none of it needed a new query. */}
+      {!loading && rows.length > 0 && (
+        <div className="cl-stats">
+          {[
+            [ar ? 'العملاء' : 'Clients', rows.length, ''],
+            [ar ? 'منشور' : 'Live', rows.filter((r) => r.live).length, 'ok'],
+            [ar ? 'لم يدخل بعد' : 'Never signed in', rows.filter((r) => r.member && !r.member.last_sign_in_at).length, 'warn'],
+            [ar ? 'يحتاج انتباهك' : 'Needs you', rows.filter((r) => r.pendingHandoff || !r.member).length, 'warn'],
+          ].map(([label, n, tone]) => (
+            <div key={label} className={`cl-stat ${n > 0 ? tone : ''}`}>
+              <span className="cl-stat-n">{n}</span>
+              <span className="cl-stat-l">{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {adding && (
         <div className="add-bg" onClick={() => setAdding(false)}>
@@ -4227,7 +4402,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
                   row={r}
                   lang={lang}
                   busy={rowBusy}
-                  onOpen={() => onOpen(r.id)}
+                  onOpen={() => setOpenId(r.id)}
                   onViewCreds={() => openStoredCreds(r)}
                   onSendWelcome={() => sendWelcome(r)}
                   onResetPassword={() => resetPassword(r)}
@@ -4247,7 +4422,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
             /* The row is a DIV, not a button: it now contains its own buttons, and a
                button inside a button is invalid and unclickable in places. */
             <Card key={r.id} pad="none" className="cl-row">
-              <button type="button" className="cl-open" onClick={() => onOpen(r.id)}>
+              <button type="button" className="cl-open" onClick={() => setOpenId(r.id)}>
                 <div className="cl-main">
                   <div className="cl-name">{r.name}</div>
                   <div className="cl-domain" dir="ltr">
@@ -4267,10 +4442,10 @@ function OwnerClientsOverview({ lang, onOpen }) {
                       : <span className="cl-none">{ar ? 'لا يوجد عميل مرتبط' : 'no client account'}</span>}
                   </div>
                 </div>
-                <Badge tone={r.status === 'disabled' ? 'danger' : 'success'}>
-                  {r.status === 'disabled' ? (ar ? 'معلّق' : 'Suspended') : (ar ? 'نشط' : 'Active')}
-                </Badge>
-                <span className="cl-pct">{r.percent}%</span>
+                {r.status === 'disabled'
+                  ? <Badge tone="danger" dot>{ar ? 'معلّق' : 'Suspended'}</Badge>
+                  : <Badge tone={clientStage(r).tone} dot>{clientStage(r).label(ar)}</Badge>}
+                <span className="cl-pct">{formatSeen(r.member?.last_sign_in_at, ar)}</span>
               </button>
               {r.member && (
                 <div className="cl-actions">
@@ -4291,8 +4466,40 @@ function OwnerClientsOverview({ lang, onOpen }) {
         </div>
         </>
       )}
+      {openId && (() => {
+        const r = rows.find((x) => x.id === openId);
+        const t = tenants.find((x) => x.id === openId) || r;
+        if (!r) return null;
+        return (
+          <ClientPanel
+            row={r}
+            tenantRow={t}
+            lang={lang}
+            onClose={() => setOpenId(null)}
+            onOpenEditor={() => { setOpenId(null); onOpen(r.id); }}
+            actions={{
+              hasCreds: !!recallCredentials(r.id),
+              onViewCreds: () => openStoredCreds(r),
+              onSendWelcome: () => sendWelcome(r),
+              onResetPassword: () => resetPassword(r),
+            }}
+          />
+        );
+      })()}
+
       <AdminStyles />
       <style jsx>{`
+        .cl-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          gap: var(--space-2); max-width: 720px; margin-bottom: var(--space-5); }
+        .cl-stat { padding: var(--space-3); background: var(--bg-elevated);
+          border: 1px solid var(--border); border-radius: var(--radius-md); }
+        .cl-stat.ok { border-color: var(--success-border); }
+        .cl-stat.warn { border-color: var(--warning-border); }
+        .cl-stat-n { display: block; font-size: var(--text-2xl); font-weight: 700;
+          line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+        .cl-stat.ok .cl-stat-n { color: var(--success); }
+        .cl-stat.warn .cl-stat-n { color: var(--warning); }
+        .cl-stat-l { display: block; margin-top: 2px; font-size: var(--text-xs); color: var(--text-tertiary); }
         .ph { margin-bottom: var(--space-6); }
         .orph { margin-bottom: var(--space-6); }
         .orph :global(.orph-row) { border-color: var(--border-strong); }
@@ -4340,7 +4547,7 @@ function OwnerClientsOverview({ lang, onOpen }) {
         .dotmark.success { background: var(--success); }
         .dotmark.warning { background: var(--warning); }
         .dotmark.danger { background: var(--danger); }
-        .cl-pct { font-size: 13px; font-weight: 700; color: var(--accent); min-width: 42px; text-align: end; flex-shrink: 0; }
+        .cl-pct { font-size: var(--text-xs); color: var(--text-muted); min-width: 76px; text-align: end; flex-shrink: 0; white-space: nowrap; }
       `}</style>
     </div>
   );

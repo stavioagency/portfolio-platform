@@ -41,10 +41,13 @@ test('while ownership is unresolved, neither role-specific tab appears', () => {
   assert.ok(!list.includes('clients'));
 });
 
+// `domains` is deliberately NOT in this list: it is owner tooling for one
+// specific client, and for owners it now lives inside that client's panel on the
+// Sites page rather than as a global tab scoped to whoever is "active".
 test('every role keeps the shared website/insights/settings tabs', () => {
   for (const isOwner of [true, false, null]) {
     const list = ids(build(isOwner));
-    for (const tab of ['profile', 'card', 'projects', 'links', 'appearance', 'analytics', 'domains', 'account']) {
+    for (const tab of ['profile', 'card', 'projects', 'links', 'appearance', 'analytics', 'account']) {
       assert.ok(list.includes(tab), `${tab} missing for isOwner=${isOwner}`);
     }
   }
