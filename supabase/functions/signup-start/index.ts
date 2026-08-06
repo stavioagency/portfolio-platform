@@ -60,6 +60,17 @@ Deno.serve(async (req: Request) => {
   const workspaceName = String(body.workspace_name ?? "").trim();
   const slug = normalizeSlug(body.slug);
   const lang = body.lang === "en" ? "en" : "ar";
+  // The plan they clicked on the marketing site, on its way to being
+  // remembered. Shape-checked and nothing more: this function cannot see
+  // lib/billing-plans.js (different runtime, deployed separately), and
+  // guessing at the catalogue here would put a second list of plan codes in
+  // the project. billing-checkout resolves it against `provider_plans` when
+  // it matters, and answers `plan_not_available` if it has gone stale.
+  //
+  // Absent or malformed is not an error. It is a preference, not part of the
+  // submission — refusing a signup over it would turn a cosmetic problem
+  // into a lost account.
+  const plan = planCodeShape(body.plan);
 
   // Validation errors ARE returned plainly. They describe the submission, not
   // whether an account exists, so they leak nothing — and hiding them would
@@ -96,6 +107,7 @@ Deno.serve(async (req: Request) => {
           pending_workspace_name: workspaceName,
           pending_slug: slug,
           lang,
+          ...(plan ? { pending_plan: plan } : {}),
           verification_sent_at: new Date().toISOString(),
         },
       });
@@ -129,6 +141,9 @@ Deno.serve(async (req: Request) => {
       // pending workspace and leave verification with nothing to create.
       user_metadata: {
         ...(existing.user_metadata ?? {}),
+        // Only when this attempt named one, so returning without a `?plan=`
+        // keeps whatever the first attempt chose rather than erasing it.
+        ...(plan ? { pending_plan: plan } : {}),
         verification_sent_at: new Date().toISOString(),
       },
     });
@@ -151,6 +166,20 @@ async function findUserByEmail(admin: any, email: string) {
   if (error) throw new Error(`user_lookup_failed: ${error.message}`);
   const user = data?.users?.find((u: { email?: string }) => (u.email ?? "").toLowerCase() === email);
   return user ?? null;
+}
+
+/**
+ * A plan code that is safe to store and to echo back into a URL.
+ *
+ * Shape only — see where it is called for why this deliberately does not
+ * know the catalogue. Mirrors `isPlanCodeShape` in lib/signup-intent.js;
+ * they cannot import one another across the runtime boundary, so the rule
+ * is written twice and the comment on each points at the other.
+ */
+function planCodeShape(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const code = value.trim().toLowerCase();
+  return /^[a-z0-9_-]{1,32}$/.test(code) ? code : null;
 }
 
 async function sendVerification(userId: string, email: string, lang: string) {

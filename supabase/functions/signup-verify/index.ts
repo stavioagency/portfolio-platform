@@ -26,7 +26,8 @@
 // run and to return the same success.
 //
 // Body:    { token }
-// Returns: { ok, slug, email } on success; a specific error otherwise.
+// Returns: { ok, slug, email, plan } on success; a specific error otherwise.
+// `plan` is the code chosen on the marketing site, or null.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { cors, json } from "../_shared/http.ts";
@@ -56,6 +57,12 @@ Deno.serve(async (req: Request) => {
     const user = found.user;
     const email = (user.email ?? "").toLowerCase();
     const meta = user.user_metadata ?? {};
+    // The plan they picked on the marketing site, stored at signup-start.
+    // Returned so the page that lands here can carry it into the dashboard —
+    // the visitor may be on a different device, so this is the only copy.
+    // Never used to price anything: billing-checkout resolves it against
+    // `provider_plans` when they actually pay.
+    const plan = String(meta.pending_plan ?? "").trim() || null;
 
     // ONE WORKSPACE PER USER. Checked before anything is written, and backed by
     // the partial unique index from section I so the rule holds even if this
@@ -75,7 +82,7 @@ Deno.serve(async (req: Request) => {
       if (!user.email_confirmed_at) await confirmEmail(admin, userId, meta);
       // deno-lint-ignore no-explicit-any
       const slug = (existingMembership as any).tenants?.slug ?? null;
-      return json({ ok: true, already: true, slug, email });
+      return json({ ok: true, already: true, slug, email, plan });
     }
 
     const slug = String(meta.pending_slug ?? "").trim().toLowerCase();
@@ -141,7 +148,7 @@ Deno.serve(async (req: Request) => {
     const { error: profileErr } = await admin.from("profile").insert({ tenant_id: tenant.id });
     if (profileErr) console.warn("[signup-verify] profile not created:", profileErr.message);
 
-    return json({ ok: true, slug: tenant.slug, email, tenant_id: tenant.id });
+    return json({ ok: true, slug: tenant.slug, email, tenant_id: tenant.id, plan });
   } catch (err) {
     console.error("[signup-verify] unexpected:", err);
     return json({ error: "verification_failed" }, 500);

@@ -16,7 +16,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
-import { getTranslator } from '../lib/translations';
+import { getTranslator, resolveLang } from '../lib/translations';
+import { planFromQuery } from '../lib/signup-intent';
 import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_CHARS } from '../lib/password-policy';
 import { slugError, suggestSlug } from '../lib/reserved-slugs';
 import { edgeErrorCode } from '../lib/billing-errors';
@@ -32,13 +33,33 @@ export default function Signup() {
   const [slug, setSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
   const [error, setError] = useState('');
+  // The plan they clicked on the marketing site, carried in `?plan=`. It is
+  // remembered rather than acted on: this page creates an account, it does
+  // not take money. See the submit handler for where it goes next.
+  const [plan, setPlan] = useState(null);
 
   const t = useMemo(() => getTranslator(lang), [lang]);
   const ar = lang === 'ar';
   const dir = ar ? 'rtl' : 'ltr';
 
+  // Both of these arrive in the URL from the marketing site, which is a
+  // different origin — so there is nothing in localStorage on a first visit
+  // and the link is the only thing that knows what the visitor chose.
+  //
+  // `?lang=` wins over the stored preference for that reason; resolveLang()
+  // holds the rule and validates both inputs. Without it an English reader
+  // who clicked "Start building" lands on an Arabic signup form.
   useEffect(() => {
-    try { setLang(localStorage.getItem('lang') || 'ar'); } catch (_) {}
+    let stored = null;
+    try { stored = localStorage.getItem('lang'); } catch (_) {}
+
+    let requested = null;
+    try {
+      requested = new URLSearchParams(window.location.search).get('lang');
+    } catch (_) {}
+
+    setLang(resolveLang(requested, stored));
+    setPlan(planFromQuery(window.location.search));
   }, []);
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -94,6 +115,16 @@ export default function Signup() {
           workspace_name: workspace.trim(),
           slug: slug.trim().toLowerCase(),
           lang,
+          // Stored on the account rather than kept in this tab. The
+          // verification link is frequently opened somewhere else — a phone,
+          // a webmail preview — and anything held in localStorage here is
+          // gone by then. `pending_plan` travels with the account, which is
+          // the same reason the workspace name and slug do.
+          //
+          // Harmless against a server that predates it: an older
+          // signup-start ignores the extra field and the plan is simply
+          // dropped, which is exactly today's behaviour.
+          ...(plan ? { plan } : {}),
         },
       });
       const code = await edgeErrorCode(fnErr, data);
@@ -111,7 +142,7 @@ export default function Signup() {
       setError(t('signup_failed'));
       setPhase('form');
     }
-  }, [email, password, workspace, slug, lang, t]);
+  }, [email, password, workspace, slug, lang, plan, t]);
 
   return (
     <>
