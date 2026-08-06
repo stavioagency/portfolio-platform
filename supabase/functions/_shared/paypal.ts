@@ -227,10 +227,30 @@ export const paypal: BillingProvider = {
   },
 
   async cancelSubscription(id: string, reason: string): Promise<void> {
-    await api(`/v1/billing/subscriptions/${encodeURIComponent(id)}/cancel`, {
-      method: "POST",
-      body: JSON.stringify({ reason: reason.slice(0, 127) }),
-    });
+    try {
+      await api(`/v1/billing/subscriptions/${encodeURIComponent(id)}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ reason: reason.slice(0, 127) }),
+      });
+    } catch (err) {
+      // ALREADY CANCELLED IS SUCCESS. PayPal answers 422
+      // SUBSCRIPTION_STATUS_INVALID when the subscription is not in a
+      // cancellable state — which is exactly what a double-click, a retry, or
+      // a customer cancelling from their own PayPal account produces. The
+      // desired end state has been reached, so reporting failure would tell
+      // someone their cancellation did not work when it did, and invite them
+      // to try again or email support.
+      // deno-lint-ignore no-explicit-any
+      const e = err as any;
+      const body = JSON.stringify(e?.body ?? {});
+      const alreadyGone = e?.status === 422 &&
+        /SUBSCRIPTION_STATUS_INVALID|status_invalid/i.test(body + String(e?.message ?? ""));
+      if (alreadyGone) {
+        console.warn(`[paypal] ${id} was already cancelled — treating as success`);
+        return;
+      }
+      throw err;
+    }
   },
 
   async reviseSubscription(id: string, newPlanId: string): Promise<ReviseResult> {

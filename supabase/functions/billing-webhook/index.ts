@@ -282,12 +282,44 @@ async function apply(admin: any, providerName: string, event: NormalizedEvent) {
 
     case "subscription_cancelled": {
       // The paid period is NOT cut short — tenant_has_active_subscription()
-      // keeps a cancelled subscription entitled until current_period_end,
-      // because those days were bought.
+      // keeps a cancelled subscription entitled until current_period_end.
+      //
+      // WHICH MAKES A NULL current_period_end A REVOCATION. The entitlement
+      // predicate is `current_period_end > now()`, and null fails it, so
+      // writing `canceled` without a date takes away access the customer has
+      // already paid for — the exact opposite of the intent above. The column
+      // is null whenever activation arrived without a next_billing_time.
+      //
+      // So: use what we have, else ask PayPal, else fall back — but never
+      // write null.
+      let periodEnd: string | null = sub.current_period_end ?? null;
+
+      if (!periodEnd) {
+        try {
+          const remote = await provider.getSubscription(event.subscriptionId);
+          periodEnd = remote.currentPeriodEnd ?? null;
+        } catch (err) {
+          // Not fatal. The fallback below is what protects the customer.
+          console.error("[billing-webhook] could not read the remote period end:", err);
+        }
+      }
+
+      if (!periodEnd) {
+        // A deliberate over-grant. We cannot determine when the paid period
+        // ends, and the two ways to be wrong are not symmetric: an extra month
+        // of access costs one month, wrongly cutting off a paying customer
+        // costs the customer. Err toward them, and make it visible.
+        periodEnd = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
+        console.warn(
+          `[billing-webhook] no period end for ${event.subscriptionId} — granting 31 days rather than revoking`,
+        );
+      }
+
       await upsertSubscription(admin, tenantId, {
         status: "canceled",
         cancel_at_period_end: true,
         canceled_at: new Date().toISOString(),
+        current_period_end: periodEnd,
       });
       return;
     }

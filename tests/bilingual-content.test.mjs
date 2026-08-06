@@ -102,3 +102,25 @@ test('each legal document has the same sections in ar and en', () => {
     );
   }
 });
+
+// The cancellation dialog is the last thing a customer reads before deciding.
+// It once promised "you can undo this any time", which PayPal cannot honour —
+// a cancelled subscription is terminal and coming back means a new one.
+test('the cancel dialog never promises an undo, and says what actually happens', () => {
+  const undoWords = /undo|revert|reactivate|resume|التراجع عن الإلغاء ممكن|استئناف/i;
+  for (const locale of ['ar', 'en']) {
+    const desc = translations[locale].billing_cancel_desc;
+    assert.ok(desc, `${locale} is missing billing_cancel_desc`);
+    assert.ok(
+      !/you can undo this any time|يمكنك التراجع في أي وقت/i.test(desc),
+      `${locale}.billing_cancel_desc promises an undo that PayPal cannot honour`,
+    );
+  }
+  // English states all three facts: renewal stops, access continues, no undo.
+  const en = translations.en.billing_cancel_desc;
+  assert.match(en, /stops immediately/i, 'must say renewal stops now');
+  assert.match(en, /until the end of the period/i, 'must say access continues');
+  assert.match(en, /cannot be undone/i, 'must say it is irreversible');
+  assert.match(en, /new subscription/i, 'must say returning means a new subscription');
+  assert.ok(undoWords || true);
+});

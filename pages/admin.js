@@ -4869,7 +4869,14 @@ function BillingEditor({ t, lang }) {
     );
   }
 
-  const canChangePlan = billing.entitled && billing.state !== 'comped';
+  // A cancelling subscription is still ENTITLED — they paid for the rest of the
+  // period — but it must not be changed. PayPal cancellation is terminal, so a
+  // revise against it returns an error, and offering an upgrade to someone who
+  // just cancelled is a poor thing to do regardless.
+  const canChangePlan = billing.entitled
+    && billing.state !== 'comped'
+    && billing.state !== 'canceling'
+    && billing.state !== 'canceled';
 
   return (
     <div className="editor">
