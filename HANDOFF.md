@@ -111,8 +111,9 @@ supabase/
 tests/            One file per lib module. Pure functions only — no React, no network.
 ```
 
-Other documentation: `README.md` (human-facing overview) and `CLIENT-GUIDE.md` (a
-guide written for clients, not for engineers).
+Other documentation: `README.md` (human-facing overview), `CLIENT-GUIDE.md` (a
+guide written for clients, not for engineers) and `BILLING.md` (the operator's
+guide to subscriptions — env vars, PayPal setup, the test matrix, the runbook).
 
 ---
 
@@ -256,6 +257,53 @@ Optional Edge Function secrets, which switch automatic email on with no code cha
 `RESEND_API_KEY`, `MAIL_FROM`, `ADMIN_URL`.
 
 ---
+
+## 7b. BILLING
+
+Subscriptions run on **PayPal**, and the operator detail lives in `BILLING.md`.
+What belongs here is the handful of invariants that will not be obvious from the
+code, and the one fact that surprises everyone.
+
+- **PayPal cannot charge SAR.** Customers are quoted riyals and debited dollars,
+  so every plan in `lib/billing-plans.js` carries two prices and nothing
+  converts between them at runtime. Both figures are shown at checkout on
+  purpose. If a SAR-capable provider is ever added, `BILLING_CURRENCY` is the
+  switch.
+
+- **PayPal owns the billing schedule.** It charges renewals, retries failures
+  and suspends after the plan's failure threshold. There is deliberately NO
+  renewal cron, no dunning ladder and no stored card in this repo. Do not build
+  one — a second scheduler would double-charge.
+
+- **The webhook is the only thing that may activate a subscription.** Returning
+  from PayPal means the customer approved it, not that it is paid. `pending`
+  grants nothing.
+
+- **Entitlement is `tenant_has_active_subscription()` in Postgres**, called by
+  policies. `lib/billing-status.js` is the UI's mirror of that rule and is
+  unit-tested against it; where the two disagree the database is right, and the
+  disagreement is the bug.
+
+- **The browser cannot write any billing row.** There is no INSERT/UPDATE policy
+  on any of the six billing tables — reads only. Every write is an Edge Function
+  using the service role, acting on something PayPal said. A client who could
+  write `status = 'active'` would own the product for the cost of a fetch.
+
+- **Idempotency is two unique constraints**, not logic:
+  `billing_events (provider, provider_event_id)` and
+  `payments (provider, provider_payment_id)`. PayPal retries for three days;
+  those constraints are what make the retries free.
+
+- **Every existing tenant is `comped`** — entitled, no price, no renewal, no
+  provider. Billing shipping must never take a live client's site down.
+
+- **`billing-checkout` and `billing-webhook` deploy with `--no-verify-jwt`** and
+  authenticate themselves (a signed grant, or PayPal's signature). Deploying
+  checkout with the gateway check on silently breaks owner payment links.
+
+- **A cancelled PayPal subscription is terminal.** It cannot be reactivated
+  through the API, which is why the UI offers "subscribe again" rather than a
+  resume button that would fail.
 
 ## 8. KNOWN GAPS
 

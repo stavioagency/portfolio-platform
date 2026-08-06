@@ -21,6 +21,16 @@ import { portfolioUrl, workspaceLabel, credentialsText, whatsappMessage, credent
 import { rememberCredentials, recallCredentials, forgetCredentials, clearAllCredentials } from '../lib/handoff-store';
 import { hasPublicContent } from '../lib/profile-content';
 import {
+  listPlans, getPlan, planName, planChangeKind, monthlyEquivalent,
+  formatAmount, formatInterval, DEFAULT_PLAN_CODE, BILLING_CURRENCY,
+  billingAmount, toProviderAmount,
+} from '../lib/billing-plans';
+import {
+  deriveBilling, statusLabel, statusSentence, formatBillingDate,
+  paymentTone, paymentLabel,
+} from '../lib/billing-status';
+import { subscribersCsv, exportFilename } from '../lib/billing-export';
+import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
 } from '../components/ui';
@@ -28,6 +38,7 @@ import PreviewPane from '../components/PreviewPane';
 import BrandGlyph from '../components/ui/BrandGlyph';
 import ThemePreview from '../components/ThemePreview';
 import CredentialsHandoff from '../components/CredentialsHandoff';
+import PlanPicker from '../components/billing/PlanPicker';
 
 // A recovery link lands as `#...type=recovery...` and supabase-js STRIPS that hash
 // while it exchanges the token — which can happen before our onAuthStateChange
@@ -937,6 +948,8 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
             )}
             {activeTab === 'home'       && isOwner === false && <ClientHome key={tenantKey} lang={lang} onNavigate={navigate} />}
             {activeTab === 'clients'    && isOwner === true  && <OwnerClientsOverview lang={lang} onOpen={(id) => { switchTenant(id); navigate('profile'); }} />}
+            {activeTab === 'subscribers' && isOwner === true && <SubscribersOverview lang={lang} onOpen={(id) => { switchTenant(id); navigate('profile'); }} />}
+            {activeTab === 'billing'    && isOwner === false && <BillingEditor     key={tenantKey} t={t} lang={lang} />}
             {activeTab === 'profile'    && <ProfileEditor    key={tenantKey} t={t} lang={lang} />}
             {activeTab === 'card'       && <CardEditor       key={tenantKey} t={t} lang={lang} />}
             {activeTab === 'projects'   && <ProjectsEditor   key={tenantKey} t={t} lang={lang} />}
@@ -4679,6 +4692,837 @@ function OwnerClientsOverview({ lang, onOpen }) {
         .dotmark.warning { background: var(--warning); }
         .dotmark.danger { background: var(--danger); }
         .cl-pct { font-size: var(--text-xs); color: var(--text-muted); min-width: 76px; text-align: end; flex-shrink: 0; white-space: nowrap; }
+      `}</style>
+    </div>
+  );
+}
+
+// =========================================================
+// Billing — the client's own subscription
+// =========================================================
+// Where a customer manages the funding source behind their subscription. It is
+// PayPal's own page, not ours — there is nothing on this origin that could
+// change a card, which is the point of using a hosted provider.
+const PAYPAL_ACCOUNT_URL = 'https://www.paypal.com/myaccount/autopay/';
+
+// Reads `subscriptions`, `payments` and `billing_customers`, all of which the
+// browser may SELECT for its own tenant and may not write at all — see
+// supabase/sections/section-h-billing.sql. Every mutation here goes through the
+// billing-subscription Edge Function, which changes PayPal FIRST and lets the
+// webhook write the row.
+//
+// There is no card on file to display, because with PayPal there is no card on
+// file: the funding source lives in the customer's PayPal account and is
+// managed there. This screen shows which PayPal account is attached and links
+// out for anything else.
+function BillingEditor({ t, lang }) {
+  const ar = lang === 'ar';
+  const confirm = useConfirm();
+  const toast = useToast();
+
+  const { tenant } = useTenant();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [sub, setSub] = useState(null);
+  const [customer, setCustomer] = useState(null);
+  const [payments, setPayments] = useState([]);
+  const [selected, setSelected] = useState(DEFAULT_PLAN_CODE);
+  const [busy, setBusy] = useState(false);
+
+  const plans = useMemo(() => listPlans(), []);
+  const billing = useMemo(() => deriveBilling(sub), [sub]);
+  const currentPlan = sub?.plan_code ? getPlan(sub.plan_code) : null;
+
+  const load = useCallback(async () => {
+    if (!tenant) { setLoading(false); return; }
+    setLoading(true); setError('');
+    try {
+      const [subRes, payRes, custRes] = await Promise.all([
+        supabase.from('subscriptions').select('*').eq('tenant_id', tenant.id).maybeSingle(),
+        supabase.from('payments')
+          .select('id, created_at, amount, currency, status, description, failure_reason')
+          .eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(24),
+        supabase.from('billing_customers').select('email, provider').eq('tenant_id', tenant.id).maybeSingle(),
+      ]);
+      // A read error here is a real misconfiguration (the migration not applied,
+      // a missing policy) and must stay visible rather than rendering as "not
+      // subscribed" — which would invite a client to buy something twice.
+      if (subRes.error) throw new Error(subRes.error.message);
+
+      setSub(subRes.data ?? null);
+      setPayments(payRes.data ?? []);
+      setCustomer(custRes.data ?? null);
+      const code = subRes.data?.plan_code;
+      setSelected(code && getPlan(code) ? code : DEFAULT_PLAN_CODE);
+    } catch (err) {
+      console.error('[billing] load failed:', err);
+      setError(t('billing_load_failed'));
+    } finally {
+      // try/finally, not a trailing setLoading: a throw here otherwise leaves
+      // the screen stuck on its skeleton forever (HANDOFF §8).
+      setLoading(false);
+    }
+  }, [tenant, t]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Checkout is a PAGE, not a modal, and it is the same page the owner's
+  // payment link opens. One checkout, two doors — see /subscribe.
+  function goToCheckout(planCode) {
+    const params = new URLSearchParams({ plan: planCode, tenant: tenant.id });
+    if (tenant.name || tenant.slug) params.set('w', tenant.name || tenant.slug);
+    window.location.href = `/subscribe?${params.toString()}`;
+  }
+
+  // Every mutation takes the same shape: ask the Edge Function, which asks
+  // PayPal, then reload from the database. Nothing is written locally on
+  // optimism — a row that says "cancelled" while PayPal keeps billing is the
+  // worst outcome available here.
+  async function callBilling(body) {
+    const { data, error: fnErr } = await supabase.functions.invoke('billing-subscription', {
+      body: { tenant_id: tenant.id, ...body },
+    });
+    if (fnErr || data?.error) {
+      const code = data?.error || fnErr?.message;
+      console.error('[billing] action failed:', code);
+      throw new Error(code || 'failed');
+    }
+    return data;
+  }
+
+  async function changePlan() {
+    const kind = planChangeKind(sub?.plan_code, selected);
+    if (kind === 'same' || !kind) return;
+    const target = getPlan(selected);
+    const ok = await confirm({
+      title: kind === 'upgrade' ? t('billing_upgrade_to') : t('billing_downgrade_to'),
+      description: `${target.name[ar ? 'ar' : 'en']} — ${formatAmount(target.amount, lang)} ${formatInterval(target, lang)}. ${
+        kind === 'upgrade' ? t('billing_upgrade_note') : t('billing_downgrade_note')}`,
+      confirmLabel: t('billing_apply_change'),
+      cancelLabel: t('cancel'),
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const res = await callBilling({ action: 'change_plan', plan_code: selected });
+      // PayPal often wants the customer to agree to a new price. When it does,
+      // NOTHING has changed yet, so send them to approve rather than showing a
+      // plan they are not on.
+      if (res.requires_approval && res.approve_url) {
+        window.location.href = res.approve_url;
+        return;
+      }
+      toast.success(t('saved'));
+      await load();
+    } catch (_) {
+      toast.error(t('save_failed'));
+    } finally { setBusy(false); }
+  }
+
+  async function cancelSubscription() {
+    const ok = await confirm({
+      title: t('billing_cancel_title'),
+      description: t('billing_cancel_desc'),
+      confirmLabel: t('billing_cancel_confirm'),
+      cancelLabel: t('billing_keep'),
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await callBilling({ action: 'cancel' });
+      await load();
+    } catch (_) {
+      toast.error(t('save_failed'));
+    } finally { setBusy(false); }
+  }
+
+  if (loading) {
+    return (
+      <div className="editor">
+        <h1>{t('billing_title')}</h1>
+        <div className="list-skel" aria-busy="true">
+          <Skeleton width="100%" height={120} radius="var(--radius-md)" />
+          <Skeleton width="100%" height={72} radius="var(--radius-md)" />
+          <Skeleton width="100%" height={140} radius="var(--radius-md)" />
+        </div>
+        <AdminStyles />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="editor">
+        <h1>{t('billing_title')}</h1>
+        <EmptyState
+          icon="⚠️"
+          title={error}
+          action={<Button variant="secondary" size="sm" onClick={load}>{t('billing_retry')}</Button>}
+        />
+        <AdminStyles />
+      </div>
+    );
+  }
+
+  const canChangePlan = billing.entitled && billing.state !== 'comped';
+
+  return (
+    <div className="editor">
+      <h1>{t('billing_title')}</h1>
+      <p className="hint">{t('billing_sub')}</p>
+
+      {/* ---- CURRENT PLAN ---------------------------------------------- */}
+      {billing.state === 'none' ? (
+        <>
+          <EmptyState
+            icon="✦"
+            title={t('billing_none_title')}
+            description={t('billing_none_desc')}
+          />
+          <h2>{t('billing_choose_plan')}</h2>
+          <PlanPicker plans={plans} value={selected} onChange={setSelected} lang={lang} />
+          <div className="bl-cta">
+            <Button onClick={() => goToCheckout(selected)}>{t('billing_subscribe')}</Button>
+            <span className="bl-secure">{t('billing_secure_note')}</span>
+          </div>
+        </>
+      ) : (
+        <>
+          <Card pad="lg" className="bl-plan">
+            <div className="bl-plan-head">
+              <div>
+                <div className="bl-plan-name">{planName(sub.plan_code, lang)}</div>
+                {currentPlan && (
+                  <div className="bl-plan-price">
+                    {formatAmount(currentPlan.amount, lang)} · {formatInterval(currentPlan, lang)}
+                  </div>
+                )}
+              </div>
+              <Badge tone={billing.tone} dot>{statusLabel(billing.state, lang)}</Badge>
+            </div>
+            <p className="bl-sentence">{statusSentence(billing, lang)}</p>
+
+            {/* A failed payment is the one state that needs an action rather
+                than a status. The action is at PAYPAL, not here: the funding
+                source lives in their PayPal account, so there is nothing this
+                screen could collect that would fix it. */}
+            {billing.state === 'past_due' && (
+              <div className="bl-alert warn">
+                <span>{ar
+                  ? `يتبقّى ${billing.daysLeft} يومًا قبل إيقاف الوصول.`
+                  : `${billing.daysLeft} days left before access stops.`}</span>
+                <span className="bl-alert-actions">
+                  <a className="bl-alert-link" href={PAYPAL_ACCOUNT_URL} target="_blank" rel="noopener noreferrer">
+                    {t('billing_retry_now')}
+                  </a>
+                </span>
+              </div>
+            )}
+
+            {/* Approved nowhere yet — created at PayPal and abandoned before
+                approval. Starting a fresh checkout is the way out. */}
+            {billing.state === 'pending' && (
+              <div className="bl-alert warn">
+                <span>{t('billing_finish_approval')}</span>
+                <Button size="sm" onClick={() => goToCheckout(sub.plan_code)}>{t('billing_subscribe')}</Button>
+              </div>
+            )}
+
+            {/* PayPal cancellation is TERMINAL — a cancelled subscription
+                cannot be reactivated through the API, so this offers a new
+                subscription rather than a "resume" button that would fail. */}
+            {billing.state === 'canceling' && (
+              <div className="bl-alert warn">
+                <span>{ar
+                  ? `الوصول متاح حتى ${formatBillingDate(billing.endsAt, lang)}.`
+                  : `Access runs until ${formatBillingDate(billing.endsAt, lang)}.`}</span>
+                <Button size="sm" onClick={() => goToCheckout(sub.plan_code)}>{t('billing_subscribe_again')}</Button>
+              </div>
+            )}
+
+            {billing.state === 'comped' && <p className="bl-comped">{t('billing_comped_note')}</p>}
+          </Card>
+
+          {/* ---- PAYMENT METHOD ------------------------------------------ */}
+          {/* There is no card to show. PayPal holds the funding source and is
+              where it is changed — this is a link out, not a form. */}
+          {billing.state !== 'comped' && (
+            <>
+              <h2>{t('billing_payment_method')}</h2>
+              <Card pad="md" className="bl-card-row">
+                <div>
+                  <div className="bl-card-num">{t('billing_paypal_account')}</div>
+                  <div className="bl-card-exp" dir="ltr">
+                    {customer?.email || t('billing_no_paypal_account')}
+                  </div>
+                </div>
+                <a className="bl-out" href={PAYPAL_ACCOUNT_URL} target="_blank" rel="noopener noreferrer">
+                  {t('billing_manage_at_paypal')}
+                </a>
+              </Card>
+              <p className="hint">{t('billing_manage_at_paypal_hint')}</p>
+            </>
+          )}
+
+          {/* ---- CHANGE PLAN --------------------------------------------- */}
+          {canChangePlan && (
+            <>
+              <h2>{t('billing_change_plan')}</h2>
+              <PlanPicker
+                plans={plans}
+                value={selected}
+                onChange={setSelected}
+                lang={lang}
+                currentCode={sub.plan_code}
+                disabled={busy}
+              />
+              {selected !== sub.plan_code && (
+                <div className="bl-cta">
+                  <Button loading={busy} onClick={changePlan}>{t('billing_apply_change')}</Button>
+                  <span className="bl-secure">
+                    {planChangeKind(sub.plan_code, selected) === 'upgrade'
+                      ? t('billing_upgrade_note')
+                      : t('billing_downgrade_note')}
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {/* ---- HISTORY ----------------------------------------------------- */}
+      <h2>{t('billing_history')}</h2>
+      {payments.length === 0 ? (
+        <p className="hint">{t('billing_history_empty')}</p>
+      ) : (
+        <div className="bl-table-wrap">
+          <table className="bl-table">
+            <thead>
+              <tr>
+                <th scope="col">{t('billing_col_date')}</th>
+                <th scope="col" className="bl-col-desc">{t('billing_col_desc')}</th>
+                <th scope="col">{t('billing_col_amount')}</th>
+                <th scope="col">{t('billing_col_status')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.map((p) => (
+                <tr key={p.id}>
+                  <td>{formatBillingDate(p.created_at, lang)}</td>
+                  {/* description is written by the webhook and is not
+                      translated — it names the plan that was charged. */}
+                  <td className="bl-col-desc">{p.description || planName(sub?.plan_code, lang)}</td>
+                  {/* Charged in the BILLING currency, so it is rendered in that
+                      currency — showing a USD debit as riyals would not match
+                      their statement. */}
+                  <td className="bl-amount">{formatAmount(p.amount, lang, p.currency || BILLING_CURRENCY)}</td>
+                  <td><Badge tone={paymentTone(p.status)}>{paymentLabel(p.status, lang)}</Badge></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ---- CANCEL ------------------------------------------------------ */}
+      {canChangePlan && billing.state !== 'canceling' && (
+        <>
+          <h2 className="bl-danger-heading">{t('billing_cancel')}</h2>
+          <Card pad="md" className="bl-danger">
+            <div className="bl-danger-desc">{t('billing_cancel_desc')}</div>
+            <Button variant="danger" size="sm" loading={busy} onClick={cancelSubscription}>
+              {t('billing_cancel_confirm')}
+            </Button>
+          </Card>
+        </>
+      )}
+
+      <p className="bl-powered">{t('billing_powered_by')}</p>
+
+      <AdminStyles />
+      <style jsx>{`
+        .bl-plan-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+        .bl-plan-name { font-size: var(--text-xl); font-weight: 700; color: var(--text-primary); }
+        .bl-plan-price { margin-top: 2px; font-size: var(--text-sm); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+        .bl-sentence { margin: var(--space-3) 0 0; font-size: var(--text-md); color: var(--text-secondary); line-height: 1.6; }
+        .bl-comped { margin: var(--space-3) 0 0; font-size: var(--text-sm); color: var(--text-tertiary); line-height: 1.6; }
+        .bl-alert {
+          display: flex; align-items: center; justify-content: space-between;
+          gap: var(--space-3); flex-wrap: wrap;
+          margin-top: var(--space-4); padding: var(--space-3);
+          border-radius: var(--radius-md); font-size: var(--text-sm); line-height: 1.5;
+        }
+        .bl-alert.warn { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning-border); }
+        .bl-alert-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+        .bl-cta { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-4); }
+        .bl-secure { font-size: var(--text-xs); color: var(--text-tertiary); max-width: 42ch; line-height: 1.5; }
+        .bl-card-num { font-size: var(--text-md); font-weight: 600; }
+        .bl-card-exp { font-size: var(--text-xs); color: var(--text-tertiary); margin-top: 2px; }
+        /* Links out to PayPal, styled as secondary buttons. Anchors rather than
+           <Button> because they navigate away — a button that leaves the site
+           is a lie to anyone using a screen reader or a middle click. */
+        .bl-out, .bl-alert-link {
+          display: inline-flex; align-items: center; justify-content: center;
+          padding: 6px var(--space-3); border-radius: var(--radius-md);
+          border: 1px solid var(--border-strong); background: var(--bg-elevated);
+          color: var(--text-primary); font-size: var(--text-sm); font-weight: 600;
+          text-decoration: none; white-space: nowrap;
+        }
+        .bl-out:hover, .bl-alert-link:hover { border-color: var(--accent); color: var(--accent); }
+        .bl-out:focus-visible, .bl-alert-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .bl-table-wrap { max-width: 640px; overflow-x: auto; }
+        .bl-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+        .bl-table th {
+          text-align: start; font-weight: 600; color: var(--text-tertiary);
+          font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em;
+          padding: 0 var(--space-3) var(--space-2); white-space: nowrap;
+        }
+        :global(html[dir='rtl']) .bl-table th { text-transform: none; letter-spacing: normal; }
+        .bl-table td { padding: var(--space-3); border-top: 1px solid var(--border); color: var(--text-secondary); vertical-align: middle; }
+        .bl-amount { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text-primary); }
+        .bl-danger-heading { color: var(--danger); margin-top: var(--space-8); }
+        .bl-danger-desc { font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: var(--space-3); line-height: 1.6; }
+        .bl-powered { margin-top: var(--space-6); font-size: var(--text-xs); color: var(--text-muted); }
+        @media (max-width: 720px) {
+          .bl-plan-head { flex-direction: column; }
+          /* The description is the first thing to go on a narrow screen — the
+             date, amount and status are what the row is read for. */
+          .bl-col-desc { display: none; }
+        }
+      `}</style>
+      <style jsx global>{`
+        .editor .bl-plan { max-width: 640px; }
+        .editor .bl-card-row {
+          max-width: 640px; display: flex; align-items: center;
+          justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
+        }
+        .editor .bl-danger { max-width: 640px; background: var(--danger-bg); border-color: var(--danger-border); }
+      `}</style>
+    </div>
+  );
+}
+
+// =========================================================
+// Subscribers — the owner's view of every paying workspace
+// =========================================================
+// The workspace list comes from `tenants`, which the admin has already loaded;
+// the subscription for each comes from `subscriptions`, which an OWNER may read
+// for every tenant because is_tenant_admin() is true for platform owners. The
+// client email comes from list_workspace_members(), the same owner-gated RPC
+// the Sites screen uses — tenant_admins and admin_usernames are readable only
+// for your own rows, so there is no way to join it in the browser.
+const SUBSCRIBER_FILTERS = [
+  { id: 'all', ar: 'الكل', en: 'All' },
+  { id: 'active', ar: 'نشط', en: 'Active' },
+  { id: 'inactive', ar: 'غير نشط', en: 'Inactive' },
+  { id: 'failed', ar: 'دفعات متعثّرة', en: 'Failed payments' },
+];
+
+function SubscribersOverview({ lang, onOpen }) {
+  const { tenants } = useTenant();
+  const ar = lang === 'ar';
+  const confirm = useConfirm();
+  const toast = useToast();
+
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [busyId, setBusyId] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const [linkFor, setLinkFor] = useState(null); // { name, url } — the generated payment link
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true); setError('');
+      try {
+        const ids = tenants.map((x) => x.id);
+        if (ids.length === 0) { if (!cancelled) setRows([]); return; }
+        const [subsRes, membersRes] = await Promise.all([
+          supabase.from('subscriptions')
+            .select('tenant_id, plan_code, status, amount, currency, current_period_end, cancel_at_period_end, grace_ends_at, trial_ends_at, created_at')
+            .in('tenant_id', ids),
+          supabase.rpc('list_workspace_members'),
+        ]);
+        if (subsRes.error) throw new Error(subsRes.error.message);
+
+        const submap = {};
+        (subsRes.data || []).forEach((s) => { submap[s.tenant_id] = s; });
+        const memmap = {};
+        (membersRes.data || []).forEach((m) => { memmap[m.tenant_id] = m; });
+
+        const out = tenants.map((tenantRow) => ({
+          id: tenantRow.id,
+          name: tenantRow.name || tenantRow.slug,
+          slug: tenantRow.slug,
+          email: memmap[tenantRow.id]?.email || '',
+          subscription: submap[tenantRow.id] || null,
+        }));
+        if (!cancelled) setRows(out);
+      } catch (err) {
+        console.error('[subscribers] load failed:', err);
+        // Distinguishable from "nobody has subscribed": an empty list because
+        // the query failed would read as zero revenue.
+        if (!cancelled) setError(ar ? 'تعذّر تحميل بيانات الاشتراكات.' : 'Could not load subscription data.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tenants, reloadToken, ar]);
+
+  // Derive once per row, here, so the list, the filters, the tiles and the CSV
+  // all describe the same subscription the same way.
+  const derived = useMemo(
+    () => rows.map((r) => ({ ...r, billing: deriveBilling(r.subscription) })),
+    [rows],
+  );
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return derived.filter((r) => {
+      if (q && ![r.name, r.slug, r.email].some((v) => String(v || '').toLowerCase().includes(q))) return false;
+      if (filter === 'active') return r.billing.entitled;
+      if (filter === 'inactive') return !r.billing.entitled;
+      if (filter === 'failed') return r.billing.state === 'past_due' || r.billing.state === 'expired';
+      return true;
+    });
+  }, [derived, query, filter]);
+
+  const stats = useMemo(() => {
+    const paying = derived.filter((r) => r.billing.entitled && r.billing.state !== 'comped');
+    // Monthly recurring revenue, in DISPLAY currency minor units: every paying
+    // plan normalised to a month so annual and monthly subscribers are
+    // comparable. Deliberately the quoted price rather than the dollar figure —
+    // this number is read against a Saudi business's own targets.
+    const mrr = paying.reduce((sum, r) => {
+      const plan = getPlan(r.subscription?.plan_code);
+      if (!plan) return sum;
+      return sum + (monthlyEquivalent(plan) ?? 0);
+    }, 0);
+    return {
+      subscribers: derived.filter((r) => r.billing.entitled).length,
+      paying: paying.length,
+      failing: derived.filter((r) => r.billing.state === 'past_due').length,
+      mrr,
+    };
+  }, [derived]);
+
+  function exportCsv() {
+    // Built in the browser from what is already loaded — no export endpoint,
+    // nothing extra leaves the database.
+    const csv = subscribersCsv(visible, lang);
+    // The BOM is what makes Excel open a UTF-8 file with Arabic names intact;
+    // without it every workspace name arrives as mojibake.
+    const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = exportFilename('subscribers');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  async function cancelFor(row) {
+    const ok = await confirm({
+      title: ar ? 'إلغاء اشتراك هذا العميل؟' : "Cancel this client's subscription?",
+      description: ar
+        ? `${row.name} سيحتفظ بوصوله حتى نهاية الفترة المدفوعة، ثم يتوقف التجديد. لا يتم استرداد أي مبلغ تلقائيًا.`
+        : `${row.name} keeps access until the end of the period they have paid for, then renewal stops. Nothing is refunded automatically.`,
+      confirmLabel: ar ? 'إلغاء التجديد' : 'Turn off renewal',
+      cancelLabel: ar ? 'رجوع' : 'Back',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setBusyId(row.id);
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke('billing-subscription', {
+        body: { action: 'cancel', tenant_id: row.id, reason: 'Cancelled by Designakum on request' },
+      });
+      if (fnErr || data?.error) throw new Error(data?.error || fnErr?.message);
+      toast.success(ar ? 'تم إيقاف التجديد.' : 'Renewal turned off.');
+      setReloadToken((n) => n + 1);
+    } catch (err) {
+      console.error('[subscribers] cancel failed:', err);
+      toast.error(ar ? 'تعذّر إلغاء الاشتراك.' : 'Could not cancel the subscription.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // Mirror the plan catalogue into PayPal. This has to be driven from here
+  // rather than from a script, because billing-plans-sync is owner-gated
+  // against the CALLER's own JWT — which only exists in a signed-in browser.
+  //
+  // The plan list is sent from lib/billing-plans.js, in the BILLING currency
+  // and as the decimal string PayPal expects. What gets created is therefore
+  // exactly what this screen is showing.
+  async function syncPlans() {
+    const plans = listPlans().map((p) => {
+      const billed = billingAmount(p.code);
+      return {
+        code: p.code,
+        amount: toProviderAmount(billed.amount, billed.currency),
+        currency: billed.currency,
+        interval: p.interval,
+        interval_count: p.intervalCount,
+      };
+    });
+    setBusyId('sync');
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke('billing-plans-sync', { body: { plans } });
+      if (fnErr || data?.error) throw new Error(data?.error || fnErr?.message);
+      const created = (data.results || []).filter((r) => r.created).length;
+      const failed = (data.results || []).filter((r) => r.error);
+      if (failed.length > 0) {
+        console.error('[plans-sync] failures:', failed);
+        toast.error(`${failed.length} plan(s) failed — see the console`);
+      } else {
+        toast.success(ar
+          ? `تمت المزامنة (${data.environment}): ${created} خطة جديدة`
+          : `Synced (${data.environment}): ${created} new plan(s)`);
+      }
+    } catch (err) {
+      console.error('[plans-sync] failed:', err);
+      toast.error(ar ? 'تعذّرت مزامنة الخطط.' : 'Could not sync the plans.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // DOOR 2 of checkout: a link the owner sends over WhatsApp to a client who
+  // has never signed in. The grant is signed server-side and names the tenant
+  // and the plan, so the recipient cannot edit the URL into a cheaper plan or
+  // somebody else's workspace.
+  async function createPaymentLink(row, planCode) {
+    setBusyId(row.id);
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke('billing-subscription', {
+        body: { action: 'create_link', tenant_id: row.id, plan_code: planCode },
+      });
+      if (fnErr || data?.error) throw new Error(data?.error || fnErr?.message);
+      const params = new URLSearchParams({ t: data.grant, plan: planCode, w: row.name });
+      setLinkFor({ name: row.name, url: `${window.location.origin}/subscribe?${params.toString()}` });
+    } catch (err) {
+      console.error('[subscribers] link failed:', err);
+      toast.error(ar ? 'تعذّر إنشاء الرابط.' : 'Could not create the link.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="editor">
+      <div className="editor-header">
+        <h1>{ar ? 'المشتركون' : 'Subscribers'} <span className="meta">· {derived.length}</span></h1>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Button size="sm" variant="secondary" onClick={syncPlans} loading={busyId === 'sync'}>
+            {ar ? 'مزامنة الخطط مع باي بال' : 'Sync plans to PayPal'}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={exportCsv} disabled={visible.length === 0}>
+            {ar ? 'تصدير CSV' : 'Export CSV'}
+          </Button>
+        </div>
+      </div>
+      <p className="hint">{ar
+        ? 'من يدفع، على أي خطة، ومتى يتجدّد. التصدير يشمل ما هو ظاهر بعد البحث والتصفية.'
+        : 'Who is paying, on what plan, and when it renews. The export covers whatever the search and filter are showing.'}</p>
+
+      {!loading && derived.length > 0 && (
+        <div className="cl-stats">
+          {[
+            [ar ? 'مشتركون' : 'Subscribers', String(stats.subscribers), ''],
+            [ar ? 'مدفوع' : 'Paying', String(stats.paying), 'ok'],
+            [ar ? 'دفعات متعثّرة' : 'Failing', String(stats.failing), 'warn'],
+            [ar ? 'الإيراد الشهري' : 'MRR', formatAmount(stats.mrr, lang), ''],
+          ].map(([label, value, tone]) => (
+            <div key={label} className={`cl-stat ${value !== '0' ? tone : ''}`}>
+              <span className="cl-stat-n">{value}</span>
+              <span className="cl-stat-l">{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="sb-controls">
+        <input
+          type="text"
+          className="sb-search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={ar ? 'ابحث بالاسم أو الرابط أو البريد' : 'Search by name, slug or email'}
+          aria-label={ar ? 'بحث' : 'Search'}
+        />
+        <div className="sb-filters" role="group" aria-label={ar ? 'تصفية' : 'Filter'}>
+          {SUBSCRIBER_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className={`sb-chip ${filter === f.id ? 'on' : ''}`}
+              aria-pressed={filter === f.id}
+              onClick={() => setFilter(f.id)}
+            >
+              {ar ? f.ar : f.en}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && <div className="ts-err" style={{ maxWidth: 720 }}>{error}</div>}
+
+      {/* The generated payment link, shown once so it can be copied into
+          WhatsApp. It is not stored: regenerating one is free, and a list of
+          live payment links sitting in the UI is a thing to leak. */}
+      {linkFor && (
+        <div className="add-bg" onClick={() => setLinkFor(null)}>
+          <div className="add-panel" onClick={(e) => e.stopPropagation()} dir={ar ? 'rtl' : 'ltr'}>
+            <button type="button" className="add-close" onClick={() => setLinkFor(null)} aria-label={ar ? 'إغلاق' : 'Close'}>×</button>
+            <h2 style={{ marginTop: 0 }}>{ar ? 'رابط الدفع' : 'Payment link'}</h2>
+            <p className="hint">{ar
+              ? `أرسل هذا الرابط إلى ${linkFor.name}. يعمل بدون تسجيل دخول، ويمكن فتحه أكثر من مرة، وتنتهي صلاحيته بعد 14 يومًا.`
+              : `Send this to ${linkFor.name}. It works without signing in, survives being opened more than once, and expires after 14 days.`}</p>
+            <textarea readOnly rows={3} value={linkFor.url} dir="ltr" onFocus={(e) => e.target.select()} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              <Button size="sm" onClick={() => { navigator.clipboard?.writeText(linkFor.url); toast.success(ar ? 'نُسخ' : 'Copied'); }}>
+                {ar ? 'نسخ الرابط' : 'Copy link'}
+              </Button>
+              <a
+                className="bl-out"
+                href={`https://wa.me/?text=${encodeURIComponent(linkFor.url)}`}
+                target="_blank" rel="noopener noreferrer"
+              >
+                {ar ? 'إرسال عبر واتساب' : 'Send on WhatsApp'}
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="list-skel" aria-busy="true">
+          <Skeleton width="100%" height={64} radius="var(--radius-md)" />
+          <Skeleton width="100%" height={64} radius="var(--radius-md)" />
+          <Skeleton width="100%" height={64} radius="var(--radius-md)" />
+        </div>
+      ) : visible.length === 0 ? (
+        <EmptyState
+          compact
+          icon="🔍"
+          title={derived.length === 0
+            ? (ar ? 'لا يوجد مشتركون بعد.' : 'No subscribers yet.')
+            : (ar ? 'لا نتائج مطابقة.' : 'Nothing matches that.')}
+          description={derived.length === 0
+            ? (ar ? 'ستظهر المساحات هنا فور اشتراكها.' : 'Workspaces appear here as soon as they subscribe.')
+            : (ar ? 'جرّب بحثًا أو تصفية أخرى.' : 'Try a different search or filter.')}
+        />
+      ) : (
+        <div className="cl-list">
+          {visible.map((r) => {
+            const plan = r.subscription?.plan_code ? getPlan(r.subscription.plan_code) : null;
+            const when = r.billing.renewsAt || r.billing.endsAt;
+            return (
+              <Card key={r.id} pad="none" className="cl-row">
+                <button type="button" className="cl-open" onClick={() => onOpen(r.id)}>
+                  <div className="cl-main">
+                    <div className="cl-name">{r.name}</div>
+                    <div className="cl-who" dir="ltr">{r.email}</div>
+                  </div>
+                  <span className="sb-plan">
+                    {planName(r.subscription?.plan_code, lang)}
+                    {plan && <span className="sb-amount"> · {formatAmount(plan.amount, lang)}</span>}
+                  </span>
+                  <Badge tone={r.billing.tone} dot>{statusLabel(r.billing.state, lang)}</Badge>
+                  <span className="cl-pct">
+                    {when ? formatBillingDate(when, lang) : '—'}
+                  </span>
+                </button>
+                <div className="cl-actions">
+                  {/* A workspace that is not paying is one to chase, so the
+                      payment link lives exactly where that is noticed. Comped
+                      workspaces are excluded: they were granted access
+                      deliberately and are not a collections problem. */}
+                  {!r.billing.entitled && (
+                    <>
+                      <span className="cl-flag">{ar ? 'أرسل رابط دفع:' : 'Send a payment link:'}</span>
+                      {listPlans().map((p) => (
+                        <Button
+                          key={p.code}
+                          type="button" variant="secondary" size="sm"
+                          loading={busyId === r.id}
+                          onClick={() => createPaymentLink(r, p.code)}
+                        >
+                          {p.name[ar ? 'ar' : 'en']}
+                        </Button>
+                      ))}
+                    </>
+                  )}
+                  {r.billing.entitled && r.billing.state !== 'comped' && !r.subscription?.cancel_at_period_end && (
+                    <Button
+                      type="button" variant="secondary" size="sm"
+                      loading={busyId === r.id}
+                      onClick={() => cancelFor(r)}
+                    >
+                      {ar ? 'إلغاء التجديد' : 'Turn off renewal'}
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <AdminStyles />
+      <style jsx>{`
+        .cl-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          gap: var(--space-2); max-width: 720px; margin-bottom: var(--space-5); }
+        .cl-stat { padding: var(--space-3); background: var(--bg-elevated);
+          border: 1px solid var(--border); border-radius: var(--radius-md); }
+        .cl-stat.ok { border-color: var(--success-border); }
+        .cl-stat.warn { border-color: var(--warning-border); }
+        .cl-stat-n { display: block; font-size: var(--text-xl); font-weight: 700;
+          line-height: 1.2; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+        .cl-stat.ok .cl-stat-n { color: var(--success); }
+        .cl-stat.warn .cl-stat-n { color: var(--warning); }
+        .cl-stat-l { display: block; margin-top: 2px; font-size: var(--text-xs); color: var(--text-tertiary); }
+        .sb-controls { display: flex; align-items: center; gap: var(--space-3);
+          flex-wrap: wrap; max-width: 720px; margin-bottom: var(--space-4); }
+        .sb-search { flex: 1 1 240px; }
+        .sb-filters { display: inline-flex; gap: 4px; padding: 3px;
+          background: var(--bg-elevated); border-radius: var(--radius-sm); flex-wrap: wrap; }
+        .sb-chip { padding: 5px 12px; font-size: var(--text-sm); font-family: inherit;
+          color: var(--text-tertiary); background: none; border: none;
+          border-radius: 6px; cursor: pointer; white-space: nowrap; }
+        .sb-chip:hover { color: var(--text-primary); }
+        .sb-chip.on { background: var(--bg-hover); color: var(--text-primary); font-weight: 600; }
+        .sb-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .cl-list { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
+        .cl-open { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px;
+          background: none; border: none; cursor: pointer; font-family: inherit;
+          text-align: inherit; color: inherit; }
+        .cl-open:hover .cl-name { color: var(--accent); }
+        .cl-main { flex: 1; min-width: 0; }
+        .cl-name { font-size: 14px; font-weight: 600; }
+        .cl-who { font-size: 11px; color: var(--text-tertiary); margin-top: 3px;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sb-plan { font-size: var(--text-xs); color: var(--text-tertiary); white-space: nowrap; }
+        .sb-amount { font-variant-numeric: tabular-nums; }
+        .cl-actions { display: flex; align-items: center; justify-content: flex-end;
+          gap: 10px; padding: 0 14px 12px; flex-wrap: wrap; }
+        .cl-pct { font-size: var(--text-xs); color: var(--text-muted); min-width: 92px;
+          text-align: end; flex-shrink: 0; white-space: nowrap; }
+        @media (max-width: 720px) {
+          /* The plan word duplicates the amount already shown on the row above
+             it once the row wraps, and it is the least useful thing here. */
+          .sb-plan { display: none; }
+          .cl-pct { min-width: 0; }
+        }
       `}</style>
     </div>
   );

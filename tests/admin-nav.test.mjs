@@ -17,11 +17,29 @@ const t = (k) => k;                       // identity translator
 const ids = (groups) => groups.flatMap(g => g.items.map(i => i.id));
 const build = (isOwner, ar = false) => navGroups({ isOwner, ar, t });
 
-test('owner sees the Platform group with Clients', () => {
+test('owner sees the Platform group with Clients and Subscribers', () => {
   const groups = build(true);
   const platform = groups.find(g => g.id === 'platform');
   assert.ok(platform, 'owner must get a platform group');
-  assert.deepEqual(platform.items.map(i => i.id), ['clients']);
+  assert.deepEqual(platform.items.map(i => i.id), ['clients', 'subscribers']);
+});
+
+test('billing is a client tab and subscribers is an owner tab — never the reverse', () => {
+  // A client seeing the platform-wide subscriber list would be a data leak, and
+  // an owner seeing "my subscription" would act on whichever workspace happened
+  // to be selected.
+  const client = ids(build(false));
+  assert.ok(client.includes('billing'), 'a client must be able to manage their own subscription');
+  assert.ok(!client.includes('subscribers'), 'a client must NOT see the platform subscriber list');
+
+  const owner = ids(build(true));
+  assert.ok(owner.includes('subscribers'));
+  assert.ok(!owner.includes('billing'));
+
+  // Unresolved ownership shows neither, same rule as home/clients.
+  const unknown = ids(build(null));
+  assert.ok(!unknown.includes('billing'));
+  assert.ok(!unknown.includes('subscribers'));
 });
 
 test('owner does NOT get the client Home screen', () => {

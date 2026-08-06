@@ -35,6 +35,15 @@ const ICONS = {
       <line x1="2" y1="10" x2="22" y2="10" />
     </>
   ),
+  // Billing and Subscribers. Deliberately NOT the `card` glyph above, which is
+  // already the Home Page tab — two tabs sharing an icon reads as a bug.
+  receipt: (
+    <>
+      <path d="M5 3v18l2.5-1.6L10 21l2-1.6L14 21l2.5-1.6L19 21V3z" />
+      <line x1="9" y1="8" x2="15" y2="8" />
+      <line x1="9" y1="12" x2="15" y2="12" />
+    </>
+  ),
   folder: <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />,
   link: (
     <>
