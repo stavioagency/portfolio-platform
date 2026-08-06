@@ -16,12 +16,14 @@ plans. A customer approves a subscription **on paypal.com**; PayPal then charges
 it on schedule, retries failures, and tells us what happened over webhooks.
 
 ```
-  client dashboard ─┐
-                    ├─→ /subscribe ─→ billing-checkout ─→ PayPal approval page
-  owner's link ─────┘                                            │
-                                                                 ▼
+  marketing site ─→ /signup ─→ email (Resend) ─→ workspace, DISABLED ─┐
+                                                                      │
+  client dashboard ───────────────────────────────────────────────────┤
+                                    ├─→ /subscribe ─→ billing-checkout ─→ PayPal
+  owner's link ─────────────────────┘                              │
+                                                                   ▼
    subscriptions table ←── billing-webhook ←──── BILLING.SUBSCRIPTION.ACTIVATED
-                                                 PAYMENT.SALE.COMPLETED, …
+   tenant DISABLED → ACTIVE                      PAYMENT.SALE.COMPLETED, …
 ```
 
 `/subscribe` takes these query parameters:
@@ -34,11 +36,35 @@ it on schedule, retries failures, and tells us what happened over webhooks.
 | `lang` | both | `ar` or `en`. Overrides the stored preference; anything else is ignored and Arabic wins |
 | `status` | — | set by the return/cancel URLs coming back from PayPal |
 
-**There is no third door.** Without a grant, `billing-checkout` requires a real
-session *and* admin rights on the named tenant, so a visitor who has never
-signed in cannot start a checkout — by design. Public pricing links must point
-at the marketing site, which captures the lead; the owner then creates the
-workspace and sends a door-2 payment link.
+**Checkout still has exactly two doors, and neither is public.** Without a
+grant, `billing-checkout` requires a real session *and* admin rights on the
+named tenant, so a visitor who has never signed in cannot start a checkout. That
+rule is unchanged and load-bearing: it is what stops a stranger from opening a
+subscription against somebody else's workspace.
+
+**What changed is how a stranger becomes a tenant admin.** `/signup` (HANDOFF
+§7c) is now the public entry point: it creates the account, verifies the address
+through Resend, and builds the workspace `status = 'disabled'` with no
+subscription row — so the visitor arrives at door 1 already holding a session
+and admin rights on their own new workspace. Nothing about checkout was
+loosened to allow it.
+
+> **Marketing sites must link to `/signup`, never `/subscribe`.**
+> `/subscribe` is not a public page. A visitor sent there has no session, so
+> `billing-checkout` answers `invalid_token` and they hit a dead end. Link to
+> `https://designakum.site/signup?lang=ar` or `?lang=en` — the language
+> parameter matters, because a visitor crossing from another origin has no
+> stored preference and would otherwise land on an Arabic form.
+>
+> This replaces the older instruction that public pricing links were lead
+> capture only, with the owner creating the workspace by hand and sending a
+> door-2 payment link. That route still works and is still right for a
+> done-for-you sale; it is simply no longer the only one.
+
+**No access before payment**, on either route. A self-signup workspace is
+created disabled and is flipped to `active` by the ACTIVATED webhook —
+`tenant_has_active_subscription()` is false until then, because a workspace with
+no subscription row is not entitled. Verified end to end on `zz-signup-live`.
 
 `lang` exists because a visitor can arrive from the marketing site, which is a
 different origin — nothing is stored there, so without it an English reader
