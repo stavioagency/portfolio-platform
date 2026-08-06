@@ -183,11 +183,21 @@ export const paypal: BillingProvider = {
           custom_id: input.tenantId,
           application_context: {
             brand_name: "Designakum",
-            locale: input.locale === "ar" ? "ar_SA" : "en_US",
-            shipping_preference: "NO_SHIPPING_ADDRESS",
+            // NO_SHIPPING, not NO_SHIPPING_ADDRESS. The enum is exactly
+            // GET_FROM_FILE | NO_SHIPPING | SET_PROVIDED_ADDRESS, and PayPal
+            // rejects anything else with a VALIDATION_ERROR — which is what
+            // made every create-subscription call fail. There is nothing to
+            // ship, so the address block is suppressed entirely.
+            shipping_preference: "NO_SHIPPING",
             user_action: "SUBSCRIBE_NOW",
             return_url: input.returnUrl,
             cancel_url: input.cancelUrl,
+            // `locale` is deliberately NOT sent. PayPal documents it in two
+            // formats across two API versions (ar_SA vs ar-SA), the accepted
+            // list is not the obvious one, and a wrong value is another
+            // VALIDATION_ERROR on the same call. Omitting it makes PayPal use
+            // the buyer's own account language, which for a Saudi customer
+            // paying with a Saudi PayPal account is the better default anyway.
           },
         }),
       },

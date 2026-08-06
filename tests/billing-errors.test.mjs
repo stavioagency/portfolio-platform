@@ -76,3 +76,16 @@ test('an unknown code is surfaced verbatim, never swallowed', () => {
   assert.match(billingActionError('some_new_thing', 'en'), /some_new_thing/);
   assert.match(billingActionError(undefined, 'en'), /unknown error/);
 });
+
+test("a provider rejection carries PayPal's own message through to the screen", async () => {
+  // This is the case that cost a diagnosis round-trip: the body had the answer
+  // ("shipping_preference") and every layer above it threw the answer away.
+  const err = httpError(502, {
+    error: 'provider_error',
+    detail: 'paypal_400: Value is invalid., shipping_preference',
+  });
+  const code = await edgeErrorCode(err, null);
+  assert.equal(code, 'provider_error: paypal_400: Value is invalid., shipping_preference');
+  assert.match(billingActionError(code, 'en'), /shipping_preference/);
+  assert.match(billingActionError(code, 'ar'), /shipping_preference/);
+});
