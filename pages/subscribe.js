@@ -31,6 +31,7 @@ import {
   getPlan, formatAmount, formatInterval, planName, formatBillingNote,
 } from '../lib/billing-plans';
 import { Button, Card, Badge } from '../components/ui';
+import { edgeErrorCode } from '../lib/billing-errors';
 
 export default function Subscribe() {
   const [lang, setLang] = useState('ar');
@@ -115,9 +116,11 @@ export default function Subscribe() {
         },
       });
 
-      const failure = fnErr || data?.error;
-      if (failure || !data?.approve_url) {
-        setError(checkoutError(data?.error || fnErr?.message, ar));
+      // The server's own code lives behind fnErr.context on a non-2xx; without
+      // edgeErrorCode every failure here reads as the same generic sentence.
+      const code = await edgeErrorCode(fnErr, data);
+      if (code || !data?.approve_url) {
+        setError(checkoutError(code, ar));
         setPhase('failed');
         return;
       }

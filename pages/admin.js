@@ -30,6 +30,7 @@ import {
   paymentTone, paymentLabel,
 } from '../lib/billing-status';
 import { subscribersCsv, exportFilename } from '../lib/billing-export';
+import { edgeErrorCode, billingActionError } from '../lib/billing-errors';
 import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
@@ -4705,35 +4706,15 @@ function OwnerClientsOverview({ lang, onOpen }) {
 // change a card, which is the point of using a hosted provider.
 const PAYPAL_ACCOUNT_URL = 'https://www.paypal.com/myaccount/autopay/';
 
-// Turn a billing Edge Function's error code into something the OPERATOR can
-// act on. These are owner-facing tools, so naming the actual fault — and the
-// fix — beats a reassuring sentence that hides it. Anything unrecognised is
-// shown verbatim rather than swallowed.
-function billingActionError(code, ar) {
-  switch (code) {
-    case 'plan_not_available':
-      return ar
-        ? 'الخطط غير مزامنة مع باي بال. اضغط "مزامنة الخطط مع باي بال" أولًا.'
-        : 'Plans are not synced to PayPal yet — press "Sync plans to PayPal" first.';
-    case 'grant_signing_failed':
-      return ar
-        ? 'مفتاح BILLING_GRANT_SECRET مفقود أو قصير جدًا في إعدادات Supabase.'
-        : 'BILLING_GRANT_SECRET is missing or under 32 characters in the Supabase secrets.';
-    case 'forbidden_not_owner':
-      return ar ? 'هذا الإجراء لمالك المنصّة فقط.' : 'That action is for platform owners only.';
-    case 'not_a_paid_subscription':
-      return ar ? 'لا يوجد اشتراك مدفوع على هذه المساحة.' : 'This workspace has no paid subscription.';
-    case 'no_subscription':
-      return ar ? 'لا يوجد اشتراك على هذه المساحة.' : 'This workspace has no subscription.';
-    case 'provider_error':
-      return ar ? 'رفض باي بال العملية. راجع سجل الأخطاء.' : 'PayPal refused the operation — check the console.';
-    default:
-      // Includes the "Failed to send a request to the Edge Function" case,
-      // which is what an undeployed or crashed function looks like.
-      return ar
-        ? `تعذّر تنفيذ العملية: ${code || 'خطأ غير معروف'}`
-        : `The action failed: ${code || 'unknown error'}`;
-  }
+// Every billing call goes through here. `edgeErrorCode` is what makes the
+// server's own error code visible at all — supabase-js hides a non-2xx body
+// behind error.context and reports the same generic sentence otherwise.
+// Throws the CODE, so callers can map it or show it.
+async function invokeBilling(fn, body) {
+  const { data, error } = await supabase.functions.invoke(fn, { body });
+  const code = await edgeErrorCode(error, data);
+  if (code) throw new Error(code);
+  return data;
 }
 
 // Reads `subscriptions`, `payments` and `billing_customers`, all of which the
@@ -4810,15 +4791,7 @@ function BillingEditor({ t, lang }) {
   // optimism — a row that says "cancelled" while PayPal keeps billing is the
   // worst outcome available here.
   async function callBilling(body) {
-    const { data, error: fnErr } = await supabase.functions.invoke('billing-subscription', {
-      body: { tenant_id: tenant.id, ...body },
-    });
-    if (fnErr || data?.error) {
-      const code = data?.error || fnErr?.message;
-      console.error('[billing] action failed:', code);
-      throw new Error(code || 'failed');
-    }
-    return data;
+    return await invokeBilling('billing-subscription', { tenant_id: tenant.id, ...body });
   }
 
   async function changePlan() {
@@ -5273,15 +5246,14 @@ function SubscribersOverview({ lang, onOpen }) {
     if (!ok) return;
     setBusyId(row.id);
     try {
-      const { data, error: fnErr } = await supabase.functions.invoke('billing-subscription', {
-        body: { action: 'cancel', tenant_id: row.id, reason: 'Cancelled by Designakum on request' },
+      await invokeBilling('billing-subscription', {
+        action: 'cancel', tenant_id: row.id, reason: 'Cancelled by Designakum on request',
       });
-      if (fnErr || data?.error) throw new Error(data?.error || fnErr?.message);
       toast.success(ar ? 'تم إيقاف التجديد.' : 'Renewal turned off.');
       setReloadToken((n) => n + 1);
     } catch (err) {
       console.error('[subscribers] cancel failed:', err);
-      toast.error(ar ? 'تعذّر إلغاء الاشتراك.' : 'Could not cancel the subscription.');
+      toast.error(billingActionError(err?.message, lang));
     } finally {
       setBusyId(null);
     }
@@ -5307,8 +5279,7 @@ function SubscribersOverview({ lang, onOpen }) {
     });
     setBusyId('sync');
     try {
-      const { data, error: fnErr } = await supabase.functions.invoke('billing-plans-sync', { body: { plans } });
-      if (fnErr || data?.error) throw new Error(data?.error || fnErr?.message);
+      const data = await invokeBilling('billing-plans-sync', { plans });
       const created = (data.results || []).filter((r) => r.created).length;
       const failed = (data.results || []).filter((r) => r.error);
       if (failed.length > 0) {
@@ -5321,7 +5292,7 @@ function SubscribersOverview({ lang, onOpen }) {
       }
     } catch (err) {
       console.error('[plans-sync] failed:', err);
-      toast.error(ar ? 'تعذّرت مزامنة الخطط.' : 'Could not sync the plans.');
+      toast.error(billingActionError(err?.message, lang));
     } finally {
       setBusyId(null);
     }
@@ -5334,10 +5305,9 @@ function SubscribersOverview({ lang, onOpen }) {
   async function createPaymentLink(row, planCode) {
     setBusyId(row.id);
     try {
-      const { data, error: fnErr } = await supabase.functions.invoke('billing-subscription', {
-        body: { action: 'create_link', tenant_id: row.id, plan_code: planCode },
+      const data = await invokeBilling('billing-subscription', {
+        action: 'create_link', tenant_id: row.id, plan_code: planCode,
       });
-      if (fnErr || data?.error) throw new Error(data?.error || fnErr?.message);
       const params = new URLSearchParams({ t: data.grant, plan: planCode, w: row.name });
       setLinkFor({ name: row.name, url: `${window.location.origin}/subscribe?${params.toString()}` });
     } catch (err) {
@@ -5347,7 +5317,7 @@ function SubscribersOverview({ lang, onOpen }) {
       // nor the logs said so. An opaque toast on an operator tool costs more
       // than the two lines it saves.
       console.error('[subscribers] link failed:', err);
-      toast.error(billingActionError(err?.message, ar));
+      toast.error(billingActionError(err?.message, lang));
     } finally {
       setBusyId(null);
     }
