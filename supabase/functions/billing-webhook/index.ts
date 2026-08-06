@@ -209,6 +209,33 @@ async function apply(admin: any, providerName: string, event: NormalizedEvent) {
           email: remote.payerEmail,
         });
       }
+
+      // A SELF-SIGNUP WORKSPACE GOES LIVE HERE, AND ONLY HERE.
+      //
+      // signup-verify creates it with status 'disabled', so the public site
+      // 404s (lib/tenant.js) until somebody has actually paid. This is the one
+      // line that reverses that, and it is deliberately in the webhook rather
+      // than anywhere the browser can reach: coming back from PayPal means the
+      // customer approved a subscription, not that it was charged.
+      //
+      // Scoped to created_via = 'self_signup' on purpose. An operator-created
+      // workspace that was suspended by hand must stay suspended — its status
+      // is an operator decision, not a billing outcome, and reactivating it
+      // because a payment landed would silently overrule that.
+      if (remote.status === "active") {
+        const { error: activateErr } = await admin
+          .from("tenants")
+          .update({ status: "active" })
+          .eq("id", tenantId)
+          .eq("created_via", "self_signup")
+          .eq("status", "disabled");
+        // Not fatal: the subscription is recorded either way and the customer
+        // is entitled. A site that is still dark is visible and fixable; losing
+        // the payment record would not be.
+        if (activateErr) {
+          console.error("[billing-webhook] could not activate the self-signup tenant:", activateErr.message);
+        }
+      }
       return;
     }
 
