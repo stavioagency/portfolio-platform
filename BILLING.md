@@ -24,6 +24,27 @@ it on schedule, retries failures, and tells us what happened over webhooks.
                                                  PAYMENT.SALE.COMPLETED, …
 ```
 
+`/subscribe` takes these query parameters:
+
+| Parameter | Door | Meaning |
+|---|---|---|
+| `plan` | 1 | plan code — `monthly` or `yearly` |
+| `tenant` | 1 | the workspace being subscribed, a UUID |
+| `t` | 2 | the owner-issued signed grant; carries plan *and* tenant |
+| `lang` | both | `ar` or `en`. Overrides the stored preference; anything else is ignored and Arabic wins |
+| `status` | — | set by the return/cancel URLs coming back from PayPal |
+
+**There is no third door.** Without a grant, `billing-checkout` requires a real
+session *and* admin rights on the named tenant, so a visitor who has never
+signed in cannot start a checkout — by design. Public pricing links must point
+at the marketing site, which captures the lead; the owner then creates the
+workspace and sends a door-2 payment link.
+
+`lang` exists because a visitor can arrive from the marketing site, which is a
+different origin — nothing is stored there, so without it an English reader
+lands on an Arabic payment page. It is also forwarded to PayPal as the approval
+page's locale.
+
 Three things follow from this, and they explain most of the code:
 
 * **PayPal owns the schedule.** There is no renewal cron, no retry ladder and no
@@ -237,6 +258,7 @@ Run every row in sandbox before going live.
 | # | Flow | How | Expect |
 |---|---|---|---|
 | 1 | New subscription | `/subscribe?plan=yearly&tenant=<id>` → approve | row goes `pending` → `active`; a `payments` row; an invoice |
+| 1b | Checkout language | open a link with `?lang=en`, then one with `?lang=ar` | the page renders in that language regardless of what was stored; `?lang=fr` falls back to Arabic |
 | 2 | Payment link | Subscribers → send link → open in a private window | same as 1, with no sign-in |
 | 3 | Link tampering | edit `plan=` in a link URL | the grant's plan wins, not the URL's |
 | 4 | Expired link | wait out the TTL, or corrupt the token | "this link is no longer valid" |
