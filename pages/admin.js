@@ -4593,7 +4593,17 @@ function OwnerClientsOverview({ lang, onOpen }) {
               </button>
               {r.member && (
                 <div className="cl-actions">
-                  {r.member.must_set_password && (
+                  {/* === true, matching SetPasswordGate at the top of this file.
+                      HARDENING, NOT A BUG FIX: every stored value today is a
+                      real jsonb boolean, so loose truthiness behaves
+                      identically and this changes nothing for current users.
+                      It matters because user_metadata is schemaless — anything
+                      writing the STRING "false" would make this render
+                      "password not set yet" forever, and the natural response
+                      to that flag is to reset the password or re-send the
+                      welcome, both of which DESTROY a working password (§7d).
+                      Cheap guard against an expensive failure. */}
+                  {r.member.must_set_password === true && (
                     <span className="cl-flag">{ar ? 'لم يغيّر كلمة المرور بعد' : 'password not set yet'}</span>
                   )}
                   <Button

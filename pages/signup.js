@@ -145,6 +145,16 @@ export default function Signup() {
                   {t('signup_check_email_desc')} <strong dir="ltr">{email.trim().toLowerCase()}</strong>
                 </p>
                 <p className="su-muted su-small">{t('signup_check_email_hint')}</p>
+                {/* Shown to EVERYONE, always. signup-start deliberately never
+                    overwrites the password of an address that already exists —
+                    otherwise anyone who knows an unverified address could
+                    replace the real owner's credentials before they confirm.
+                    The consequence is that a second submission leaves the FIRST
+                    password in force, and saying nothing made people believe
+                    the password they had just typed was live. Showing this only
+                    on a repeat would reveal that the address exists, so it is
+                    unconditional. */}
+                <p className="su-muted su-small">{t('signup_password_notice')}</p>
                 <button type="button" className="su-link" onClick={() => setPhase('form')}>
                   {t('signup_resend')}
                 </button>
