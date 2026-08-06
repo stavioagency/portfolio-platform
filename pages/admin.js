@@ -4705,6 +4705,37 @@ function OwnerClientsOverview({ lang, onOpen }) {
 // change a card, which is the point of using a hosted provider.
 const PAYPAL_ACCOUNT_URL = 'https://www.paypal.com/myaccount/autopay/';
 
+// Turn a billing Edge Function's error code into something the OPERATOR can
+// act on. These are owner-facing tools, so naming the actual fault — and the
+// fix — beats a reassuring sentence that hides it. Anything unrecognised is
+// shown verbatim rather than swallowed.
+function billingActionError(code, ar) {
+  switch (code) {
+    case 'plan_not_available':
+      return ar
+        ? 'الخطط غير مزامنة مع باي بال. اضغط "مزامنة الخطط مع باي بال" أولًا.'
+        : 'Plans are not synced to PayPal yet — press "Sync plans to PayPal" first.';
+    case 'grant_signing_failed':
+      return ar
+        ? 'مفتاح BILLING_GRANT_SECRET مفقود أو قصير جدًا في إعدادات Supabase.'
+        : 'BILLING_GRANT_SECRET is missing or under 32 characters in the Supabase secrets.';
+    case 'forbidden_not_owner':
+      return ar ? 'هذا الإجراء لمالك المنصّة فقط.' : 'That action is for platform owners only.';
+    case 'not_a_paid_subscription':
+      return ar ? 'لا يوجد اشتراك مدفوع على هذه المساحة.' : 'This workspace has no paid subscription.';
+    case 'no_subscription':
+      return ar ? 'لا يوجد اشتراك على هذه المساحة.' : 'This workspace has no subscription.';
+    case 'provider_error':
+      return ar ? 'رفض باي بال العملية. راجع سجل الأخطاء.' : 'PayPal refused the operation — check the console.';
+    default:
+      // Includes the "Failed to send a request to the Edge Function" case,
+      // which is what an undeployed or crashed function looks like.
+      return ar
+        ? `تعذّر تنفيذ العملية: ${code || 'خطأ غير معروف'}`
+        : `The action failed: ${code || 'unknown error'}`;
+  }
+}
+
 // Reads `subscriptions`, `payments` and `billing_customers`, all of which the
 // browser may SELECT for its own tenant and may not write at all — see
 // supabase/sections/section-h-billing.sql. Every mutation here goes through the
@@ -5282,7 +5313,7 @@ function SubscribersOverview({ lang, onOpen }) {
       const failed = (data.results || []).filter((r) => r.error);
       if (failed.length > 0) {
         console.error('[plans-sync] failures:', failed);
-        toast.error(`${failed.length} plan(s) failed — see the console`);
+        toast.error(`${failed.length} plan(s) failed: ${failed.map((f) => f.error).join("; ")}`);
       } else {
         toast.success(ar
           ? `تمت المزامنة (${data.environment}): ${created} خطة جديدة`
@@ -5310,8 +5341,13 @@ function SubscribersOverview({ lang, onOpen }) {
       const params = new URLSearchParams({ t: data.grant, plan: planCode, w: row.name });
       setLinkFor({ name: row.name, url: `${window.location.origin}/subscribe?${params.toString()}` });
     } catch (err) {
+      // SAY WHAT WENT WRONG. The first version of this reported every failure
+      // as "Could not create the link", which was true and useless: the actual
+      // cause was a 404 from an undeployed function, and neither the operator
+      // nor the logs said so. An opaque toast on an operator tool costs more
+      // than the two lines it saves.
       console.error('[subscribers] link failed:', err);
-      toast.error(ar ? 'تعذّر إنشاء الرابط.' : 'Could not create the link.');
+      toast.error(billingActionError(err?.message, ar));
     } finally {
       setBusyId(null);
     }
