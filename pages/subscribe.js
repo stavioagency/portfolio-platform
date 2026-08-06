@@ -26,7 +26,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { supabase } from '../lib/supabase';
-import { getTranslator } from '../lib/translations';
+import { getTranslator, resolveLang } from '../lib/translations';
 import {
   getPlan, formatAmount, formatInterval, planName, formatBillingNote,
 } from '../lib/billing-plans';
@@ -50,8 +50,21 @@ export default function Subscribe() {
 
   // Language: read once, then own <html lang/dir> exactly as LegalPage does.
   // This page is reached without the admin shell, so nothing else sets them.
+  //
+  // `?lang=` wins over the stored preference — see resolveLang() for why.
+  // The short version: a visitor arriving from the marketing site is on a
+  // different origin, so there is nothing stored and the default would hand
+  // an English reader an Arabic checkout.
   useEffect(() => {
-    try { setLang(localStorage.getItem('lang') || 'ar'); } catch (_) {}
+    let stored = null;
+    try { stored = localStorage.getItem('lang'); } catch (_) {}
+
+    let requested = null;
+    try {
+      requested = new URLSearchParams(window.location.search).get('lang');
+    } catch (_) {}
+
+    setLang(resolveLang(requested, stored));
   }, []);
   useEffect(() => {
     if (typeof document === 'undefined') return;
