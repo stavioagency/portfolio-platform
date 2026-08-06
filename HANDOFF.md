@@ -372,6 +372,83 @@ client is onboarded.
   browser and the Edge Function share one list. A tenant claiming `admin` or
   `subscribe` would shadow a real route.
 
+## 7d. AUTHENTICATION & PASSWORD SYSTEM
+
+Audited 2026-08-06 against production. The storage model is already correct;
+what is wrong is the delivery of emails and the destructiveness of two operator
+actions. Read this before touching anything that sets a password.
+
+### Current architecture
+
+**Supabase Auth is the only password authority, and this is verified, not
+assumed.** A scan of `information_schema.columns` for anything matching
+password / passwd / hash / secret across the whole `public` schema returns
+NONE. There is no custom hashing, no shadow table, no duplicate storage.
+
+Login: `lib/resolve-login.js` decides email vs username, a username is resolved
+to an email by the anon-callable `get_email_for_username` RPC (see §8 — it must
+stay anon-callable or sign-in breaks for everyone), then
+`signInWithPassword`.
+
+Passwords are created in exactly two places and updated in three:
+
+| | |
+|---|---|
+| `invite-client` | creates with a generated 14-char password, mails it, sets `must_set_password` |
+| `signup-start` | creates unconfirmed with the customer's own password |
+| AccountEditor | re-auth, HIBP check, then `auth.updateUser({ password })` |
+| `reset-client-password` | generates a NEW password (destructive — see below) |
+| `client-recovery` → `send_welcome` | generates a NEW password (destructive) |
+
+### Known issues, in the order they cause support load
+
+**1. Two operator actions silently invalidate a working password.** This is the
+source of "the client says their password stopped working". It is not a bug —
+it is the design surfacing as one.
+
+`send_welcome` has no alternative: the original password is only ever a hash, so
+"re-send their welcome email" cannot mean "re-send their password". An operator
+clicking it to help a client who never got the mail breaks the password that
+client may already be using. `reset-client-password` warns before doing this;
+`send_welcome` does not.
+
+*Future fix:* warn at the moment of clicking, and add a NON-destructive resend
+for the common case — when `last_sign_in_at IS NULL` there is no working
+password to protect, so re-issuing costs nothing. Fall back to the destructive
+path only when they have actually signed in.
+
+**2. Self-serve password recovery has almost certainly never worked.** Across 14
+users: `confirmation_sent_at` is null for ALL of them and `recovery_sent_at` is
+set for only 2. Supabase's mailer is effectively unconfigured — which is exactly
+why signup verification was built on Resend (§7c). A customer clicks "forgot
+password", nothing arrives, and they conclude their password broke.
+
+*Future fix:* move password reset onto Resend, reusing
+`_shared/signup-token.ts` with a `reset_password` purpose claim.
+
+**3. Supabase recovery links are single-use and cannot be made otherwise** (§9).
+A mail scanner pre-fetching one burns it, and the user sees "link expired" for a
+link they never clicked. Removing that confusing message means removing the
+dependency on single-use links, not rewording it.
+
+*Future fix:* the same reusable, expiring signed token the signup flow already
+uses successfully.
+
+### Two guardrails for any auth change
+
+- **`must_set_password` was true for 3 users at audit time.** Any change must
+  keep `SetPasswordGate` working, or those accounts are stranded holding a
+  temporary password with no way to set a real one.
+- **`user_metadata` writes must SPREAD, never replace** (§9). A replace drops
+  `must_set_password` and the gate silently disappears.
+
+### Mapping integrity, as audited
+
+0 duplicate emails, 0 duplicate usernames, 0 orphaned usernames, 0 orphaned
+profiles. `users_without_workspace` was 6 — expected: two platform owners plus
+the unattached logins the recovery tooling already handles (§7). **No mapping
+defect is causing login failures**; do not go looking for one.
+
 ## 8. KNOWN GAPS
 
 - **`get_email_for_username` is callable by anon and confirms which usernames
@@ -446,3 +523,54 @@ Do not, without an explicit request:
 - touch the separate marketing project or the finance Supabase project;
 - redesign or rewrite the admin wholesale;
 - commit a temporary test harness — grep for it before committing.
+
+---
+
+## 12. SESSION CONTINUITY RULES
+
+Hard rules for anyone — human or agent — picking this up cold.
+
+- **Never replace Supabase Auth with custom password storage**, and never store
+  a password or hash in a `public` table. The audit in §7d confirms none exist
+  today; that property is worth more than any convenience.
+- **Never write custom password hashing.** `lib/password-policy.js` bounds
+  length and enforces the 72-BYTE bcrypt cap; that is the whole of our
+  involvement in passwords.
+- **Do not modify billing, PayPal, subscriptions or tenants while changing
+  authentication** unless auth consistency genuinely requires it — and say so
+  explicitly if it does.
+- **Preserve the signup verification architecture** in §7c. Resend, not
+  Supabase's mailer; reusable expiring tokens, not single-use links.
+- **Audit user mappings before changing auth** — `auth.users`, `profile`,
+  `tenant_admins`, `admin_usernames` — rather than assuming a login failure is a
+  data problem. It has not been so far.
+- **Verify claims against the database before acting on them.** More than one
+  reported failure in this project turned out to be correct behaviour observed
+  at the wrong moment; and a partial unique index on `tenant_admins(user_id)
+  WHERE role = 'owner'` was designed, checked, and found to be unbuildable
+  because platform owners hold that role on every tenant.
+
+## 13. PENDING WORK
+
+The one deliberately time-sensitive block in this file — prune it as items
+land, and do not let it grow into a task tracker.
+
+1. **Self-signup payment activation is untested.** Everything up to payment is
+   proven: `zz-signup-live` exists, `created_via = self_signup`, `status =
+   disabled`, membership `self_signup = true`, profile present, not entitled.
+   The `disabled → active` flip in `billing-webhook` v7 has never fired.
+2. **Customer cancellation is untested** against the live sandbox subscription
+   `I-M65XW1E7MM82`. The four reliability fixes are deployed.
+3. **Auth improvements** — the three future fixes in §7d.
+4. **Test artefacts to remove**, all deliberately preserved: tenant
+   `zz-signup-live` and its user, `signup-test@designakum.site` (unconfirmed, no
+   workspace), tenant `zz-billing-test`, the hidden one-cent `test` plan in
+   `lib/billing-plans.js` plus its `provider_plans` row, and subscription
+   `I-M65XW1E7MM82`.
+5. **`supabase/SCHEMA.sql` does not yet describe sections H (billing) or I
+   (signup).** It is meant to be the authority on the live database; right now
+   it is behind by two applied migrations.
+6. **The R.S currency symbol** replacement for the "SAR" label.
+   `formatAmount()` in `lib/billing-plans.js` is the single source of truth; the
+   CSV export should keep the literal code, because a spreadsheet needs a
+   currency code rather than an image.
