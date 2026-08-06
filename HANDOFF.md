@@ -305,6 +305,73 @@ code, and the one fact that surprises everyone.
   through the API, which is why the UI offers "subscribe again" rather than a
   resume button that would fail.
 
+## 7c. PUBLIC SELF-SERVICE SIGNUP
+
+Decided and locked; see the flow below before changing any of it. The operator
+route (`invite-client`, section 7) is unaffected and stays the way an existing
+client is onboarded.
+
+```
+/signup → signup-start → Resend verification email
+        → /signup/verify?t=… → signup-verify
+              confirms the email in Supabase, creates the workspace
+        → sign in → /subscribe (billing door 1) → PayPal
+        → ACTIVATED webhook → subscription active AND tenant status → active
+```
+
+- **Supabase's built-in confirmation mailer is NOT used.** It has never
+  delivered a message on this project — every account was created by
+  `admin.createUser` with confirmation bypassed, and `confirmation_sent_at` is
+  null for all of them. Verification goes through Resend, the one mail path
+  proven to work here (section 7). This is why account creation is server-side:
+  a browser `signUp()` would trigger the mailer we are deliberately avoiding.
+
+- **Supabase Auth remains the source of truth for "is this email confirmed".**
+  `signup-verify` sets `email_confirmed_at` through the admin API rather than
+  recording confirmation in a column of our own. A second place storing that
+  fact is a second place for it to be wrong.
+
+- **The verification token is `_shared/grant.ts`'s design**, with its own secret
+  (`SIGNUP_TOKEN_SECRET`, never `BILLING_GRANT_SECRET` — a leaked billing secret
+  must not verify email addresses). It is **stateless, expiring and re-usable,
+  not single-use**: section 9 records what single-use links cost this project,
+  and a token that cannot be burned by a mail scanner is the direct answer to
+  it. Resending mints an additional valid token rather than invalidating the
+  old one, for the same reason.
+
+- **Signup never reveals whether an email exists.** One response for every
+  input. Behind it: a new address is created, an unconfirmed one is re-sent, and
+  a confirmed one gets a "you already have an account" email instead. The
+  information reaches the mailbox owner and never the requester — the same rule
+  `forgot_password_sent` already follows.
+
+- **No access before payment, and it needs no new enforcement.**
+  `tenant_has_active_subscription()` is already false for a workspace with no
+  subscription row. A self-signup tenant is created with `status = 'disabled'`
+  and is flipped to `'active'` by the ACTIVATED webhook — that one line is the
+  whole rule. A failed or abandoned payment simply leaves it there; retrying is
+  opening `/subscribe` again.
+
+- **One workspace per user is a single guard**, not a schema assumption.
+  `tenant_admins` is already many-to-many and nothing else assumes one, so
+  multi-workspace later is removing that check and adding a switcher.
+
+- **A future 1-day trial needs no schema change.** `subscriptions.status`
+  already has `trialing` and `trial_ends_at`, `deriveBilling()` handles both,
+  and `tenant_has_active_subscription()` already returns true for `trialing`.
+  The trial is: write a `trialing` row at signup instead of nothing, and
+  activate the tenant then rather than on the webhook. Do not build it until
+  asked.
+
+- **`tenants.created_via`** (`'owner' | 'self_signup'`) distinguishes the two
+  origins. Self-signups are stamped `handed_over_at = now()` at creation,
+  because there are no credentials to hand over and they would otherwise sit in
+  the operator's Pending handover queue forever.
+
+- **Reserved slugs are enforced server-side.** They live in `lib/` so the
+  browser and the Edge Function share one list. A tenant claiming `admin` or
+  `subscribe` would shadow a real route.
+
 ## 8. KNOWN GAPS
 
 - **`get_email_for_username` is callable by anon and confirms which usernames
