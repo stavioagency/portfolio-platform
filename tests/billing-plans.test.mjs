@@ -13,6 +13,7 @@ import {
   minorUnits,
   DEFAULT_PLAN_CODE,
   listPlans,
+  allPlans,
   getPlan,
   planAmount,
   billingAmount,
@@ -171,4 +172,39 @@ test('a comped workspace has a name but no plan', () => {
   assert.equal(planName('comped', 'en'), 'Granted access');
   assert.equal(planName(null, 'en'), 'No plan');
   assert.equal(planName('yearly', 'en'), 'Yearly');
+});
+
+// ---------------------------------------------------------------------------
+// Hidden plans. The test plan must be reachable by id and unreachable by sale.
+// ---------------------------------------------------------------------------
+test('the TEST plan is never offered to a customer', () => {
+  const sellable = listPlans().map((p) => p.code);
+  assert.ok(!sellable.includes('test'), 'a hidden plan must not appear in listPlans');
+  assert.deepEqual(sellable, ['monthly', 'yearly'], 'only the two real plans are sellable');
+});
+
+test('the TEST plan is still resolvable by code, so a link can render it', () => {
+  const t = getPlan('test');
+  assert.ok(t, 'getPlan must resolve hidden plans');
+  assert.equal(t.hidden, true);
+  assert.equal(billingAmount('test').amount, 1, 'one US cent');
+  assert.equal(billingAmount('test').currency, 'USD');
+});
+
+test('allPlans includes hidden plans so the provider catalogue can mirror them', () => {
+  assert.ok(allPlans().map((p) => p.code).includes('test'));
+  assert.ok(allPlans().length > listPlans().length);
+});
+
+test('the TEST plan is labelled so nobody mistakes it for a product', () => {
+  for (const lang of ['ar', 'en']) {
+    assert.match(planName('test', lang), /TEST|اختبار/i);
+  }
+});
+
+test('real prices are untouched by the test plan', () => {
+  assert.equal(planAmount('monthly'), 1200);
+  assert.equal(planAmount('yearly'), 12000);
+  assert.equal(billingAmount('monthly').amount, 320);
+  assert.equal(billingAmount('yearly').amount, 3200);
 });

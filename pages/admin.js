@@ -21,7 +21,7 @@ import { portfolioUrl, workspaceLabel, credentialsText, whatsappMessage, credent
 import { rememberCredentials, recallCredentials, forgetCredentials, clearAllCredentials } from '../lib/handoff-store';
 import { hasPublicContent } from '../lib/profile-content';
 import {
-  listPlans, getPlan, planName, planChangeKind, monthlyEquivalent,
+  listPlans, allPlans, getPlan, planName, planChangeKind, monthlyEquivalent,
   formatAmount, formatInterval, DEFAULT_PLAN_CODE, BILLING_CURRENCY,
   billingAmount, toProviderAmount,
 } from '../lib/billing-plans';
@@ -5267,7 +5267,9 @@ function SubscribersOverview({ lang, onOpen }) {
   // and as the decimal string PayPal expects. What gets created is therefore
   // exactly what this screen is showing.
   async function syncPlans() {
-    const plans = listPlans().map((p) => {
+    // allPlans, not listPlans: the provider catalogue must mirror everything
+    // including the hidden test plan, or there is nothing to test against.
+    const plans = allPlans().map((p) => {
       const billed = billingAmount(p.code);
       return {
         code: p.code,
@@ -5456,14 +5458,14 @@ function SubscribersOverview({ lang, onOpen }) {
                   {!r.billing.entitled && (
                     <>
                       <span className="cl-flag">{ar ? 'أرسل رابط دفع:' : 'Send a payment link:'}</span>
-                      {listPlans().map((p) => (
+                      {allPlans().map((p) => (
                         <Button
                           key={p.code}
                           type="button" variant="secondary" size="sm"
                           loading={busyId === r.id}
                           onClick={() => createPaymentLink(r, p.code)}
                         >
-                          {p.name[ar ? 'ar' : 'en']}
+                          {p.hidden ? (ar ? 'اختبار' : 'TEST') : p.name[ar ? 'ar' : 'en']}
                         </Button>
                       ))}
                     </>
