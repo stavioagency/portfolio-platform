@@ -14,6 +14,7 @@ import { useState, useEffect, useMemo } from 'react';
 import Head from 'next/head';
 import { supabase } from '../../lib/supabase';
 import { getTranslator } from '../../lib/translations';
+import { resolvePlanCode } from '../../lib/signup-intent';
 import { edgeErrorCode } from '../../lib/billing-errors';
 import { Button, Card } from '../../components/ui';
 
@@ -24,6 +25,10 @@ export default function VerifySignup() {
   const [phase, setPhase] = useState('checking');
   const [slug, setSlug] = useState('');
   const [detail, setDetail] = useState('');
+  // The plan chosen back on the marketing site, handed back by signup-verify
+  // from the account's metadata. It is the only copy that survives the email
+  // being opened somewhere else, which is the usual case.
+  const [plan, setPlan] = useState(null);
 
   const t = useMemo(() => getTranslator(lang), [lang]);
   const ar = lang === 'ar';
@@ -59,6 +64,10 @@ export default function VerifySignup() {
         // `already: true` lands here too, which is correct: the account is
         // verified and the workspace exists either way.
         setSlug(data?.slug || '');
+        // Checked against the catalogue before it is put in a URL. A plan
+        // retired between signup and verification simply drops out here, and
+        // they land on Billing with the normal default selected.
+        setPlan(resolvePlanCode(data?.plan));
         setPhase('done');
       } catch (err) {
         console.error('[verify] failed:', err);
@@ -104,7 +113,12 @@ export default function VerifySignup() {
                 {/* Sign-in first: checkout's door 1 needs a session, and they
                     have not signed in on this device — the link may have been
                     opened on a phone. */}
-                <a href="/admin" className="vf-btn">{t('verify_continue')}</a>
+                {/* Sign-in has to happen first, so the plan rides in the URL
+                    rather than being acted on here: /admin reads it and opens
+                    Billing with that plan selected. Checkout is one press
+                    away, and still a press — nobody is sent to PayPal by a
+                    link they clicked in their inbox. */}
+                <a href={plan ? `/admin?plan=${encodeURIComponent(plan)}` : '/admin'} className="vf-btn">{t('verify_continue')}</a>
                 <p className="vf-muted vf-small">{t('verify_next_hint')}</p>
               </div>
             )}

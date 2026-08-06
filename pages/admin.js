@@ -20,6 +20,7 @@ import { compressImage, fileExtension, MAX_AVATAR_DIMENSION } from '../lib/image
 import { portfolioUrl, workspaceLabel, credentialsText, whatsappMessage, credentialsFilename } from '../lib/credentials';
 import { rememberCredentials, recallCredentials, forgetCredentials, clearAllCredentials } from '../lib/handoff-store';
 import { hasPublicContent } from '../lib/profile-content';
+import { planFromQuery } from '../lib/signup-intent';
 import {
   listPlans, allPlans, getPlan, planName, planChangeKind, monthlyEquivalent,
   formatAmount, formatInterval, DEFAULT_PLAN_CODE, BILLING_CURRENCY,
@@ -706,7 +707,15 @@ function SetPasswordGate({ lang, onDone }) {
 // Dashboard
 // =========================================================
 function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
-  const [activeTab, setActiveTab] = useState('profile');
+  // Arriving from /signup/verify with ?plan= means they picked a plan on the
+  // marketing site and have just verified their email. Billing is the tab
+  // they came for; BillingEditor reads the same parameter and preselects it.
+  // Anything else — including a plan code this build does not know — falls
+  // through to the normal landing tab rather than opening an empty screen.
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === 'undefined') return 'profile';
+    return planFromQuery(window.location.search) ? 'billing' : 'profile';
+  });
   const dirtyRef = useRef(false); // set by the mounted SaveBar via DirtyContext
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tenants, setTenants] = useState([]);
@@ -734,6 +743,10 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   // instead of the raw Profile editor. Owners keep the Profile default.
   useEffect(() => {
     if (isOwner === false) setActiveTab((prev) => (prev === 'profile' ? 'home' : prev));
+    // An owner has no Billing tab — it belongs to a workspace, and they
+    // administer many. Only reachable by an owner opening a ?plan= link that
+    // was meant for a client, which would otherwise render an empty panel.
+    if (isOwner === true) setActiveTab((prev) => (prev === 'billing' ? 'profile' : prev));
   }, [isOwner]);
 
   // The grouped nav is the single source of truth for tab labels, so the mobile
@@ -4749,8 +4762,29 @@ function BillingEditor({ t, lang }) {
   const [sub, setSub] = useState(null);
   const [customer, setCustomer] = useState(null);
   const [payments, setPayments] = useState([]);
-  const [selected, setSelected] = useState(DEFAULT_PLAN_CODE);
+  // Preselected from `?plan=` when they arrive straight from signup, so the
+  // plan chosen on the marketing site is the one already highlighted here.
+  // Read once, in the initialiser: doing it in an effect would overwrite a
+  // choice they had already changed by hand.
+  const [selected, setSelected] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_PLAN_CODE;
+    return planFromQuery(window.location.search) || DEFAULT_PLAN_CODE;
+  });
   const [busy, setBusy] = useState(false);
+
+  // Both readers have taken their copy by now (Dashboard chose the tab, the
+  // initialiser above chose the plan), so drop it from the URL. Same reason
+  // the ?checkout= flag is dropped: a refresh or a back-navigation should not
+  // silently re-apply an intent from minutes ago and override a choice the
+  // person has since made by hand.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has('plan')) return;
+      url.searchParams.delete('plan');
+      window.history.replaceState({}, '', url.toString());
+    } catch (_) {}
+  }, []);
 
   const plans = useMemo(() => listPlans(), []);
   const billing = useMemo(() => deriveBilling(sub), [sub]);
