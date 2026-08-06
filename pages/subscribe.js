@@ -202,7 +202,14 @@ export default function Subscribe() {
                 <div className="co-mark ok" aria-hidden="true">✓</div>
                 <h1>{t('checkout_confirming_title')}</h1>
                 <p className="co-muted">{t('checkout_confirming_desc')}</p>
-                <a href="/admin" className="co-btn-link">{t('checkout_go_dashboard')}</a>
+                {/* ?checkout=success is the ONLY way the dashboard learns that
+                    this visit follows a real approval. Activation is
+                    asynchronous — the webhook landed ~40s later in the verified
+                    run — so without it the Billing tab fetches once, renders
+                    "pending", and the customer is told to refresh.
+                    Deliberately NOT on the cancelled screen: someone who backed
+                    out must not poll for an activation that is not coming. */}
+                <a href="/admin?checkout=success" className="co-btn-link">{t('checkout_go_dashboard')}</a>
               </div>
             </Card>
           )}

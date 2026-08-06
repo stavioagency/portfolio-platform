@@ -30,6 +30,7 @@ import {
   paymentTone, paymentLabel,
 } from '../lib/billing-status';
 import { subscribersCsv, exportFilename } from '../lib/billing-export';
+import { shouldPollForActivation, POLL_INTERVAL_MS } from '../lib/billing-poll';
 import { edgeErrorCode, billingActionError } from '../lib/billing-errors';
 import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
@@ -4788,6 +4789,51 @@ function BillingEditor({ t, lang }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // POST-CHECKOUT ACTIVATION POLL.
+  //
+  // Activation is asynchronous by design: the customer returns from PayPal the
+  // moment they approve, but the subscription only becomes real when the
+  // ACTIVATED webhook lands — ~40 seconds later in the verified run. Fetching
+  // once on mount therefore renders "pending" indefinitely.
+  //
+  // shouldPollForActivation() holds the decision (and its tests); this is the
+  // timer around it. See lib/billing-poll.js for why BOTH conditions matter.
+  const [pollAttempts, setPollAttempts] = useState(0);
+  const [returnedFromCheckout, setReturnedFromCheckout] = useState(false);
+
+  useEffect(() => {
+    try {
+      const flag = new URLSearchParams(window.location.search).get('checkout');
+      setReturnedFromCheckout(flag === 'success');
+    } catch (_) {}
+  }, []);
+
+  const polling = shouldPollForActivation({
+    state: billing.state, returnedFromCheckout, attempts: pollAttempts,
+  });
+
+  useEffect(() => {
+    if (!polling) {
+      // Resolved, or gave up. Drop the flag from the URL so a refresh or a
+      // back-navigation cannot restart the countdown.
+      if (returnedFromCheckout && billing.state !== 'pending') {
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('checkout');
+          window.history.replaceState({}, '', url.toString());
+        } catch (_) {}
+        setReturnedFromCheckout(false);
+      }
+      return undefined;
+    }
+    // A timeout re-armed by the attempt counter, not an interval: load() is
+    // async, and an interval would stack requests if one were slow.
+    const id = setTimeout(() => { setPollAttempts((n) => n + 1); load(); }, POLL_INTERVAL_MS);
+    // Cleared on unmount, or a tab switch mid-poll leaves a timer calling
+    // load() against a screen that is no longer mounted.
+    return () => clearTimeout(id);
+  }, [polling, returnedFromCheckout, billing.state, load]);
+
   // Checkout is a PAGE, not a modal, and it is the same page the owner's
   // payment link opens. One checkout, two doors — see /subscribe.
   function goToCheckout(planCode) {
@@ -4945,8 +4991,14 @@ function BillingEditor({ t, lang }) {
                 approval. Starting a fresh checkout is the way out. */}
             {billing.state === 'pending' && (
               <div className="bl-alert warn">
-                <span>{t('billing_finish_approval')}</span>
-                <Button size="sm" onClick={() => goToCheckout(sub.plan_code)}>{t('billing_subscribe')}</Button>
+                {/* "Finish approving at PayPal" is WRONG for someone who just
+                    did — they are waiting on our webhook, not on themselves.
+                    While polling, say what is actually happening; once the
+                    window closes, fall back to the actionable message. */}
+                <span>{polling ? t('billing_confirming_payment') : t('billing_finish_approval')}</span>
+                {!polling && (
+                  <Button size="sm" onClick={() => goToCheckout(sub.plan_code)}>{t('billing_subscribe')}</Button>
+                )}
               </div>
             )}
 
