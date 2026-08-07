@@ -79,39 +79,103 @@ function randomPassword(len = 14): string {
 const esc = (v: string) =>
   String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+/**
+ * Which language to write to this person in.
+ *
+ * The same priority the dashboard uses (pages/admin.js), for the same reasons:
+ *
+ *   admin_lang  what they CHOSE, by pressing the toggle in the admin. An
+ *               explicit preference outranks everything.
+ *   lang        what they signed up in, or were seeded with. A good guess.
+ *   tenant      the workspace's own default_lang. For an INVITED client this
+ *               is usually the only signal there is — see the caller.
+ *   "ar"        the product is Arabic-first.
+ *
+ * Duplicated verbatim in invite-client for the reason the template below is
+ * duplicated: these deploy independently and a shared module is a deploy-order
+ * hazard. tests/client-email-lang.test.mjs fails if the two drift.
+ */
+export function pickLang(
+  meta: Record<string, unknown> | null | undefined,
+  tenantDefault?: string | null,
+): "ar" | "en" {
+  const ok = (v: unknown) => (v === "ar" || v === "en" ? v : null);
+  return ok(meta?.admin_lang) ?? ok(meta?.lang) ?? ok(tenantDefault) ?? "ar";
+}
+
+/**
+ * The credentials email, in one language or the other.
+ *
+ * Pure and exported so both branches can actually be rendered and asserted from
+ * Node — there is no Deno on the machine this is written on, and an email
+ * nobody can test is an email that quietly goes out in the wrong language.
+ */
+export function credentialsEmail(
+  lang: "ar" | "en",
+  v: { username: string; password: string; workspace: string; adminUrl: string },
+): { subject: string; html: string } {
+  const ar = lang === "ar";
+  const t = ar
+    ? {
+      subject: `تفاصيل الدخول إلى ${v.workspace}`,
+      title: "موقعك جاهز",
+      intro: `تم إنشاء حساب لك على <strong>${esc(v.workspace)}</strong>. سجّل دخولك لإضافة أعمالك، ثم اجعل الموقع على ذوقك.`,
+      username: "اسم المستخدم",
+      password: "كلمة مرور مؤقتة",
+      cta: "تسجيل الدخول",
+      footer:
+        "سيُطلب منك اختيار كلمة مرور خاصة بك عند أول تسجيل دخول، وتتوقف هذه عن العمل حينها. إن لم تكن تتوقع هذه الرسالة فتجاهلها.",
+    }
+    : {
+      subject: `Your ${v.workspace} website — sign-in details`,
+      title: "Your website is ready",
+      intro: `An account has been created for you on <strong>${esc(v.workspace)}</strong>. Sign in below to add your work, then make it yours.`,
+      username: "Username",
+      password: "Temporary password",
+      cta: "Sign in",
+      footer:
+        "You will be asked to choose your own password the first time you sign in — this one stops working then. If you did not expect this email, you can ignore it.",
+    };
+
+  // dir on the wrapper, not just the document: mail clients strip <html> and
+  // an Arabic block laid out left-to-right reads as broken, not as translated.
+  const html = `
+<div dir="${ar ? "rtl" : "ltr"}" lang="${lang}" style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:28px 24px;color:#0C1530;text-align:${ar ? "right" : "left"}">
+  <h1 style="font-size:20px;margin:0 0 6px">${t.title}</h1>
+  <p style="font-size:14px;line-height:1.6;color:#475069;margin:0 0 20px">
+    ${t.intro}
+  </p>
+  <div style="background:#F4F6FB;border:1px solid #DDE3F0;border-radius:12px;padding:16px;margin-bottom:20px">
+    <p style="margin:0 0 10px;font-size:12px;color:#475069">${t.username}</p>
+    <p style="margin:0 0 16px;font-size:16px;font-family:ui-monospace,Menlo,monospace" dir="ltr"><strong>${esc(v.username)}</strong></p>
+    <p style="margin:0 0 10px;font-size:12px;color:#475069">${t.password}</p>
+    <p style="margin:0;font-size:16px;font-family:ui-monospace,Menlo,monospace" dir="ltr"><strong>${esc(v.password)}</strong></p>
+  </div>
+  <p style="margin:0 0 20px">
+    <a href="${esc(v.adminUrl)}" style="display:inline-block;background:#2C6FE0;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600">${t.cta}</a>
+  </p>
+  <p style="font-size:13px;line-height:1.6;color:#475069;margin:0">
+    ${t.footer}
+  </p>
+</div>`;
+  return { subject: t.subject, html };
+}
+
 // Deliberately a copy of invite-client's template rather than a shared import:
 // these functions are deployed independently and have no bundler contract
 // between them, so a shared module is a deploy-order hazard for one saved edit.
 async function emailCredentials(
-  to: string, username: string, password: string, workspace: string,
+  to: string, username: string, password: string, workspace: string, lang: "ar" | "en",
 ): Promise<string | null> {
   if (!RESEND_API_KEY) return "not_configured";
-  const html = `
-<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:28px 24px;color:#0C1530">
-  <h1 style="font-size:20px;margin:0 0 6px">Your website is ready</h1>
-  <p style="font-size:14px;line-height:1.6;color:#475069;margin:0 0 20px">
-    An account has been created for you on <strong>${esc(workspace)}</strong>.
-    Sign in below to add your work, then make it yours.
-  </p>
-  <div style="background:#F4F6FB;border:1px solid #DDE3F0;border-radius:12px;padding:16px;margin-bottom:20px">
-    <p style="margin:0 0 10px;font-size:12px;color:#475069">Username</p>
-    <p style="margin:0 0 16px;font-size:16px;font-family:ui-monospace,Menlo,monospace"><strong>${esc(username)}</strong></p>
-    <p style="margin:0 0 10px;font-size:12px;color:#475069">Temporary password</p>
-    <p style="margin:0;font-size:16px;font-family:ui-monospace,Menlo,monospace"><strong>${esc(password)}</strong></p>
-  </div>
-  <p style="margin:0 0 20px">
-    <a href="${esc(ADMIN_URL)}" style="display:inline-block;background:#2C6FE0;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600">Sign in</a>
-  </p>
-  <p style="font-size:13px;line-height:1.6;color:#475069;margin:0">
-    You will be asked to choose your own password the first time you sign in — this one
-    stops working then. If you did not expect this email, you can ignore it.
-  </p>
-</div>`;
+  const { subject, html } = credentialsEmail(lang, {
+    username, password, workspace, adminUrl: ADMIN_URL,
+  });
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: MAIL_FROM, to: [to], subject: `Your ${workspace} website — sign-in details`, html }),
+      body: JSON.stringify({ from: MAIL_FROM, to: [to], subject, html }),
     });
     if (!res.ok) return `resend_${res.status}: ${(await res.text()).slice(0, 200)}`;
     return null;
@@ -288,8 +352,15 @@ Deno.serve(async (req: Request) => {
   if (!membership) return json({ error: "not_a_client" }, 404);
 
   const { data: tenantRow } = await admin.from("tenants")
-    .select("slug, name").eq("id", membership.tenant_id).maybeSingle();
+    .select("slug, name, default_lang").eq("id", membership.tenant_id).maybeSingle();
   const workspace = tenantRow?.name || tenantRow?.slug || "your website";
+
+  // Unlike invite-client, the account EXISTS here, so the full priority applies:
+  // if they have ever pressed the language toggle, admin_lang says so and wins.
+  // The tenant default is the backstop for the clients invited before `lang`
+  // was seeded at creation — as of 2026-08-07 that is most of them, so this
+  // fallback is doing real work rather than covering a theoretical case.
+  const lang = pickLang(found.user.user_metadata, tenantRow?.default_lang);
 
   // ---- Change the address only. No password is touched, so a client who
   // already signed in successfully keeps working.
@@ -324,7 +395,7 @@ Deno.serve(async (req: Request) => {
   if (pwErr) return json({ error: "password_update_failed", detail: pwErr.message }, 500);
 
   const to = String(found.user.email ?? "");
-  const mailError = to ? await emailCredentials(to, username, temp_password, workspace) : "no_address";
+  const mailError = to ? await emailCredentials(to, username, temp_password, workspace, lang) : "no_address";
 
   // The password is returned whether or not the mail left, so a send failure
   // still leaves the owner holding something they can deliver by hand.
