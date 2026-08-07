@@ -2,9 +2,14 @@
 -- SECTION J — our own password reset, off Supabase's mailer
 -- ############################################################################
 -- ┌──────────────────────────────────────────────────────────────────────────┐
--- │ NOT YET APPLIED. Run this in the SQL editor of gphrzvjlstznhypcfgre      │
--- │ (or via apply_migration) BEFORE deploying request-password-reset /       │
--- │ complete-password-reset — both functions fail closed without this table. │
+-- │ APPLIED to gphrzvjlstznhypcfgre, 2026-08-08, alongside the deploy of     │
+-- │ request-password-reset / complete-password-reset — both functions fail   │
+-- │ closed without this table.                                               │
+-- │                                                                          │
+-- │ Every statement is idempotent (create table / index if not exists, and   │
+-- │ a repeatable enable + revoke), so re-running it is safe. Do that rather  │
+-- │ than assume: run the VERIFY block at the bottom of this file to confirm  │
+-- │ the table, its RLS state, and both indexes are actually present.         │
 -- └──────────────────────────────────────────────────────────────────────────┘
 --
 -- WHY THIS EXISTS

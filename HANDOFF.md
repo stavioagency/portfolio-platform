@@ -411,6 +411,7 @@ Passwords are created in exactly two places and updated in three:
 | AccountEditor | re-auth, HIBP check, then `auth.updateUser({ password })` |
 | `reset-client-password` | generates a NEW password (destructive — see below) |
 | `client-recovery` → `send_welcome` | generates a NEW password (destructive) |
+| `complete-password-reset` | the customer's own choice, against a single-use token |
 
 ### Known issues, in the order they cause support load
 
@@ -429,22 +430,34 @@ for the common case — when `last_sign_in_at IS NULL` there is no working
 password to protect, so re-issuing costs nothing. Fall back to the destructive
 path only when they have actually signed in.
 
-**2. Self-serve password recovery has almost certainly never worked.** Across 14
-users: `confirmation_sent_at` is null for ALL of them and `recovery_sent_at` is
-set for only 2. Supabase's mailer is effectively unconfigured — which is exactly
-why signup verification was built on Resend (§7c). A customer clicks "forgot
-password", nothing arrives, and they conclude their password broke.
+**2. Self-serve password recovery had almost certainly never worked.** ✅ FIXED.
+Across 14 users: `confirmation_sent_at` was null for ALL of them and
+`recovery_sent_at` set for only 2. Supabase's mailer is effectively
+unconfigured — which is exactly why signup verification was built on Resend
+(§7c). A customer clicked "forgot password", nothing arrived, and they concluded
+their password had broken.
 
-*Future fix:* move password reset onto Resend, reusing
-`_shared/signup-token.ts` with a `reset_password` purpose claim.
+*Fixed by* moving reset onto Resend: `request-password-reset` mints a token and
+sends a branded, per-language mail; `/reset-password` collects the new password;
+`complete-password-reset` spends the token and writes it. `resetPasswordForEmail`
+is gone from the codebase. Needs
+`supabase/sections/section-j-password-reset.sql` applied and both functions
+deployed with `--no-verify-jwt`.
+
+*Not* built on `_shared/signup-token.ts` as this section originally proposed. A
+stateless HMAC token cannot be revoked or spent, and a reset link must be both —
+see the reasoning at the top of the migration.
 
 **3. Supabase recovery links are single-use and cannot be made otherwise** (§9).
-A mail scanner pre-fetching one burns it, and the user sees "link expired" for a
-link they never clicked. Removing that confusing message means removing the
-dependency on single-use links, not rewording it.
+✅ NO LONGER APPLIES to password reset, which no longer uses them. A mail scanner
+pre-fetching one burned it, and the user saw "link expired" for a link they
+never clicked.
 
-*Future fix:* the same reusable, expiring signed token the signup flow already
-uses successfully.
+Our own reset token IS single-use, and that is safe for the reason the Supabase
+one was not: `/reset-password` renders a form on GET and calls nothing. The
+token is spent by the POST a human causes by submitting, which a scanner never
+performs. Anything that adds a validate-on-load call to that page brings the
+whole bug back — `tests/password-reset.test.mjs` fails if one appears.
 
 ### Two guardrails for any auth change
 

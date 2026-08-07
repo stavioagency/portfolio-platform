@@ -5,11 +5,15 @@ code path and no deploy touches them: they live in the dashboard, under
 **Authentication → Emails → Templates**, and are edited by hand.
 
 That is the whole reason this file exists. Every other email the platform sends
-(`invite-client`, `client-recovery`) is generated in an Edge Function, is
-covered by `tests/client-email-lang.test.mjs`, and picks its language per
-recipient. These cannot do either, so the wording is kept here — otherwise the
-only copy of it is a textarea in a dashboard, which is how the previous version
-of this template got lost.
+(`invite-client`, `client-recovery`, `signup-start`, and now
+`request-password-reset`) is generated in an Edge Function, is covered by a test
+(`tests/client-email-lang.test.mjs`, `tests/password-reset.test.mjs`), and picks
+its language per recipient. These cannot do either, so the wording is kept here
+— otherwise the only copy of it is a textarea in a dashboard, which is how the
+previous version of this template got lost.
+
+**As of the password-reset move, no template in this file is on a live path.**
+Every flow this product actually runs now sends its own mail through Resend.
 
 ---
 
@@ -32,7 +36,22 @@ Keep the two halves saying the same thing. If you edit one, edit the other.
 
 ---
 
-## Reset Password
+## Reset Password — RETIRED, kept as a fallback
+
+> **Nothing triggers this template any more.** Password reset moved off
+> Supabase's mailer onto Resend: the sign-in screen calls
+> `request-password-reset`, which sends its own branded, per-language mail and
+> links to `/reset-password`. See `supabase/functions/request-password-reset/`
+> and `tests/password-reset.test.mjs`.
+>
+> It is left in the dashboard, and written down here, because
+> `resetPasswordForEmail()` is one line away from coming back — and if it ever
+> does, an unstyled default template is worse than this one. It is dead weight,
+> not a live path.
+>
+> The bilingual argument below is exactly why the new mail is better: our
+> function knows who it is writing to and sends **one** language, which this
+> template could never do.
 
 **Authentication → Emails → Templates → Reset Password**
 
