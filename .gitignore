@@ -22,6 +22,11 @@ yarn-error.log*
 # Vercel
 .vercel
 
+# Supabase CLI local state, written by `supabase link`. Machine-specific, and
+# `pooler-url` carries a database connection string — this is the .env of the
+# CLI and belongs in the repo no more than one does.
+supabase/.temp/
+
 # macOS
 .DS_Store
 
