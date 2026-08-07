@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolvePlanCode, isPlanCodeShape, planFromQuery } from '../lib/signup-intent.js';
-import { listPlans, DEFAULT_PLAN_CODE, COMP_PLAN_CODE } from '../lib/billing-plans.js';
+import { listPlans, allPlans, DEFAULT_PLAN_CODE, COMP_PLAN_CODE } from '../lib/billing-plans.js';
 
 test('every plan in the catalogue is accepted', () => {
   const codes = listPlans().map((p) => p.code);
@@ -41,6 +41,22 @@ test('an unknown plan is no preference, never a guess', () => {
   assert.equal(planFromQuery('?plan=free'), null);
   assert.equal(planFromQuery('?lang=en'), null, 'no plan param at all');
   assert.equal(planFromQuery(''), null);
+});
+
+test('a hidden plan can never be selected', () => {
+  // `test` is the internal one-cent plan — "never sold, never shown to a
+  // customer". It IS in PLAN_DEFS, so a catalogue check written against
+  // getPlan() accepts it and /signup?plan=test preselects a plan that no
+  // picker on the page can even render. Membership is of listPlans(), the
+  // sellable set, for exactly this reason.
+  const hidden = allPlans()
+    .map((p) => p.code)
+    .filter((code) => !listPlans().some((p) => p.code === code));
+  assert.ok(hidden.length >= 1, 'catalogue should still have a hidden plan to guard');
+  for (const code of hidden) {
+    assert.equal(resolvePlanCode(code), null, `hidden plan ${code} must not resolve`);
+    assert.equal(planFromQuery(`?plan=${code}`), null, `?plan=${code} must not resolve`);
+  }
 });
 
 test('the comped plan can never be selected', () => {
