@@ -169,7 +169,11 @@ export default function VerifySignup() {
                 <h1>{t('verify_failed_title')}</h1>
                 <p className="vf-muted">{detail || t('verify_failed_desc')}</p>
                 <a href={signupHref} className="vf-btn">{t('verify_start_again')}</a>
-                <a className="vf-link" href="https://wa.me/966505796218">{t('checkout_contact_us')}</a>
+                {/* Same support number as /subscribe, and for the same reason:
+                    verification failed and there is nothing left for them to
+                    press. A different number was here until 2026-08-07 and is
+                    no longer answered. */}
+                <a className="vf-link" href="https://wa.me/966505452943">{t('checkout_contact_us')}</a>
               </div>
             )}
           </Card>

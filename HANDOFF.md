@@ -312,12 +312,24 @@ route (`invite-client`, section 7) is unaffected and stays the way an existing
 client is onboarded.
 
 ```
-/signup → signup-start → Resend verification email
-        → /signup/verify?t=… → signup-verify
+/signup?lang=…&plan=… → signup-start → Resend verification email
+        → /signup/verify?t=…&lang=… → signup-verify
               confirms the email in Supabase, creates the workspace
-        → sign in → /subscribe (billing door 1) → PayPal
+        → Continue → /admin?plan=…&lang=… → sign in
+        → Billing tab (plan preselected) → checkout → /subscribe → PayPal
         → ACTIVATED webhook → subscription active AND tenant status → active
 ```
+
+The customer never types `/subscribe` and is never sent there by a link: the
+Billing tab navigates there once they press subscribe, with a session already
+in hand. BILLING.md is the authority on why a link straight to `/subscribe` is
+a dead end.
+
+`lang` and `plan` ride the whole way. `plan` is stored on the account by
+signup-start and read back by signup-verify, because the verification email is
+usually opened on another device; `lang` travels the same way, with the URL
+beating stored preference at every hop. Neither is trusted for pricing —
+billing-checkout resolves the plan against `provider_plans`.
 
 - **Supabase's built-in confirmation mailer is NOT used.** It has never
   delivered a message on this project — every account was created by

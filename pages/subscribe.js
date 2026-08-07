@@ -189,7 +189,12 @@ export default function Subscribe() {
                 <div className="co-mark warn" aria-hidden="true">!</div>
                 <h1>{t('checkout_link_invalid_title')}</h1>
                 <p className="co-muted">{t('checkout_link_invalid_desc')}</p>
-                <a className="co-link" href="https://wa.me/966505796218">{t('checkout_contact_us')}</a>
+                {/* Support, not sales — this is the dead end where a checkout
+                    link turned out to be invalid, so the person needs a human.
+                    A different number was here until 2026-08-07 and is no
+                    longer answered; the digits are deliberately not repeated,
+                    so grepping for them finds nothing that still dials. */}
+                <a className="co-link" href="https://wa.me/966505452943">{t('checkout_contact_us')}</a>
               </div>
             </Card>
           )}

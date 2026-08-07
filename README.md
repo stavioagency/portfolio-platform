@@ -30,9 +30,19 @@ One app and one Supabase project serve every client. Each client is a **tenant**
    enough to build or run tests, but every data-driven screen will be empty.
 3. `npm run dev`, then sign in at `/admin` with a username and password.
 
-**There is no per-client setup.** Clients are onboarded from inside the admin
-(Clients → "+ Add client"), which creates their workspace and account together.
-See HANDOFF.md section 7.
+**There is no per-client setup**, and there are two ways a workspace comes into
+existence:
+
+- **Self-signup.** A visitor arrives from the marketing site at
+  `/signup?lang=ar|en&plan=monthly|yearly`, confirms their email, and the
+  workspace is created for them — disabled until they pay. This is the public
+  route and needs nobody on our side.
+- **Owner-invited.** Clients → "+ Add client" creates the workspace and the
+  account together, the way it always did. Still right for a done-for-you sale.
+
+Both end at the same place; they differ only in who presses the buttons. See
+HANDOFF.md section 7 for the operator route and 7c for self-signup, and
+BILLING.md for where each one meets checkout.
 
 **Database changes** go in `supabase/sections/` and are applied by hand; then
 update `supabase/SCHEMA.sql` to match. Never run anything in `supabase/history/` —
