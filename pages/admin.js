@@ -3145,6 +3145,21 @@ function TenantAdminSection({ lang, part = 'settings' }) {
   const [invSlug, setInvSlug] = useState('');
   const [invSlugTouched, setInvSlugTouched] = useState(false);
   const invSlugPreview = normalizeSlug(invSlug || invName);
+  // The client's language, chosen by the owner at creation. This used to be
+  // hardcoded 'ar' here, which made invite-client's whole language decision a
+  // formality: the tenant's default_lang is THE ONLY signal it has (there is no
+  // account yet to carry admin_lang or lang), so every invited client was
+  // Arabic no matter who they were, and nothing in the UI could change it —
+  // the Account tab's language control writes profile.default_lang, a
+  // different column governing the public site.
+  //
+  // It decides more than the email: invite-client seeds the new account's
+  // `lang` from it, so it is also the language the client's dashboard opens in
+  // on their first sign-in, and the fallback for a later client-recovery send.
+  //
+  // Defaults to the language the owner is working in, which is right far more
+  // often than a fixed value and is still one visible dropdown away from wrong.
+  const [invLang, setInvLang] = useState(lang === 'en' ? 'en' : 'ar');
   // Credentials to hand to the client. Held only in memory, shown once.
   const [invCreds, setInvCreds] = useState(null);
   // Inviting a client CREATES THAT CLIENT'S OWN WORKSPACE. It used to attach them to
@@ -3170,7 +3185,7 @@ function TenantAdminSection({ lang, part = 'settings' }) {
     try {
       // 1) The client's own workspace.
       const { data: tRow, error: tErr } = await supabase.from('tenants')
-        .insert({ slug: s, name: invName.trim() || s, default_lang: 'ar', status: 'active' })
+        .insert({ slug: s, name: invName.trim() || s, default_lang: invLang, status: 'active' })
         .select().single();
       if (tErr) {
         // A duplicate slug is the common case and the message is cryptic.
@@ -3185,7 +3200,12 @@ function TenantAdminSection({ lang, part = 'settings' }) {
       // 2) Its profile row. The Section F trigger has already enrolled every
       //    platform owner on this tenant, so this write is permitted.
       const { error: pErr } = await supabase.from('profile')
-        .insert({ tenant_id: tRow.id, default_lang: 'ar' });
+        //    Same choice, deliberately: this column is the PUBLIC site's default
+        //    language, which is a different question from the tenant's, but not
+        //    one the owner should have to answer twice at creation. Both were
+        //    hardcoded 'ar' before. The client can change this one themselves in
+        //    Account → Default language, which writes here and nowhere else.
+        .insert({ tenant_id: tRow.id, default_lang: invLang });
       if (pErr) { setInvErr(pErr.message || String(pErr)); return; }
 
       // 3) The client's login, scoped to the workspace we just made.
@@ -3483,6 +3503,15 @@ function TenantAdminSection({ lang, part = 'settings' }) {
         {invSlugPreview && (
           <p className="hint" dir="ltr" style={{ marginTop: -4 }}>/{invSlugPreview}</p>
         )}
+        <Field id="inv-lang" label={ar ? 'لغة العميل' : "Client's language"}>
+          <select id="inv-lang" value={invLang} onChange={(e) => setInvLang(e.target.value)}>
+            <option value="ar">العربية (Arabic)</option>
+            <option value="en">English</option>
+          </select>
+        </Field>
+        <p className="hint" style={{ marginTop: -4 }}>{ar
+          ? 'لغة لوحة التحكم عند أول دخول للعميل، ولغة موقعه، ولغة أي بريد نرسله له لاحقًا. يستطيع تغييرها بنفسه بعد الدخول.'
+          : "The language their dashboard opens in, their site's default, and any email we send them later. They can change it themselves after signing in."}</p>
         <Field id="inv-email" label={ar ? 'البريد الإلكتروني' : 'Email'}>
           <input id="inv-email" type="email" dir="ltr" value={invEmail} onChange={(e) => setInvEmail(e.target.value)} placeholder="client@email.com" />
         </Field>
