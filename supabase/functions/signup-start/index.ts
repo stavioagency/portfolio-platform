@@ -144,6 +144,25 @@ Deno.serve(async (req: Request) => {
         // Only when this attempt named one, so returning without a `?plan=`
         // keeps whatever the first attempt chose rather than erasing it.
         ...(plan ? { pending_plan: plan } : {}),
+        // The plan is kept from last time; the language is NOT. They are
+        // remembered for opposite reasons. A plan is a decision made once, on
+        // a pricing card, and a later visit that names no plan has not
+        // unmade it. A language is not a decision at all — it is which
+        // version of the site the person is reading RIGHT NOW, and this
+        // attempt is the freshest evidence of that.
+        //
+        // Concretely: someone starts on the Arabic site, abandons, and comes
+        // back through the English CTA. `lang` written once at account
+        // creation would leave them an Arabic account — so the email they
+        // just triggered is English while their public site defaults to
+        // Arabic. Refreshing it here keeps the account and the email saying
+        // the same thing, which is what signup-verify reads back for
+        // `default_lang` and what the dashboard now seeds itself from.
+        //
+        // This is unconditional where the plan is conditional, because `lang`
+        // is never absent: it is resolved to "ar" or "en" above and always
+        // reflects the request that is being answered.
+        lang,
         verification_sent_at: new Date().toISOString(),
       },
     });

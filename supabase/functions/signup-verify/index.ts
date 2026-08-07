@@ -26,8 +26,9 @@
 // run and to return the same success.
 //
 // Body:    { token }
-// Returns: { ok, slug, email, plan } on success; a specific error otherwise.
-// `plan` is the code chosen on the marketing site, or null.
+// Returns: { ok, slug, email, plan, lang } on success; a specific error
+// otherwise. `plan` is the code chosen on the marketing site, or null;
+// `lang` is the language they signed up in, always "ar" or "en".
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { cors, json } from "../_shared/http.ts";
@@ -63,6 +64,13 @@ Deno.serve(async (req: Request) => {
     // Never used to price anything: billing-checkout resolves it against
     // `provider_plans` when they actually pay.
     const plan = String(meta.pending_plan ?? "").trim() || null;
+    // The language they signed up in, handed back for the same reason as the
+    // plan: the verification link is usually opened on a device that has
+    // never seen this site, so nothing in that browser knows. The link itself
+    // carries `&lang=` and wins where it is present — this is what the page
+    // falls back to instead of assuming Arabic, and what it passes on to the
+    // dashboard. Normalised the same way signup-start stores it.
+    const lang = meta.lang === "en" ? "en" : "ar";
 
     // ONE WORKSPACE PER USER. Checked before anything is written, and backed by
     // the partial unique index from section I so the rule holds even if this
@@ -82,7 +90,7 @@ Deno.serve(async (req: Request) => {
       if (!user.email_confirmed_at) await confirmEmail(admin, userId, meta);
       // deno-lint-ignore no-explicit-any
       const slug = (existingMembership as any).tenants?.slug ?? null;
-      return json({ ok: true, already: true, slug, email, plan });
+      return json({ ok: true, already: true, slug, email, plan, lang });
     }
 
     const slug = String(meta.pending_slug ?? "").trim().toLowerCase();
@@ -148,7 +156,7 @@ Deno.serve(async (req: Request) => {
     const { error: profileErr } = await admin.from("profile").insert({ tenant_id: tenant.id });
     if (profileErr) console.warn("[signup-verify] profile not created:", profileErr.message);
 
-    return json({ ok: true, slug: tenant.slug, email, tenant_id: tenant.id, plan });
+    return json({ ok: true, slug: tenant.slug, email, tenant_id: tenant.id, plan, lang });
   } catch (err) {
     console.error("[signup-verify] unexpected:", err);
     return json({ error: "verification_failed" }, 500);

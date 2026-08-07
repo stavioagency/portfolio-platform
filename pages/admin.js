@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback, createContext, useContext } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
 import { supabase } from '../lib/supabase';
 import { normalizeHost } from '../lib/tenant';
-import { getTranslator } from '../lib/translations';
+import { getTranslator, resolveLang, isLang } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon, brandColor } from '../lib/brand-icons';
 import { navGroups } from '../lib/admin-nav';
@@ -123,9 +124,24 @@ function adminRedirectUrl() {
   return `${String(base).replace(/\/+$/, '')}/admin`;
 }
 
+// `?lang=` beats what this browser remembers, because it is the only thing a
+// customer arriving from /signup/verify brings with them: they may never have
+// opened this domain before, so localStorage is empty and the account has not
+// been read yet (there is no session at this point in the load). Without it
+// every self-signup lands on an Arabic dashboard regardless of the language
+// they signed up in.
+//
+// resolveLang() decides and validates both inputs — the same helper /signup
+// and /signup/verify use, not a third copy of the rule.
+function langFromUrl() {
+  if (typeof window === 'undefined') return null;
+  try { return new URLSearchParams(window.location.search).get('lang'); } catch (_) { return null; }
+}
 function readLang() {
   if (typeof window === 'undefined') return 'ar';
-  return localStorage.getItem('lang') || 'ar';
+  let stored = null;
+  try { stored = localStorage.getItem('lang'); } catch (_) {}
+  return resolveLang(langFromUrl(), stored);
 }
 function applyLang(lang) {
   if (typeof window === 'undefined') return;
@@ -179,6 +195,14 @@ export default function Admin() {
   // Reads the persisted flag, not just this page load's URL: the hash is gone after
   // a refresh, but the obligation is not.
   const [recoveryMode, setRecoveryMode] = useState(() => arrivedViaPasswordLink || isPasswordPending());
+  // The `?lang=` this page was opened with, captured in the initialiser so it
+  // survives being removed from the address bar below. Everything that needs
+  // to know "did the URL ask for a language" reads THIS, not the live URL —
+  // otherwise stripping the parameter would silently change the answer, and
+  // the account's language could then override the instruction the customer
+  // arrived with.
+  const [urlLang] = useState(() => (typeof window === 'undefined' ? null : langFromUrl()));
+  const router = useRouter();
   const t = getTranslator(lang);
 
   useEffect(() => {
@@ -232,13 +256,52 @@ export default function Admin() {
   // Apply the account's remembered language once a session exists. Skipped when it
   // already matches, so this never fights the user mid-session, and flagged not to
   // write back — otherwise reading a value would immediately re-save it.
+  //
+  // TWO account values, in this order:
+  //
+  //   admin_lang  what they CHOSE, by pressing the language toggle in here.
+  //               An explicit preference, and it stays the override.
+  //   lang        what they signed up in, written by signup-start. Only a
+  //               seed: it says which version of the marketing site they were
+  //               reading, which is a good guess for a first session and
+  //               nothing more. Before this it was never read at all, so a
+  //               brand-new account — which by definition has no admin_lang —
+  //               had nothing to go on and defaulted to Arabic.
+  //
+  // An explicit `?lang=` outranks both and has already been applied by
+  // readLang(), so it is left alone here.
   useEffect(() => {
-    const saved = session?.user?.user_metadata?.admin_lang;
-    if (!saved || (saved !== 'ar' && saved !== 'en')) return;
-    if (saved === lang) return;
+    if (isLang(urlLang)) return;
+    const meta = session?.user?.user_metadata;
+    const saved = isLang(meta?.admin_lang) ? meta.admin_lang
+      : isLang(meta?.lang) ? meta.lang
+      : null;
+    if (!saved || saved === lang) return;
     setLangState(saved);
     applyLang(saved);
   }, [session?.user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Drop `?lang=` from the address bar once it has been read and stored.
+  //
+  // Through the ROUTER, not history.replaceState. A raw replaceState is
+  // silently undone here: Next re-syncs the address bar from its own route
+  // state after hydration, so the parameter reappears a moment later. Verified
+  // by watching it come back — the effect ran, the URL did not change.
+  //
+  // Deferred until the initial session load settles so this lands after that
+  // sync. `shallow` keeps it a URL edit and nothing more: no data fetch, no
+  // remount, so nothing on the page re-runs because of it.
+  //
+  // What it prevents: the value is already in localStorage (applyLang wrote
+  // it), so leaving the parameter in place would mean a refresh re-applies an
+  // instruction from before the user pressed the language toggle, silently
+  // undoing them. `urlLang` above keeps the "the URL asked" fact afterwards.
+  useEffect(() => {
+    if (loading || !isLang(urlLang)) return;
+    if (!router.isReady || !('lang' in router.query)) return;
+    const { lang: _dropped, ...rest } = router.query;
+    router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
+  }, [loading, urlLang, router.isReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function toggleLang() {
     setLang(lang === 'ar' ? 'en' : 'ar');
   }

@@ -13,7 +13,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Head from 'next/head';
 import { supabase } from '../../lib/supabase';
-import { getTranslator } from '../../lib/translations';
+import { getTranslator, resolveLang, isLang } from '../../lib/translations';
 import { resolvePlanCode } from '../../lib/signup-intent';
 import { edgeErrorCode } from '../../lib/billing-errors';
 import { Button, Card } from '../../components/ui';
@@ -33,14 +33,38 @@ export default function VerifySignup() {
   const t = useMemo(() => getTranslator(lang), [lang]);
   const ar = lang === 'ar';
 
+  // Every way out of this page carries the language. This is the last screen
+  // that still knows it: the dashboard has no session yet to read a preference
+  // from, and a visitor sent back to /signup after a dead link arrives as a
+  // stranger all over again. Dropping it here is how an English customer ends
+  // up on an Arabic dashboard — which is exactly what used to happen, because
+  // the Continue link passed `plan` and nothing else.
+  const adminHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (plan) params.set('plan', plan);
+    params.set('lang', lang);
+    return `/admin?${params.toString()}`;
+  }, [plan, lang]);
+  const signupHref = useMemo(() => `/signup?lang=${encodeURIComponent(lang)}`, [lang]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     // The email may be read on a device that has never seen this site, so the
     // link carries its own language rather than relying on stored preference.
+    // resolveLang() holds the rule — link first, then whatever this browser
+    // remembers — and validates both, rather than this page keeping a second
+    // copy of "is it ar or en" that can drift from the one in lib/.
     const fromLink = params.get('lang');
     let stored = null;
     try { stored = localStorage.getItem('lang'); } catch (_) {}
-    setLang(fromLink === 'en' || fromLink === 'ar' ? fromLink : (stored || 'ar'));
+    setLang(resolveLang(fromLink, stored));
+
+    // Whether anything here actually KNEW the language, as opposed to
+    // resolveLang falling through to its Arabic default. If nothing did, the
+    // account is asked below — a stripped link opened in a fresh browser is
+    // the one case where neither the URL nor localStorage can help, and it is
+    // also the case where guessing Arabic at an English customer is worst.
+    const knownLocally = isLang(fromLink) || isLang(stored);
 
     let storedTheme = 'dark';
     try { storedTheme = localStorage.getItem('admin_theme') || 'dark'; } catch (_) {}
@@ -68,6 +92,13 @@ export default function VerifySignup() {
         // retired between signup and verification simply drops out here, and
         // they land on Billing with the normal default selected.
         setPlan(resolvePlanCode(data?.plan));
+        // Last resort only. The link and this browser both had their say
+        // before the request went out, and either of them outranks the
+        // account: they describe where the person is reading now, the account
+        // describes where they were when they signed up. This fires when
+        // neither knew — and it is the difference between an English customer
+        // seeing their own language here and being handed Arabic by default.
+        if (!knownLocally && isLang(data?.lang)) setLang(data.lang);
         setPhase('done');
       } catch (err) {
         console.error('[verify] failed:', err);
@@ -118,7 +149,7 @@ export default function VerifySignup() {
                     Billing with that plan selected. Checkout is one press
                     away, and still a press — nobody is sent to PayPal by a
                     link they clicked in their inbox. */}
-                <a href={plan ? `/admin?plan=${encodeURIComponent(plan)}` : '/admin'} className="vf-btn">{t('verify_continue')}</a>
+                <a href={adminHref} className="vf-btn">{t('verify_continue')}</a>
                 <p className="vf-muted vf-small">{t('verify_next_hint')}</p>
               </div>
             )}
@@ -128,7 +159,7 @@ export default function VerifySignup() {
                 <div className="vf-mark warn" aria-hidden="true">!</div>
                 <h1>{t('verify_invalid_title')}</h1>
                 <p className="vf-muted">{t('verify_invalid_desc')}</p>
-                <a href="/signup" className="vf-btn">{t('verify_start_again')}</a>
+                <a href={signupHref} className="vf-btn">{t('verify_start_again')}</a>
               </div>
             )}
 
@@ -137,7 +168,7 @@ export default function VerifySignup() {
                 <div className="vf-mark bad" aria-hidden="true">×</div>
                 <h1>{t('verify_failed_title')}</h1>
                 <p className="vf-muted">{detail || t('verify_failed_desc')}</p>
-                <a href="/signup" className="vf-btn">{t('verify_start_again')}</a>
+                <a href={signupHref} className="vf-btn">{t('verify_start_again')}</a>
                 <a className="vf-link" href="https://wa.me/966505796218">{t('checkout_contact_us')}</a>
               </div>
             )}
