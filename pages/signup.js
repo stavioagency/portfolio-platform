@@ -15,13 +15,32 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { supabase } from '../lib/supabase';
 import { getTranslator, resolveLang } from '../lib/translations';
 import { planFromQuery } from '../lib/signup-intent';
 import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_CHARS } from '../lib/password-policy';
 import { slugError, suggestSlug } from '../lib/reserved-slugs';
 import { edgeErrorCode } from '../lib/billing-errors';
-import { Button, Card } from '../components/ui';
+// Straight from the files rather than through components/ui/index.js. That
+// barrel re-exports ten modules, and with no `sideEffects: false` in
+// package.json webpack cannot drop the ones this page never renders — the
+// icon set, ConfirmDialog and Toast were all measurably in the /signup chunks.
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+
+// NOT imported at the top. lib/supabase.js calls createClient() at module
+// scope, which drags supabase-js and GoTrue into the first paint of a page
+// that has no session and makes no request until the form is submitted:
+// 62 kB over the wire, 232 kB parsed, 39% of all the JavaScript here.
+//
+// So it is fetched in the submit handler instead, at the one moment it is
+// actually needed. Nothing about the request changes — same client, same
+// anon key, same `functions.invoke`. There is no auth state being skipped
+// because this page never had any: no getSession, no onAuthStateChange.
+//
+// Do NOT copy this to /admin or /subscribe. Both need the client at mount to
+// restore a session, and deferring it there would flash a signed-in user
+// through the sign-in screen.
+const loadSupabase = () => import('../lib/supabase').then((m) => m.supabase);
 
 export default function Signup() {
   const [lang, setLang] = useState('ar');
@@ -108,6 +127,9 @@ export default function Signup() {
 
     setPhase('sending');
     try {
+      // Awaited here, inside the phase the button is already disabled for, so
+      // the fetch is covered by the spinner the visitor is looking at anyway.
+      const supabase = await loadSupabase();
       const { data, error: fnErr } = await supabase.functions.invoke('signup-start', {
         body: {
           email: email.trim().toLowerCase(),
