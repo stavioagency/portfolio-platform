@@ -42,7 +42,13 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-const MAIL_FROM = Deno.env.get("MAIL_FROM") ?? "Designakum <onboarding@resend.dev>";
+// MUST match invite-client's default. It used to fall back to Resend's shared
+// onboarding@resend.dev sandbox address, which can only deliver to the Resend
+// account holder — every send to an actual client came back 403. A default that
+// silently cannot reach anyone is worse than no default, so this is the same
+// verified sender the working path uses. (.site, not .com — that is the domain
+// verified in Resend.)
+const MAIL_FROM = Deno.env.get("MAIL_FROM") ?? "Designakum <noreply@designakum.site>";
 const ADMIN_URL = Deno.env.get("ADMIN_URL") ?? "https://designakum.site/admin";
 
 const cors = {
@@ -164,10 +170,19 @@ export function credentialsEmail(
 // Deliberately a copy of invite-client's template rather than a shared import:
 // these functions are deployed independently and have no bundler contract
 // between them, so a shared module is a deploy-order hazard for one saved edit.
+//
+// Every failure is logged as well as returned. The return value reaches the owner
+// as one short line in the admin; the log is the only place the actual reason
+// survives, and "the email did not arrive" is otherwise unanswerable after the
+// fact. The password itself is NEVER logged — only who it was for and why the
+// send failed.
 async function emailCredentials(
   to: string, username: string, password: string, workspace: string, lang: "ar" | "en",
 ): Promise<string | null> {
-  if (!RESEND_API_KEY) return "not_configured";
+  if (!RESEND_API_KEY) {
+    console.error("[client-recovery] mail NOT sent: RESEND_API_KEY is unset on this function");
+    return "not_configured";
+  }
   const { subject, html } = credentialsEmail(lang, {
     username, password, workspace, adminUrl: ADMIN_URL,
   });
@@ -177,9 +192,19 @@ async function emailCredentials(
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from: MAIL_FROM, to: [to], subject, html }),
     });
-    if (!res.ok) return `resend_${res.status}: ${(await res.text()).slice(0, 200)}`;
+    if (!res.ok) {
+      const detail = (await res.text()).slice(0, 200);
+      // from= is here because a wrong/unverified sender is the failure this path
+      // actually hits, and Resend reports it as a generic 403.
+      console.error(
+        `[client-recovery] resend rejected ${res.status} to=${to} from=${MAIL_FROM} lang=${lang}: ${detail}`,
+      );
+      return `resend_${res.status}: ${detail}`;
+    }
+    console.log(`[client-recovery] mail sent to=${to} lang=${lang}`);
     return null;
   } catch (e) {
+    console.error(`[client-recovery] resend unreachable to=${to}: ${String(e).slice(0, 200)}`);
     return `resend_unreachable: ${String(e).slice(0, 200)}`;
   }
 }
@@ -395,7 +420,13 @@ Deno.serve(async (req: Request) => {
   if (pwErr) return json({ error: "password_update_failed", detail: pwErr.message }, 500);
 
   const to = String(found.user.email ?? "");
-  const mailError = to ? await emailCredentials(to, username, temp_password, workspace, lang) : "no_address";
+  let mailError: string | null;
+  if (to) {
+    mailError = await emailCredentials(to, username, temp_password, workspace, lang);
+  } else {
+    console.error(`[client-recovery] mail NOT sent: user ${user_id} has no email address`);
+    mailError = "no_address";
+  }
 
   // The password is returned whether or not the mail left, so a send failure
   // still leaves the owner holding something they can deliver by hand.

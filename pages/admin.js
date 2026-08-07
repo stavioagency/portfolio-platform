@@ -4407,38 +4407,39 @@ function OwnerClientsOverview({ lang, onOpen }) {
     }
   }
 
-  // Recovery path for a client who lost their password. Without this the only fix was
-  // deleting the workspace and rebuilding it, which loses their site — and a reset
-  // EMAIL is not an option while SMTP is unconfigured.
+  // Recovery path for a client who lost their password.
+  //
+  // WHY THIS GOES THROUGH client-recovery AND NOT reset-client-password
+  // -------------------------------------------------------------------
+  // Both functions do the identical thing to the account — same 14-character
+  // alphabet, same must_set_password re-arm, same owner and platform-owner
+  // guards. The ONLY difference is that client-recovery/send_welcome then mails
+  // the branded credentials in the client's own language, and
+  // reset-client-password has no mail path at all. Pointing this button at the
+  // one without email is why every reset ended with the owner opening Mail by
+  // hand: the handoff panel was not falling back after a failed send, it was
+  // reporting, correctly, that nothing had ever been attempted.
+  //
+  // reset-client-password stays as the FALLBACK, for the one case that made it
+  // worth having: client-recovery not being reachable. It still resets, and the
+  // owner still gets the password on screen to deliver themselves.
   async function resetPassword(row) {
     const m = row.member;
     if (!m) return;
     const ok = await confirm({
       title: ar ? 'إعادة تعيين كلمة المرور؟' : 'Reset this password?',
       description: ar
-        ? `سيتم إنشاء كلمة مرور جديدة لـ ${m.email}. كلمتهم الحالية ستتوقف فورًا، وستظهر لك الجديدة مرة واحدة لترسلها لهم.`
-        : `A new password will be generated for ${m.email}. Their current one stops working immediately, and you will be shown the new one once to pass on.`,
+        ? `سيتم إنشاء كلمة مرور جديدة وتُرسل إلى ${m.email}. كلمتهم الحالية ستتوقف فورًا، وستظهر لك الجديدة مرة واحدة أيضًا.`
+        : `A new password will be generated and emailed to ${m.email}. Their current one stops working immediately, and you will also be shown the new one once.`,
       confirmLabel: ar ? 'إعادة التعيين' : 'Reset',
       cancelLabel: ar ? 'إلغاء' : 'Cancel',
       tone: 'danger',
     });
     if (!ok) return;
     setResetErr(''); setResetCreds(null); setResettingId(m.user_id);
-    try {
-      const { data, error } = await supabase.functions.invoke('reset-client-password', {
-        body: { user_id: m.user_id },
-      });
-      if (error) {
-        let msg = error.message;
-        try {
-          const b = await error.context?.json?.();
-          if (b?.detail) msg = `${b.error || 'reset_failed'}: ${b.detail}`;
-          else if (b?.error) msg = b.error;
-        } catch (_) {}
-        setResetErr(msg || (ar ? 'فشلت إعادة التعيين' : 'Reset failed'));
-        return;
-      }
-      if (data?.error) { setResetErr(data.detail ? `${data.error}: ${data.detail}` : data.error); return; }
+
+    // Shared by both routes so the panel is populated identically either way.
+    const issue = (data, emailed, emailError) => {
       const issued = {
         tenantId: row.id,
         workspace: workspaceLabel(row),
@@ -4448,12 +4449,55 @@ function OwnerClientsOverview({ lang, onOpen }) {
         username: data?.username || m.username,
         password: data?.temp_password || '',
         userId: m.user_id,
-        // reset-client-password does not send mail; the owner delivers it.
-        emailed: false,
-        emailError: null,
+        emailed,
+        emailError,
       };
       rememberCredentials(row.id, issued);
       setResetCreds(issued);
+    };
+
+    try {
+      const { data, error } = await supabase.functions.invoke('client-recovery', {
+        body: { action: 'send_welcome', user_id: m.user_id },
+      });
+      const failed = error || data?.error;
+      if (!failed) {
+        // The password was rotated AND the send was attempted. `emailed` is the
+        // function's own answer, so the panel's manual routes appear only when
+        // the mail genuinely did not leave — which is what they are for.
+        issue(data, data?.emailed === true, data?.email_error || null);
+        return;
+      }
+
+      // A real, explicable rejection — not a client of any workspace, a platform
+      // owner, a bad id. Retrying against the other function would fail the same
+      // way for the same reason, so say so instead of resetting anything.
+      const code = String(data?.error || error?.message || '');
+      const unreachable = /not.?found|failed to send|fetch|404/i.test(code);
+      if (!unreachable) {
+        setResetErr(recoveryError(failed, data, ar));
+        return;
+      }
+
+      // client-recovery is not deployed or not reachable. Reset anyway through
+      // the function that has no mail path, and let the panel say plainly that
+      // delivery is now the owner's job.
+      console.error('[reset] client-recovery unreachable, falling back to reset-client-password:', code);
+      const { data: fb, error: fbErr } = await supabase.functions.invoke('reset-client-password', {
+        body: { user_id: m.user_id },
+      });
+      if (fbErr) {
+        let msg = fbErr.message;
+        try {
+          const b = await fbErr.context?.json?.();
+          if (b?.detail) msg = `${b.error || 'reset_failed'}: ${b.detail}`;
+          else if (b?.error) msg = b.error;
+        } catch (_) {}
+        setResetErr(msg || (ar ? 'فشلت إعادة التعيين' : 'Reset failed'));
+        return;
+      }
+      if (fb?.error) { setResetErr(fb.detail ? `${fb.error}: ${fb.detail}` : fb.error); return; }
+      issue(fb, false, 'recovery_function_unavailable');
     } catch (err) {
       console.error('[reset] failed:', err);
       setResetErr(ar ? 'فشلت إعادة التعيين' : 'Reset failed');
