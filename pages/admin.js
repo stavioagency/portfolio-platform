@@ -108,15 +108,19 @@ function deleteDialog(t, title, description) {
   };
 }
 
-// Canonical admin URL for auth redirects (password reset + invites). Using ONE fixed
-// origin — instead of window.location.origin — means only this URL needs to be in the
-// Supabase "Redirect URLs" allowlist, no matter how many client custom domains exist.
-// Override per environment with NEXT_PUBLIC_ADMIN_URL; on localhost we keep the local
-// origin so dev password-reset works.
+// The canonical admin URL handed to a client in their credentials email. Using ONE
+// fixed origin — instead of window.location.origin — means only this URL needs to be
+// in the Supabase "Redirect URLs" allowlist, no matter how many client custom domains
+// exist. Override per environment with NEXT_PUBLIC_ADMIN_URL; on localhost we keep the
+// local origin so dev works.
 // The fallback below must ALWAYS be present in Supabase's Redirect URLs allowlist.
 // Supabase silently drops a redirect it does not recognise and falls back to the
 // Site URL, which is how password recovery once landed on a tenant homepage
 // instead of the reset screen (see c835317).
+//
+// Password reset no longer passes through here at all: it goes to
+// /reset-password with our own token, sent by request-password-reset. The
+// allowlist still matters for the remaining Supabase-issued links (invites).
 function adminRedirectUrl() {
   const isLocal = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
   const base = process.env.NEXT_PUBLIC_ADMIN_URL
@@ -484,6 +488,16 @@ function SignIn({ lang, toggleLang, theme, toggleTheme, linkError }) {
     }
   }
 
+  // Unchanged on screen. What changed is underneath: this used to hand the job
+  // to Supabase's own recovery mailer — the one that has effectively never
+  // delivered on this project (HANDOFF §7: recovery_sent_at set for 2 of 14
+  // users, confirmation_sent_at for none). It now calls request-password-reset,
+  // which sends a branded, language-matched link through Resend, the path
+  // signup verification already proved works here.
+  //
+  // The old API's name is deliberately not written out anywhere in this file:
+  // tests/password-reset.test.mjs greps for it to make sure no caller survives,
+  // and a mention in a comment is indistinguishable from a real one to grep.
   async function handleForgotSubmit(e) {
     e.preventDefault();
     setForgotLoading(true);
@@ -497,9 +511,18 @@ function SignIn({ lang, toggleLang, theme, toggleTheme, linkError }) {
         const { data } = await supabase.rpc('get_email_for_username', { p_username: raw.toLowerCase() });
         email = data || null;
       }
-      if (email) {
-        await supabase.auth.resetPasswordForEmail(email, { redirectTo: adminRedirectUrl() });
-      }
+      // The request goes out even when the username resolved to nothing, for
+      // the reason handleSubmit above spells out: returning early on an unknown
+      // identifier answers far faster than a real one, and that timing
+      // difference is itself the account-existence leak the generic message is
+      // meant to close. The endpoint answers { ok: true } to anything, so an
+      // address that cannot exist costs one no-op round-trip and nothing else.
+      await supabase.functions.invoke('request-password-reset', {
+        // `lang` is what THIS screen is being read in. The endpoint uses it only
+        // when the account itself has no preference — which is exactly the case
+        // that used to hand an English customer an Arabic email.
+        body: { email: email || `${raw.toLowerCase() || 'unknown'}@invalid.local`, lang },
+      });
     } catch (err) {
       // Swallow — the generic "if it exists, we sent a link" screen is shown
       // regardless, so a failure here must not reveal account existence.
