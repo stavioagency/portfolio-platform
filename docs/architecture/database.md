@@ -94,9 +94,11 @@ an Edge Function using the service role.
 
 | Function | Role |
 |---|---|
-| `is_tenant_admin(tid)` | **gates every write policy.** True for the tenant's own admins and for any platform owner. |
+| `is_tenant_admin(tid)` | **membership.** True for the tenant's own admins and for any platform owner. Gates the billing-table reads directly, and is one half of `can_edit_tenant()`. Deliberately has no billing component. |
 | `is_platform_owner()` | operator check; Edge Functions re-check it against the caller's own JWT. |
-| `tenant_has_active_subscription(tenant_id)` | **the entitlement rule.** `lib/billing-status.js` mirrors it for the UI; where they disagree, the database is right. |
+| `tenant_has_active_subscription(tenant_id)` | **the entitlement rule.** `lib/billing-status.js` mirrors it for the UI; where they disagree, the database is right. Granted to **anon** as well — `lib/tenant.js` gates public site rendering on it (Section L); it returns a bare boolean, and the RLS on `subscriptions` is untouched. |
+| `can_edit_tenant(tid)` | **gates every tenant-content write policy** (`profile`, `projects`, `tenant_domains`): owner, OR (admin AND entitled). Section K. |
+| `can_write_media(name)` | the storage equivalent: owner, OR (admin of the folder's tenant AND that tenant entitled). |
 | `get_email_for_username(username)` | username → email at sign-in. Must stay anon-callable. |
 | `list_workspace_members()` | owner-gated; returns empty to everyone else. |
 | `enroll_platform_owners()` | AFTER INSERT trigger on `tenants`. |

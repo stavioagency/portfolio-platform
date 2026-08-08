@@ -126,6 +126,24 @@ happened and looked like a broken page.
   tenant. **Never reintroduce a default tenant** — see
   [decisions/decisions.md](../decisions/decisions.md).
 
+- **Two independent gates decide whether a public site renders**, and they must
+  stay independent:
+  1. `tenants.status === 'disabled'` — the **operator's** decision. Manual, and
+     billing never writes it, in either direction.
+  2. **entitlement** — `tenant_has_active_subscription()` over RPC, evaluated
+     live at page load.
+
+  Both must pass. No column, sweep or cron represents the second one, so a
+  cancelled subscription serves until `current_period_end` and stops the moment
+  it passes, with nothing to go stale. `resolveTenantByHost()` applies gate 1
+  only — it answers *who owns this host*, not *may this render*, so anything
+  deciding to render must go through `resolveTenant()`.
+
+  **The entitlement gate fails OPEN**: an RPC error serves the site. Identity is
+  still fail-closed. The asymmetry is deliberate — failing open serves the
+  correct tenant who may not have paid, failing closed darkens every client site
+  on one bad response. See [billing.md](billing.md).
+
 - **An empty profile is not a missing profile.** A freshly created workspace has
   a profile row containing nothing; that is normal for every new client.
   `hasPublicContent()` decides whether the page renders or shows "setup needed".

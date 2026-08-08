@@ -17,17 +17,31 @@ self_signup`, `status = disabled`, membership `self_signup = true`, profile
 present, not entitled. **The `disabled → active` flip in `billing-webhook` v7 has
 never fired.** Until it does, the public funnel is unproven at its last step.
 
-### 2. Prove customer cancellation
+### 2. Prove customer cancellation — the part that is left
 
-The behaviour is built (see
-[architecture/billing.md §2](../architecture/billing.md)): cancel calls PayPal,
-sets `cancel_at_period_end`, leaves `status` to the webhook, and access continues
-to `current_period_end`. **Untested** against the live sandbox subscription
-`I-M65XW1E7MM82`. The four reliability fixes are deployed.
+The cancel → PayPal → webhook → row path is **proven in production**: two
+`BILLING.SUBSCRIPTION.CANCELLED` events processed clean, both leaving
+`status = canceled`, `cancel_at_period_end = true` and `current_period_end`
+intact and still entitled. Section K then wired entitlement into the write
+policies, so the lapse now actually revokes editing (proved against a real
+non-owner admin with the period end pushed into the past).
 
-This is the behaviour asked for in plain terms — cancel in January 2027 on a
-period ending August 2027 keeps access until August 2027 and stops renewal. It
-needs proving, not building.
+What is still owed:
+
+- **A yearly cancellation.** Both proven runs ended on a ~monthly period.
+  `billing-webhook`'s no-period-end fallback grants a flat **31 days**, so if
+  PayPal returns no `next_billing_time` on a cancelled yearly subscription, a
+  subscriber cancelling in month two would be silently cut from ten paid months
+  to one. Confirm what PayPal actually returns before trusting that branch.
+- **A cancellation initiated inside the customer's own PayPal account**, which
+  exercises the 422-already-cancelled path in `_shared/paypal.ts`.
+- **A `BILLING.SUBSCRIPTION.UPDATED` arriving while PayPal still reports ACTIVE
+  on a subscription we just cancelled.** `billing-webhook` line ~202 resets
+  `cancel_at_period_end` to false in that case, and the UI reverts to "renews
+  automatically". Narrow window, wrong direction.
+
+*(Section L closed the public-site half: the resolver now gates rendering on
+entitlement too. See [architecture/overview.md §5](../architecture/overview.md).)*
 
 ### 3. "Asked to set a password again after resetting" — reproduce it
 

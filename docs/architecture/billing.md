@@ -26,10 +26,28 @@ lives in code comments — start with `supabase/functions/_shared/provider.ts` a
   from PayPal means the customer approved it, not that it is paid. `pending`
   grants nothing. The browser never reports a payment.
 
-- **Entitlement is `tenant_has_active_subscription()` in Postgres**, called by
-  policies. `lib/billing-status.js` is the UI's mirror of that rule and is
-  unit-tested against it. Where the two disagree the database is right, and the
-  disagreement is the bug.
+- **Entitlement is `tenant_has_active_subscription()` in Postgres.** The write
+  policies on `profile`, `projects` and `tenant_domains` reach it through
+  `can_edit_tenant()` — *owner, OR (tenant admin AND paid up)* — and media
+  writes through `can_write_media()`. `lib/billing-status.js` is the UI's mirror
+  of that rule and is unit-tested against it. Where the two disagree the
+  database is right, and the disagreement is the bug.
+
+- **Entitlement gates WRITES, not reads.** A lapsed workspace keeps its
+  dashboard, its own content and its billing rows readable — deliberately, or
+  the customer could not reach the Billing tab to resubscribe. `is_tenant_admin()`
+  therefore has no billing component and must not grow one. What a lapsed
+  workspace loses is the ability to change anything.
+
+- **A lapsed workspace's public site stops rendering**, via a second gate in the
+  tenant resolver — `tenant_has_active_subscription()` over RPC, which anon may
+  execute (it returns a bare boolean and exposes no billing data). It is
+  **independent of `tenants.status`**: both gates must pass, so billing still
+  never writes that column and an operator's manual suspension is theirs alone.
+  Nothing is swept or scheduled; entitlement is evaluated at page load, so a
+  cancelled subscription serves until `current_period_end` and stops the moment
+  it passes. Unlike the write gate, this one **fails open** on an RPC error. See
+  [overview.md §5](overview.md).
 
 - **The browser cannot write any billing row.** There is no INSERT or UPDATE
   policy on any of the six billing tables — reads only. Every write is an Edge
