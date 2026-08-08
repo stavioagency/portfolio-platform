@@ -50,9 +50,45 @@ begin;
 -- TAKE A LIVE CLIENT'S SITE DOWN. A workspace that predates enforcement is
 -- granted, not stranded.
 --
+-- WHY created_via <> 'self_signup' — THIS CLAUSE IS THE WHOLE POINT
+-- -----------------------------------------------------------------
+-- "Predates enforcement" is the intent; "has no subscription row" is NOT the
+-- same thing, and the first version of this file used the latter. A self-signup
+-- customer who has verified their email but not yet paid is precisely a tenant
+-- with no subscription row, so the unqualified backfill comped them — granting
+-- free permanent entitlement to someone who never paid, which is the exact
+-- outcome this whole file exists to prevent.
+--
+-- It is worse than a leak, because it is terminal: billing-checkout refuses
+-- anyone already holding 'comped' (already_subscribed, 409), so the customer
+-- can never buy their way out, while tenants.status stays 'disabled' and their
+-- public site stays dark — only the ACTIVATED webhook flips that, and they can
+-- no longer generate one. Observed on three live workspaces created between
+-- 2026-08-06 and 2026-08-07 and comped by this file's first version on
+-- 2026-08-08; those rows are NOT corrected here — removing billing rows is a
+-- separate change from fixing the rule that writes them.
+--
+-- created_via is the right discriminator rather than a created_at cutoff:
+--   * A self-signup tenant CANNOT predate billing. Section I (signup) shipped
+--     after section H (billing), so the category is post-billing by
+--     construction. No magic timestamp is needed to say so.
+--   * The column is NOT NULL DEFAULT 'owner'. That is load-bearing: were it
+--     nullable, `<> 'self_signup'` would be NULL for a legacy row and silently
+--     exclude it, stranding exactly the pre-billing client this grant protects.
+--   * Self-signup workspaces that HAVE paid need no special case — they already
+--     have a subscription row, so `not exists` skips them anyway.
+--
+-- The comparison is `<>` and not `= 'owner'` deliberately: an unrecognised
+-- future created_via is granted rather than stranded, matching the invariant
+-- above. THE COST OF THAT CHOICE: if another self-serve signup path is ever
+-- added, its created_via value MUST be added to this exclusion, or it inherits
+-- the bug described above.
+--
 -- Idempotent by `where not exists` rather than ON CONFLICT: tenant_id is
 -- unique, but this way re-running also cannot touch a row that has since become
--- a real paid subscription.
+-- a real paid subscription. With the clause above, re-running is also safe over
+-- time rather than only once — an unpaid self-signup workspace is skipped on
+-- every run, not just the run that happened to precede it.
 -- plan_code is 'comped', matching COMP_PLAN_CODE in lib/billing-plans.js and
 -- the eleven rows section-h already wrote. lib/billing-status.js treats that
 -- code as granted access on sight, so a mismatch here would render as an
@@ -60,7 +96,8 @@ begin;
 insert into public.subscriptions (tenant_id, status, plan_code)
 select t.id, 'comped', 'comped'
   from public.tenants t
- where not exists (
+ where t.created_via <> 'self_signup'
+   and not exists (
    select 1 from public.subscriptions s where s.tenant_id = t.id
  );
 
@@ -157,14 +194,32 @@ commit;
 -- ============================================================================
 -- VERIFY (run after applying)
 -- ============================================================================
--- 1. Every tenant now has a subscription, and nothing that worked lost access.
+-- 1. Every tenant THAT SHOULD BE GRANTED has a subscription, and nothing that
+--    worked lost access.
 --
--- select (select count(*) from public.tenants)       as tenants,
---        (select count(*) from public.subscriptions) as subs,
+--    NOTE: "tenants == subs, unentitled == 0" was the assertion here originally
+--    and it is WRONG — it is the bug in section 1 restated as a check, which is
+--    why the bug passed its own verification. An unpaid self-signup workspace
+--    SHOULD have no subscription row and SHOULD be unentitled; that is the
+--    corrected behaviour, not a failure. Count the grantable population instead.
+--
+-- select (select count(*) from public.tenants where created_via <> 'self_signup')
+--          as grantable_tenants,
 --        (select count(*) from public.tenants t
---          where not public.tenant_has_active_subscription(t.id)) as unentitled;
---   -- tenants and subs must be EQUAL, and unentitled must be 0 immediately
---   -- after applying. Observed on 2026-08-08: 20 / 20 / 0, comped 11 -> 16.
+--          where t.created_via <> 'self_signup'
+--            and not exists (select 1 from public.subscriptions s
+--                             where s.tenant_id = t.id)) as ungranted,
+--        (select count(*) from public.tenants t
+--          where t.created_via <> 'self_signup'
+--            and not public.tenant_has_active_subscription(t.id)) as unentitled;
+--   -- ungranted and unentitled must BOTH be 0 immediately after applying.
+--   -- grantable_tenants was 14 of 20 on 2026-08-08.
+--
+--   -- Unpaid self-signup workspaces are expected to be unentitled. To see them:
+--   -- select t.slug, t.status from public.tenants t
+--   --  where t.created_via = 'self_signup'
+--   --    and not exists (select 1 from public.subscriptions s
+--   --                     where s.tenant_id = t.id);
 --
 -- 2. The policies actually changed.
 --
