@@ -4,7 +4,7 @@ A multi-tenant, bilingual (Arabic / English) portfolio platform. Built on Next.j
 
 One app and one Supabase project serve every client. Each client is a **tenant** with their own public site — a card showing their logo, name, banners, stats, projects and links — and their own dashboard to edit it without writing code. Tenant isolation is enforced by Postgres RLS.
 
-**Engineers: read [HANDOFF.md](HANDOFF.md) first.** It is the single source of project context. The live database schema is documented in [supabase/SCHEMA.sql](supabase/SCHEMA.sql).
+**Engineers and AI agents: read [docs/GRANDMASTER.md](docs/GRANDMASTER.md) first.** It is the index to the whole documentation system — read it, then only the one document it routes you to. The live database schema is documented in [supabase/SCHEMA.sql](supabase/SCHEMA.sql).
 
 ---
 
@@ -41,8 +41,9 @@ existence:
   account together, the way it always did. Still right for a done-for-you sale.
 
 Both end at the same place; they differ only in who presses the buttons. See
-HANDOFF.md section 7 for the operator route and 7c for self-signup, and
-BILLING.md for where each one meets checkout.
+[docs/architecture/auth.md](docs/architecture/auth.md) for both routes, and
+[docs/architecture/billing.md](docs/architecture/billing.md) for where each one
+meets checkout.
 
 **Database changes** go in `supabase/sections/` and are applied by hand; then
 update `supabase/SCHEMA.sql` to match. Never run anything in `supabase/history/` —
@@ -117,11 +118,15 @@ Analytics events are inserted by the public site on every page view / project vi
 
 - Public can **read** profile + projects (so the site renders for visitors)
 - Public can **insert** into `analytics_events` (so the site can log views)
-- Only users in `admin_usernames` can **write** to profile / projects or **read** analytics events
-- Only users in `admin_usernames` can upload / modify / delete in the `media` storage bucket
-- Auth.users without an `admin_usernames` row have read-only access — even if they sign up via Supabase Auth somehow
+- Every **write** is gated by `is_tenant_admin(tenant_id)` — true for that
+  tenant's own admins (`tenant_admins`) and for any platform owner
+  (`platform_owners`)
+- Storage writes to the `media` bucket are gated the same way
+- Entitlement (does this workspace have a live subscription) is decided in
+  Postgres by `tenant_has_active_subscription()`
+- No billing table is writable from the browser at all — reads only
 
-This is enforced by RLS policies set up in migration v6.
+Enforced by RLS. See [docs/architecture/database.md](docs/architecture/database.md).
 
 ---
 
@@ -138,16 +143,25 @@ This is enforced by RLS policies set up in migration v6.
 Check Vercel → your project → Logs. Almost always: env vars missing. Set them in Project → Settings → Environment Variables, then redeploy.
 
 **Can't sign into /admin**
-- Did you run the `INSERT INTO admin_usernames` step?
-- Is the user "Auto Confirmed" in Supabase → Authentication → Users?
-- Try resetting the password from Supabase Auth dashboard.
+- Does the user have an `admin_usernames` row (username login) and a
+  `tenant_admins` row for the workspace?
+- Is the user confirmed in Supabase → Authentication → Users?
+- See [docs/architecture/auth.md](docs/architecture/auth.md) before assuming it
+  is a data problem — at the last audit, none of them were.
+
+**No email arrived**
+Check `RESEND_API_KEY` in the Edge Function logs **first**. Mail failures are
+deliberately silent, so a missing key looks exactly like working software.
+[docs/architecture/emails.md](docs/architecture/emails.md).
 
 **Images not uploading**
 - Check the `media` bucket exists and is **Public**
-- After migration v6, only users in `admin_usernames` can upload — make sure the signed-in user is in that table
+- The signed-in user must be an admin of that tenant
 
 **Schema cache errors ("Could not find column X")**
-You haven't run a migration. Run all migrations in order (v2 → v6).
+A migration in `supabase/sections/` has not been applied. Apply it in the
+Supabase SQL editor, then update `supabase/SCHEMA.sql`. Never run anything in
+`supabase/history/`.
 
 **Public site card is empty**
 Visit `/admin` → Card tab → add at least one banner, stat, or CTA button. Or add some projects.
@@ -156,14 +170,15 @@ Visit `/admin` → Card tab → add at least one banner, stat, or CTA button. Or
 
 ## Deferred / not yet implemented
 
-Things on the roadmap but not built:
+The current list lives in [docs/features/planned.md](docs/features/planned.md);
+[docs/features/completed.md](docs/features/completed.md) says what is already
+built.
 
-- **Custom domain** — point your domain at Vercel (add in Vercel → Settings → Domains)
-- **Multi-tenant** — currently one deployment = one portfolio. To serve multiple designers, you'd need a tenant column and per-tenant routing
-- **Real geo IP** for the country column in Analytics (currently always shows "Unknown")
-- **Image optimization** via `next/image` (currently using plain `<img>`)
+Long-standing small gaps not tracked there:
+
+- **Real geo IP** for the country column in Analytics (always "Unknown")
+- **Image optimization** via `next/image` (currently plain `<img>`)
 - **Sitemap.xml / robots.txt** for SEO
-- **Email config** in Supabase for working password resets (Auth → Email Templates → SMTP)
 
 ---
 

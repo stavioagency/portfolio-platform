@@ -52,4 +52,6 @@ inline there is permanently untestable.
 
 This repo is the **multi-tenant Portfolio Platform SaaS**. It is NOT the older
 single-tenant copy in `~/Downloads/portfolio-platform-main`, which is off-limits.
-See `HANDOFF.md` for full orientation, database details, and open launch items.
+See `docs/GRANDMASTER.md` for full orientation; it routes to database details
+(`docs/architecture/database.md`) and open launch items
+(`docs/features/planned.md`).

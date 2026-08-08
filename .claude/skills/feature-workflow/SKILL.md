@@ -100,4 +100,4 @@ Input, Skeleton, EmptyState, Toast, ConfirmDialog, Icon. Bilingual strings go in
 user-entered URL rendered publicly must go through `lib/safe-url.js`.
 
 **Scope guardrail:** this repo is the multi-tenant SaaS, NOT the older copy in
-`~/Downloads/portfolio-platform-main`. See `HANDOFF.md`.
+`~/Downloads/portfolio-platform-main`. See `docs/GRANDMASTER.md`.
