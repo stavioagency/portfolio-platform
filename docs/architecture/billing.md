@@ -71,6 +71,21 @@ lives in code comments — start with `supabase/functions/_shared/provider.ts` a
   through the API, which is why the UI offers "subscribe again" rather than a
   resume button that would fail.
 
+- **PayPal DROPS `billing_info.next_billing_time` once a subscription is
+  cancelled.** Verified against the stored payloads: present on ACTIVATED, gone
+  on CANCELLED, while `last_payment.time` survives. So `getSubscription()`
+  reports `currentPeriodEnd: null` for anything cancelled, permanently.
+  Since entitlement is `status = 'canceled' AND current_period_end > now()`,
+  **writing that null is a revocation** — it takes back time the customer has
+  paid for. Delivery order is not guaranteed and PayPal retries for three days,
+  so an ACTIVATED, UPDATED or PAYMENT.SALE.COMPLETED landing *after* a
+  cancellation is a real ordering, and the loss scales with the plan: a month on
+  monthly, up to a year on yearly. Every branch that re-reads the subscription
+  therefore goes through `keepPeriodEnd()` — PayPal stays authoritative whenever
+  it has an answer, and "no answer" means leave the date alone. The one
+  exception is `healMissingSubscription()`, which runs only when there is no
+  local row to preserve anything from.
+
 ---
 
 ## 2. How it works in one page

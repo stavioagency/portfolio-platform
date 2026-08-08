@@ -113,6 +113,34 @@ Deno.serve(async (req: Request) => {
   }
 });
 
+// PAYPAL DROPS billing_info.next_billing_time THE MOMENT A SUBSCRIPTION IS
+// CANCELLED. Verified against the real stored payloads: both cancellations on
+// this project show next_billing_time present on ACTIVATED and gone on
+// CANCELLED, while last_payment.time survives. So getSubscription() reports
+// `currentPeriodEnd: null` for anything cancelled — permanently, not while some
+// value settles.
+//
+// That makes a re-read after cancellation a REVOCATION if it is written
+// straight through. The entitlement predicate is
+// `status = 'canceled' AND current_period_end > now()`, so a null takes away
+// access the customer has already paid for — and the branch below spends three
+// tiers of care avoiding exactly that when it handles the cancellation itself.
+// The danger is the OTHER branches: an ACTIVATED, UPDATED or
+// PAYMENT.SALE.COMPLETED that lands after PayPal has flipped to CANCELLED used
+// to overwrite a good date with null. PayPal does not guarantee delivery order
+// and retries for three days, so "after" is a real ordering, not a theoretical
+// one — and the loss scales with the plan: a month at worst on monthly, up to a
+// full year on yearly.
+//
+// So: PayPal stays authoritative whenever it actually has an answer, and "no
+// answer" means LEAVE IT ALONE rather than erase it. Never the other way round.
+export function keepPeriodEnd(
+  remoteEnd: string | null | undefined,
+  knownEnd: string | null | undefined,
+): string | null {
+  return remoteEnd ?? knownEnd ?? null;
+}
+
 // Adopt a subscription that exists at the provider but not here.
 //
 // Everything is verified against the provider and the database before anything
@@ -160,6 +188,9 @@ async function healMissingSubscription(
     status: remote.status,
     amount: planRow.amount,
     currency: planRow.currency,
+    // NOT keepPeriodEnd(), deliberately: this path only runs when there is no
+    // local row to keep anything from (guarded above). Whatever PayPal says,
+    // including nothing, is all we have.
     current_period_end: remote.currentPeriodEnd,
   });
 }
@@ -196,7 +227,11 @@ async function apply(admin: any, providerName: string, event: NormalizedEvent) {
       const remote = await provider.getSubscription(event.subscriptionId);
       await upsertSubscription(admin, tenantId, {
         status: remote.status,
-        current_period_end: remote.currentPeriodEnd,
+        // Never null out a date we already know — see keepPeriodEnd(). This is
+        // the branch that had to survive "activated lands after cancelled": it
+        // already guarded `status` and `cancel_at_period_end` for that case and
+        // left the date beside them unprotected.
+        current_period_end: keepPeriodEnd(remote.currentPeriodEnd, sub.current_period_end),
         // Activation clears any grace and any pending cancellation.
         grace_ends_at: remote.status === "active" ? null : sub.grace_ends_at,
         cancel_at_period_end: remote.status === "canceled" ? sub.cancel_at_period_end : false,
@@ -269,7 +304,10 @@ async function apply(admin: any, providerName: string, event: NormalizedEvent) {
       await upsertSubscription(admin, tenantId, {
         status: remote.status,
         current_period_start: new Date().toISOString(),
-        current_period_end: remote.currentPeriodEnd,
+        // A retried PAYMENT.SALE.COMPLETED can land after a cancellation —
+        // PayPal retries for three days — and the re-read would then report no
+        // period end at all. Keep what we know. See keepPeriodEnd().
+        current_period_end: keepPeriodEnd(remote.currentPeriodEnd, sub.current_period_end),
         grace_ends_at: null,
       });
       return;

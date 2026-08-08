@@ -28,17 +28,28 @@ non-owner admin with the period end pushed into the past).
 
 What is still owed:
 
-- **A yearly cancellation.** Both proven runs ended on a ~monthly period.
-  `billing-webhook`'s no-period-end fallback grants a flat **31 days**, so if
-  PayPal returns no `next_billing_time` on a cancelled yearly subscription, a
-  subscriber cancelling in month two would be silently cut from ten paid months
-  to one. Confirm what PayPal actually returns before trusting that branch.
+- **A yearly cancellation.** Both proven runs ended on a ~monthly period. An
+  earlier version of this entry blamed the 31-day fallback and was **wrong**:
+  that fallback fires only when there is no date at all, so it can over-grant
+  and never under-grant. The real defect was `subscription_updated` and
+  `payment_succeeded` writing PayPal's null period end straight through —
+  **fixed**, see [architecture/billing.md §1](../architecture/billing.md). Still
+  worth running once end to end, because nothing has yet cancelled a real
+  twelve-month subscription.
 - **A cancellation initiated inside the customer's own PayPal account**, which
   exercises the 422-already-cancelled path in `_shared/paypal.ts`.
 - **A `BILLING.SUBSCRIPTION.UPDATED` arriving while PayPal still reports ACTIVE
-  on a subscription we just cancelled.** `billing-webhook` line ~202 resets
+  on a subscription we just cancelled.** `billing-webhook` line ~205 resets
   `cancel_at_period_end` to false in that case, and the UI reverts to "renews
-  automatically". Narrow window, wrong direction.
+  automatically". Narrow window, wrong direction. The period end is now safe
+  either way; this is the one field still unguarded on that path.
+- **A cancellation that arrives before activation.** A subscription cancelled
+  while still `pending` has no period end and no payment, so the cancellation
+  branch's 31-day fallback grants a month of entitlement to someone who never
+  paid. Our own UI cannot reach it — the cancel button requires
+  `billing.entitled`, and `pending` is not — but PayPal can emit it. Small,
+  wrong direction, and its own change: the fix is to refuse to invent a date
+  when no `payments` row exists.
 
 *(Section L closed the public-site half: the resolver now gates rendering on
 entitlement too. See [architecture/overview.md §5](../architecture/overview.md).)*
