@@ -5451,7 +5451,7 @@ function SubscribersOverview({ lang, onOpen }) {
         if (ids.length === 0) { if (!cancelled) setRows([]); return; }
         const [subsRes, membersRes] = await Promise.all([
           supabase.from('subscriptions')
-            .select('tenant_id, plan_code, status, amount, currency, current_period_end, cancel_at_period_end, grace_ends_at, trial_ends_at, created_at')
+            .select('tenant_id, plan_code, status, comp_kind, amount, currency, current_period_end, cancel_at_period_end, grace_ends_at, trial_ends_at, created_at')
             .in('tenant_id', ids),
           supabase.rpc('list_workspace_members'),
         ]);
@@ -5556,6 +5556,51 @@ function SubscribersOverview({ lang, onOpen }) {
       setReloadToken((n) => n + 1);
     } catch (err) {
       console.error('[subscribers] cancel failed:', err);
+      toast.error(billingActionError(err?.message, lang));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // Record whether a comped workspace is a permanent grant or one we intend to
+  // convert to a paying subscription. See section-m-convertible-comps.sql.
+  //
+  // THIS CHANGES NOTHING THE CLIENT CAN SEE, AND NOTHING THEY CAN DO. comp_kind
+  // is metadata: tenant_has_active_subscription() does not read it, so the
+  // workspace is exactly as entitled afterwards, and billing-checkout still
+  // refuses every comped tenant whatever its kind. It records intent so a later
+  // change can act on it.
+  //
+  // The confirmation is deliberately ASYMMETRIC. Making a workspace convertible
+  // changes a promise made to a real client — they were told the access was
+  // permanent — so it is confirmed. Making it permanent again is the safe
+  // direction and the undo, and friction on an undo is friction in the wrong
+  // place.
+  async function changeCompKind(row, kind) {
+    if (kind === 'convertible') {
+      const ok = await confirm({
+        title: ar ? 'اجعل هذه المساحة قابلة للتحويل؟' : 'Make this workspace convertible?',
+        description: ar
+          ? `${row.name} لديه وصول مجاني دائم. هذا يجعله مؤهلًا لأن يُطلب منه الدفع لاحقًا. وصوله لا يتغيّر الآن، والتراجع ممكن في أي وقت.`
+          : `${row.name} was granted permanent free access. This makes them eligible to be asked to pay later. Their access does not change now, and it is reversible at any time.`,
+        confirmLabel: ar ? 'اجعله قابلًا للتحويل' : 'Make convertible',
+        cancelLabel: ar ? 'رجوع' : 'Back',
+      });
+      if (!ok) return;
+    }
+    setBusyId(row.id);
+    try {
+      const data = await invokeBilling('billing-subscription', {
+        action: 'set_comp_kind', tenant_id: row.id, comp_kind: kind,
+      });
+      // `changed` comes back false when the value was re-applied. Reporting a
+      // no-op as a change teaches an operator to distrust the message.
+      toast.success(data?.changed === false
+        ? (ar ? 'بدون تغيير.' : 'No change.')
+        : (ar ? 'تم التحديث.' : 'Updated.'));
+      setReloadToken((n) => n + 1);
+    } catch (err) {
+      console.error('[subscribers] comp_kind failed:', err);
       toast.error(billingActionError(err?.message, lang));
     } finally {
       setBusyId(null);
@@ -5771,6 +5816,34 @@ function SubscribersOverview({ lang, onOpen }) {
                           {p.hidden ? (ar ? 'اختبار' : 'TEST') : p.name[ar ? 'ar' : 'en']}
                         </Button>
                       ))}
+                    </>
+                  )}
+                  {/* COMP INTENT. A SIBLING of the payment-link block above,
+                      never inside it, and that separation is the whole point:
+                      the links render on `!entitled`, comps are entitled, so a
+                      comp gets none of them — grandfather or convertible alike.
+                      Nothing here opens a checkout or mints a link. Marking a
+                      comp convertible records intent for a later change; today
+                      billing-checkout still refuses every comped tenant. */}
+                  {r.billing.state === 'comped' && (
+                    <>
+                      <span className="cl-flag">
+                        {r.subscription?.comp_kind === 'convertible'
+                          ? (ar ? 'وصول ممنوح — قابل للتحويل' : 'Granted — convertible')
+                          : (ar ? 'وصول ممنوح — دائم' : 'Granted — permanent')}
+                      </span>
+                      <Button
+                        type="button" variant="secondary" size="sm"
+                        loading={busyId === r.id}
+                        onClick={() => changeCompKind(
+                          r,
+                          r.subscription?.comp_kind === 'convertible' ? 'grandfather' : 'convertible',
+                        )}
+                      >
+                        {r.subscription?.comp_kind === 'convertible'
+                          ? (ar ? 'اجعله دائمًا' : 'Make permanent')
+                          : (ar ? 'اجعله قابلًا للتحويل' : 'Make convertible')}
+                      </Button>
                     </>
                   )}
                   {r.billing.entitled && r.billing.state !== 'comped' && !r.subscription?.cancel_at_period_end && (

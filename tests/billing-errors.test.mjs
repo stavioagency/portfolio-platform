@@ -56,6 +56,7 @@ test('every known code maps to a sentence in both locales, and names the fix', a
     'plan_not_available', 'grant_signing_failed', 'invalid_redirect_url',
     'forbidden_not_owner', 'forbidden', 'not_a_paid_subscription',
     'no_subscription', 'already_subscribed', 'provider_unreachable', 'provider_error',
+    'subscription_is_cancelled', 'invalid_comp_kind', 'not_a_comped_subscription',
   ];
   for (const code of codes) {
     for (const lang of ['ar', 'en']) {
