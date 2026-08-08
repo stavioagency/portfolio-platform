@@ -51,9 +51,14 @@ to end, it says so, and it is also listed in [planned.md](planned.md).
 - Workspace created `status = 'disabled'`, `created_via = 'self_signup'`, stamped
   `handed_over_at` so it never enters the operator's handover queue.
 - Reserved slugs enforced server-side from a list shared with the browser.
-- **Everything up to payment is proven** on `zz-signup-live`. The
-  `disabled → active` flip on payment is **not** — see
-  [planned.md](planned.md).
+- **Proven end to end in production, three times.** Signup → verification →
+  workspace created `disabled` → PayPal checkout → `BILLING.SUBSCRIPTION.ACTIVATED`
+  → subscription row → tenant flipped `disabled → active` → access. The runs:
+  `zz-signup-live` (2026-08-06, yearly), `niggatesting` (2026-08-07, yearly) and
+  `gegeg` (2026-08-07, monthly). Every event processed clean — `processed_at`
+  set, `error` null — and each tenant carries a real PayPal subscription id. The
+  correlation is exact across all six self-signup workspaces: the three with an
+  ACTIVATED event are `active`, the three without are still `disabled`.
 
 ## Owner-driven onboarding
 
@@ -81,10 +86,15 @@ to end, it says so, and it is also listed in [planned.md](planned.md).
 - No billing row is writable from the browser — reads only.
 - Plan sync to PayPal (`billing-plans-sync`), per-environment plan ids.
 - Upgrade and downgrade via `billing-subscription`.
-- **Cancel-at-period-end is implemented.** Cancelling calls PayPal, records
-  `cancel_at_period_end` and `canceled_at`, and returns `access_until`. Access
-  continues to the end of the paid period; renewal stops. **Never exercised
-  end to end** — see [planned.md](planned.md).
+- **Cancel-at-period-end is implemented and exercised in production.** Cancelling
+  calls PayPal, records `cancel_at_period_end` and `canceled_at`, and returns
+  `access_until`. Access continues to the end of the paid period; renewal stops.
+  Two `BILLING.SUBSCRIPTION.CANCELLED` events have processed clean, both leaving
+  `status = canceled`, `cancel_at_period_end = true` and `current_period_end`
+  intact and still entitled. Four narrower scenarios remain unproven — a yearly
+  cancellation, one initiated inside the customer's own PayPal account, an
+  UPDATED landing while PayPal still reports ACTIVE, and a cancellation arriving
+  before activation — see [planned.md](planned.md).
 - Every existing tenant comped at launch, so billing shipped without taking a
   live client's site down.
 - Grace periods, `past_due`, trial fields — all present in the schema and handled

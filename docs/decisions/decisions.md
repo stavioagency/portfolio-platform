@@ -176,6 +176,27 @@ unique constraints make every retry free, with no code to get wrong.
 Billing shipping must never take a live client's site down. Entitled, no price,
 no renewal, no provider.
 
+### Why comping excludes self-signup workspaces
+
+The grant above protects a client who was already being served when billing
+arrived. A self-serve customer is the opposite case: they have a working way to
+pay, and comping them means they never do.
+
+The trap is that "predates billing" and "has no subscription row" look
+interchangeable and are not. A signup that has verified its email but not yet
+paid *is* a tenant with no subscription row, so a backfill keyed on the row's
+absence grants free permanent access to precisely the population that is meant
+to pay. The discriminator is `created_via`: a self-signup tenant cannot predate
+billing, because signup shipped after billing.
+
+What makes it a decision rather than a bug fix is the second-order effect.
+`billing-checkout` refuses anyone already holding `comped`, so a wrongly-comped
+workspace cannot buy its way out, and a `disabled` tenant's site stays dark
+because only the ACTIVATED webhook lifts that. Being too generous with
+entitlement is normally the safe direction; here it produced an unrecoverable
+state, which is why the exclusion is written into the backfill rather than left
+to be cleaned up afterwards.
+
 ### Why `billing-checkout` and `billing-webhook` skip the JWT gateway
 
 Neither caller has a Supabase session: an owner's payment-link recipient has none

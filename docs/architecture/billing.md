@@ -59,9 +59,21 @@ lives in code comments — start with `supabase/functions/_shared/provider.ts` a
   `payments (provider, provider_payment_id)`. PayPal retries for three days;
   those constraints are what make the retries free.
 
-- **Every tenant that existed when billing shipped is `comped`** — entitled, no
+- **Operator-created tenants that predate billing are `comped`** — entitled, no
   price, no renewal, no provider. Billing must never take a live client's site
-  down.
+  down. Section H granted the cohort that existed when billing shipped; section
+  K granted the stragglers when entitlement was wired into the write policies.
+
+- **Comping excludes `created_via = 'self_signup'`, and that exclusion is
+  load-bearing.** A self-serve customer has a way to pay and must use it. A
+  verified-but-unpaid signup is, structurally, a tenant with no subscription
+  row — so a backfill that keys only on "has no subscription row" comps exactly
+  the people who are supposed to pay. Section K did that to three workspaces
+  before it was caught, and the result was worse than free access: `comped` also
+  makes `billing-checkout` answer `already_subscribed`, so they could never buy
+  their way out, while `tenants.status = 'disabled'` kept their site dark with
+  no webhook able to flip it. **Any future self-serve `created_via` value must
+  be added to that exclusion in `section-k-entitlement-enforcement.sql`.**
 
 - **`billing-checkout` and `billing-webhook` deploy with `--no-verify-jwt`** and
   authenticate themselves (a signed grant, or PayPal's signature). Deploying
@@ -272,12 +284,17 @@ requires a revise plus a fresh approval from each customer.
 ## 5. Database
 
 Apply once, in the Supabase SQL editor: `supabase/sections/section-h-billing.sql`.
-It is additive and idempotent, and grants every existing tenant a **comped**
+It is additive and idempotent, and grants pre-existing tenants a **comped**
 subscription. Six tables: `provider_plans`, `billing_customers`, `subscriptions`,
 `payments`, `invoices`, `billing_events`. See
 [database.md](database.md).
 
-Verify immediately after (the queries are at the bottom of the file):
+Two later sections complete the billing picture and are applied the same way:
+**section K** wires entitlement into the write policies (`can_edit_tenant`,
+`can_write_media`), and **section L** declares the public-site gate. Each carries
+its own VERIFY block at the bottom of the file — use those, not the query below.
+
+Verify section H immediately after applying it:
 
 ```sql
 select count(*) as tenants,
@@ -285,7 +302,12 @@ select count(*) as tenants,
   from public.tenants;
 ```
 
-Those two numbers must match.
+Those two numbers match **only in the moment section H is applied**, before any
+real subscription exists and before any self-signup workspace does. They diverge
+permanently afterwards and are supposed to: a paid tenant is not comped, and an
+unpaid self-signup tenant has no subscription row at all. Do not treat a
+mismatch later as a fault — section K's own VERIFY counts the grantable
+population instead, which is the check that stays true.
 
 ---
 

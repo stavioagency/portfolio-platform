@@ -10,14 +10,7 @@ Last reviewed: 2026-08-08.
 
 ## P0 — blocking confidence in what already ships
 
-### 1. Prove the self-signup payment activation
-
-Everything up to payment is proven on `zz-signup-live`: `created_via =
-self_signup`, `status = disabled`, membership `self_signup = true`, profile
-present, not entitled. **The `disabled → active` flip in `billing-webhook` v7 has
-never fired.** Until it does, the public funnel is unproven at its last step.
-
-### 2. Prove customer cancellation — the part that is left
+### 1. Prove customer cancellation — the part that is left
 
 The cancel → PayPal → webhook → row path is **proven in production**: two
 `BILLING.SUBSCRIPTION.CANCELLED` events processed clean, both leaving
@@ -33,13 +26,14 @@ What is still owed:
   that fallback fires only when there is no date at all, so it can over-grant
   and never under-grant. The real defect was `subscription_updated` and
   `payment_succeeded` writing PayPal's null period end straight through —
-  **fixed**, see [architecture/billing.md §1](../architecture/billing.md). Still
-  worth running once end to end, because nothing has yet cancelled a real
-  twelve-month subscription.
+  fixed and **live in production as `billing-webhook` v8**, see
+  [architecture/billing.md §1](../architecture/billing.md). Still worth running
+  once end to end, because nothing has yet cancelled a real twelve-month
+  subscription.
 - **A cancellation initiated inside the customer's own PayPal account**, which
   exercises the 422-already-cancelled path in `_shared/paypal.ts`.
 - **A `BILLING.SUBSCRIPTION.UPDATED` arriving while PayPal still reports ACTIVE
-  on a subscription we just cancelled.** `billing-webhook` line ~205 resets
+  on a subscription we just cancelled.** `billing-webhook` line ~237 resets
   `cancel_at_period_end` to false in that case, and the UI reverts to "renews
   automatically". Narrow window, wrong direction. The period end is now safe
   either way; this is the one field still unguarded on that path.
@@ -54,7 +48,7 @@ What is still owed:
 *(Section L closed the public-site half: the resolver now gates rendering on
 entitlement too. See [architecture/overview.md §5](../architecture/overview.md).)*
 
-### 3. "Asked to set a password again after resetting" — reproduce it
+### 2. "Asked to set a password again after resetting" — reproduce it
 
 Reported; **not reproduced.** Do not change code before you can trigger it.
 
@@ -66,7 +60,7 @@ localStorage, left behind by an old Supabase recovery/invite link that was never
 completed or signed out of. Check it first. Details in
 [architecture/auth.md §7](../architecture/auth.md).
 
-### 4. PayPal country defaults to UK for Saudi customers
+### 3. PayPal country defaults to UK for Saudi customers
 
 Reported; **not diagnosed.** `lang` is forwarded to PayPal as the approval page's
 *locale*, which is not the payer's *country*. Start with what
@@ -78,9 +72,30 @@ testing. See [architecture/billing.md §10](../architecture/billing.md).
 
 ## P1 — known debt with a known shape
 
-### 5. `SCHEMA.sql` is two migrations behind
+### 4. A `comped` workspace cannot check out
 
-It does not describe section **H** (billing) or section **I** (signup). It is
+`billing-checkout` refuses anyone already holding `active`, `trialing` or
+`comped` with `already_subscribed` (409). For a genuine comped client that is
+correct — they have nothing to buy. But it means a workspace that is comped *by
+mistake* has no way to buy its way out, and if its tenant is `disabled` the
+public site stays dark, because only the ACTIVATED webhook flips that and it can
+no longer generate one. Recovery needs a hand-written DELETE.
+
+That is not hypothetical: the section K backfill comped three unpaid self-signup
+workspaces and stranded exactly this way. The backfill is fixed and the rows are
+cleaned, so nothing is stranded today — this entry is about the trap that made a
+recoverable mistake unrecoverable.
+
+Decide whether `comped` belongs in that list at all, or whether the refusal
+should be scoped to comped tenants that are `active`. Deliberately left alone
+when the backfill was fixed: it is a checkout change, not a backfill change.
+
+### 5. `SCHEMA.sql` is five migrations behind
+
+It describes none of section **H** (billing), **I** (signup), **J** (password
+reset), **K** (entitlement enforcement) or **L** (public-site entitlement) —
+verified by grep: no `subscriptions`, `provider_plans`, `billing_events`,
+`created_via`, `tenant_has_active_subscription` or `can_edit_tenant`. It is
 meant to be the authority on the live database; right now it is not. Read the
 live schema back out and update it.
 
@@ -97,10 +112,20 @@ of "the client says their password stopped working". Two changes:
 ### 7. Remove the test artefacts
 
 All deliberately preserved, all to be removed once the flows above are signed
-off: tenant `zz-signup-live` and its user; `signup-test@designakum.site`
-(unconfirmed, no workspace); tenant `zz-billing-test`; the hidden one-cent `test`
-plan in `lib/billing-plans.js` plus its `provider_plans` row; subscription
-`I-M65XW1E7MM82`.
+off. **Self-signup activation is now signed off** (see
+[completed.md](completed.md)), so everything below that only existed to prove it
+is now free to go; cancellation is not, so anything feeding item 1 must stay
+until it is.
+
+- tenant `zz-signup-live` and its user
+- `signup-test@designakum.site` (unconfirmed, no workspace)
+- tenant `zz-billing-test`
+- the hidden one-cent `test` plan in `lib/billing-plans.js` plus its
+  `provider_plans` row
+- subscription `I-M65XW1E7MM82`
+- the self-signup test workspaces: `gegeg` and `niggatesting` (both paid and
+  active), and `woee`, `testnigga`, `testsubject` (verified but never paid, and
+  as of the section K cleanup they correctly have no subscription row at all)
 
 ### 8. The riyal symbol
 
