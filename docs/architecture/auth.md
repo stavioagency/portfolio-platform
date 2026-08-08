@@ -179,7 +179,7 @@ it only breaks Supabase's own recovery.
 replaced on first sign-in. `SetPasswordGate` in `admin.js` renders over
 everything when it is owed.
 
-The gate fires on **either** of two things (`admin.js` ~line 374):
+The gate fires on **either** of two things (`admin.js` ~line 400):
 
 1. `session.user.user_metadata.must_set_password === true`, or
 2. `recoveryMode`, which is seeded from a **localStorage flag**
@@ -188,8 +188,29 @@ The gate fires on **either** of two things (`admin.js` ~line 374):
 
 The localStorage flag exists because the URL hash is stripped by supabase-js
 within a second of landing, so a refresh used to drop the requirement entirely
-and leave someone inside the admin with a session and no password. It is cleared
-on `SIGNED_OUT` and when the gate completes.
+and leave someone inside the admin with a session and no password.
+
+**The obligation has three signals, and they are discharged together.** The
+React state, the localStorage flag, and the module-scope *link arrival* all go
+down in `dischargePasswordObligation()`, called from exactly three places: the
+gate completing, `SIGNED_OUT`, and a successful password sign-in.
+
+**`SIGNED_IN` is not once per login.** supabase-js re-emits it on every tab
+refocus — `GoTrueClient`'s `visibilitychange` handler calls `_recoverAndRefresh`,
+which ends in `_notifyAllSubscribers('SIGNED_IN', session)` for any valid
+session. The listener re-arms the obligation on `SIGNED_IN` while the arrival is
+unconsumed, so **the arrival must stay a consumable `let`, never a `const`.** As
+a `const` it stayed true for the life of the page: completing the gate cleared
+the other two signals, then the next tab-away-and-back re-armed both — and
+because it rewrote localStorage, the loop survived a reload. That was the P0
+"asked to set a password again". `tests/password-gate.test.mjs` fails if it goes
+back to being a constant, or if the listener stops calling it.
+
+A successful password sign-in also discharges it: typing a working password IS
+the obligation being met, and without that a browser holding a stale flag gated
+the customer again on the screen straight after a self-serve reset. This only
+drops the LOCAL signals — an account that genuinely owes a password still says so
+in `user_metadata`, which the gate reads independently.
 
 **Two guardrails for any auth change:**
 
@@ -219,24 +240,14 @@ NON-destructive resend for the common case — when `last_sign_in_at IS NULL` th
 is no working password to protect, so re-issuing costs nothing. Fall back to the
 destructive path only when they have actually signed in.
 
-**2. "Asked to set a password again after resetting it" — reported, not
-reproduced.** Treat this as open. What is already ruled out: `complete-password-reset`
-explicitly sets `must_set_password: false` in the same call that writes the
-password, precisely so the gate does not reappear on the next screen. So cause
-(1) of the gate is handled on the reset path.
+**2. "Asked to set a password again after resetting it" — FOUND AND FIXED
+2026-08-08.** See §6; the mechanism is written up there because it is a property
+of the gate, not a defect in the reset path.
 
-That leaves the **stale localStorage flag** as the leading hypothesis. If a
-browser ever landed on an old Supabase recovery/invite link and neither completed
-the gate nor signed out, `admin_must_set_password` is still `'1'` in that
-browser's localStorage and `recoveryMode` will be true on the next visit
-regardless of what the account says. Check that first:
-
-```js
-localStorage.getItem('admin_must_set_password')
-```
-
-Reproduce before changing anything. Both `admin.js` clear sites and the
-`complete-password-reset` metadata write are correct as written.
+The old note guessed at a stale localStorage flag left by an abandoned gate.
+That was the wrong half: the flag was being **actively rewritten after every
+successful gate completion**, by a tab refocus. `complete-password-reset` and
+both `admin.js` clear sites were correct as written, as that note said.
 
 **3. Supabase recovery links are single-use and cannot be made otherwise.** No
 longer applies to password reset, which no longer uses them. Still true for any

@@ -55,7 +55,22 @@ import PlanPicker from '../components/billing/PlanPicker';
 // Both recovery AND invite links must force the set-password step — see
 // lib/auth-link.js for why invite is the case that was missing. Evaluated at module
 // load, before supabase-js strips the hash.
-const arrivedViaPasswordLink = arrivedViaPasswordLinkFn();
+//
+// IT IS CONSUMABLE, AND THAT IS THE WHOLE POINT — `let`, not `const`.
+//
+// This used to be a const, and the bug that made was the "asked to set a password
+// again" loop. supabase-js re-emits SIGNED_IN every time the tab regains focus
+// (GoTrueClient's visibilitychange handler -> _recoverAndRefresh -> SIGNED_IN, for
+// any valid session, not just a real login). The listener below re-arms the
+// obligation on SIGNED_IN while this is true — so after someone completed the gate,
+// the next tab-away-and-back re-armed it, showed the gate again, AND rewrote the
+// localStorage flag, which made the loop survive a reload.
+//
+// The arrival is a one-shot fact: "this page load began at a password link". Once a
+// password has actually been written it has been discharged and must stop speaking.
+let passwordLinkArrival = arrivedViaPasswordLinkFn();
+function arrivedViaPasswordLink() { return passwordLinkArrival; }
+function consumePasswordLinkArrival() { passwordLinkArrival = false; }
 const authLinkError = readAuthLinkErrorFromWindow();
 
 // "Must set a password" has to OUTLIVE the URL. The hash is stripped by supabase-js
@@ -73,7 +88,15 @@ function clearPasswordPending() {
   try { localStorage.removeItem(PENDING_PW_KEY); } catch (_) {}
 }
 // Set it at module load, for the same reason the link is read here.
-if (arrivedViaPasswordLink) markPasswordPending();
+if (arrivedViaPasswordLink()) markPasswordPending();
+
+// The single place the obligation ends. Discharging it has to clear ALL THREE
+// signals — the React state, the persisted flag, and the arrival — or whichever one
+// is left standing re-arms the other two. That is exactly how the loop worked.
+function dischargePasswordObligation() {
+  consumePasswordLinkArrival();
+  clearPasswordPending();
+}
 
 function newId() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
 
@@ -198,7 +221,7 @@ export default function Admin() {
   const [theme, setThemeState] = useState('dark');
   // Reads the persisted flag, not just this page load's URL: the hash is gone after
   // a refresh, but the obligation is not.
-  const [recoveryMode, setRecoveryMode] = useState(() => arrivedViaPasswordLink || isPasswordPending());
+  const [recoveryMode, setRecoveryMode] = useState(() => arrivedViaPasswordLink() || isPasswordPending());
   // The `?lang=` this page was opened with, captured in the initialiser so it
   // survives being removed from the address bar below. Everything that needs
   // to know "did the URL ask for a language" reads THIS, not the live URL —
@@ -228,9 +251,12 @@ export default function Admin() {
       // An invite fires SIGNED_IN, not PASSWORD_RECOVERY, so the link type is the
       // only reliable signal for it. Belt and braces alongside the initial state.
       if (event === 'PASSWORD_RECOVERY') { markPasswordPending(); setRecoveryMode(true); }
-      if (event === 'SIGNED_IN' && arrivedViaPasswordLink) { markPasswordPending(); setRecoveryMode(true); }
+      // SIGNED_IN is NOT once per login — it also fires on every tab refocus. This
+      // may only re-arm while the arrival is unconsumed; once the gate has been
+      // completed, arrivedViaPasswordLink() is false and a refocus is inert.
+      if (event === 'SIGNED_IN' && arrivedViaPasswordLink()) { markPasswordPending(); setRecoveryMode(true); }
       // Signing out ends the obligation — the next session decides for itself.
-      if (event === 'SIGNED_OUT') { clearPasswordPending(); setRecoveryMode(false); }
+      if (event === 'SIGNED_OUT') { dischargePasswordObligation(); setRecoveryMode(false); }
       setSession(s);
     });
     return () => listener.subscription.unsubscribe();
@@ -374,12 +400,16 @@ export default function Admin() {
             {(recoveryMode || session.user?.user_metadata?.must_set_password === true) && (
               <SetPasswordGate
                 lang={lang}
-                onDone={() => { clearPasswordPending(); setRecoveryMode(false); }}
+                onDone={() => { dischargePasswordObligation(); setRecoveryMode(false); }}
               />
             )}
           </>
         )
-        : <SignIn lang={lang} toggleLang={toggleLang} theme={theme} toggleTheme={toggleTheme} linkError={authLinkError} />}
+        : <SignIn
+            lang={lang} toggleLang={toggleLang} theme={theme} toggleTheme={toggleTheme}
+            linkError={authLinkError}
+            onPasswordSignIn={() => { dischargePasswordObligation(); setRecoveryMode(false); }}
+          />}
     </ConfirmProvider>
     </ToastProvider>
   );
@@ -445,7 +475,17 @@ function ThemeToggleButton({ theme, onClick }) {
 // =========================================================
 // Sign In
 // =========================================================
-function SignIn({ lang, toggleLang, theme, toggleTheme, linkError }) {
+// `onPasswordSignIn` fires only after credentials are ACCEPTED. Typing a working
+// password is the obligation being met, so it is the moment a leftover
+// `admin_must_set_password` from some earlier link has to go: without it, a browser
+// that once landed on an invite/recovery link and never finished the gate carries
+// that flag forever, and gates the customer again on the screen straight after they
+// completed a self-serve reset — the second half of the same bug.
+//
+// It only drops the LOCAL signals. An account that genuinely owes a password still
+// says so in user_metadata.must_set_password, which the gate reads independently, so
+// a client signing in with an owner-issued temporary password is still gated.
+function SignIn({ lang, toggleLang, theme, toggleTheme, linkError, onPasswordSignIn }) {
   const t = getTranslator(lang);
   const ar = lang === 'ar';
   const [username, setUsername] = useState('');
@@ -479,6 +519,7 @@ function SignIn({ lang, toggleLang, theme, toggleTheme, linkError }) {
         password,
       });
       if (authError) setError(t('invalid_credentials'));
+      else onPasswordSignIn && onPasswordSignIn();
     } catch (err) {
       // network / unexpected failure — never leave the button stuck spinning
       console.error('[auth] sign-in failed:', err);
