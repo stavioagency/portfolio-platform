@@ -100,12 +100,28 @@ async function api(path: string, init: RequestInit = {}, idempotencyKey?: string
   const text = await res.text();
   const body = text ? JSON.parse(text) : {};
   if (!res.ok) {
-    const detail = body?.details?.[0]?.description || body?.message || res.statusText;
-    const err = new Error(`paypal_${res.status}: ${detail}`);
+    // NAME THE FIELD PayPal OBJECTED TO, not just the description. PayPal's
+    // message for a validation failure is a bare "Value is invalid." which
+    // identifies nothing; the offending field is in details[0].field as a JSON
+    // pointer, so its last segment is the whole diagnosis —
+    // "Value is invalid., shipping_preference" is what located the
+    // NO_SHIPPING_ADDRESS bug that made every create-subscription call fail.
+    const d = body?.details?.[0];
+    const field = d?.field ? `, ${String(d.field).split("/").pop()}` : "";
+    const detail = d?.description || body?.message || res.statusText;
+    const err = new Error(`paypal_${res.status}: ${detail}${field}`);
     // deno-lint-ignore no-explicit-any
     (err as any).status = res.status;
+    // `body` is what cancelSubscription() reads to recognise a 422
+    // SUBSCRIPTION_STATUS_INVALID as an already-cancelled subscription. Removing
+    // it turns that fix into a silent no-op, so the two travel together.
     // deno-lint-ignore no-explicit-any
     (err as any).body = body;
+    // The FULL body, once, at the boundary. Callers surface only `message` to a
+    // customer and must stay terse, so this is the single place the whole
+    // provider response survives — and a PayPal failure is never so routine
+    // that it should be invisible in the logs.
+    console.error(`[paypal] ${res.status} on ${path}:`, JSON.stringify(body));
     throw err;
   }
   return body;
