@@ -36,6 +36,7 @@ import { shouldPollForActivation, POLL_INTERVAL_MS } from '../lib/billing-poll';
 import { edgeErrorCode, billingActionError } from '../lib/billing-errors';
 import { strandedByDeleting, releaseReport, releaseMessage } from '../lib/account-release';
 import { deletionBlock, deletionBlockMessage, deletionUnknownMessage } from '../lib/workspace-deletion';
+import { deleteTenantStorage } from '../lib/storage-cleanup';
 import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
@@ -3541,11 +3542,18 @@ function TenantAdminSection({ lang, part = 'settings' }) {
 
       // Best effort: the tenant is already gone, so a failure here leaves unreachable
       // files, not a broken workspace. Never let it surface as a failed delete.
+      //
+      // PAGED, in lib/storage-cleanup.js. This was one list capped at 1000 and one
+      // remove, which silently kept everything past the first page — and with the
+      // tenant row gone there is nothing left that names the prefix, so those files
+      // could never be found again.
       try {
-        const prefix = `t-${doomed.id}`;
-        const { data: files } = await supabase.storage.from('media').list(prefix, { limit: 1000 });
-        if (files && files.length) {
-          await supabase.storage.from('media').remove(files.map((f) => `${prefix}/${f.name}`));
+        const { removed, error: storageErr } = await deleteTenantStorage(
+          supabase.storage.from('media'),
+          doomed.id,
+        );
+        if (storageErr) {
+          console.warn('[tenant] workspace deleted; storage cleanup incomplete after', removed, 'file(s):', storageErr);
         }
       } catch (storageErr) {
         console.warn('[tenant] workspace deleted; storage cleanup failed:', storageErr);

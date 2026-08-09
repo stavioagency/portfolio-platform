@@ -69,6 +69,14 @@ export interface SubscriptionPatch {
   cancel_at_period_end?: boolean;
   grace_ends_at?: string | null;
   canceled_at?: string | null;
+  // Which provider environment the subscription lives at: 'sandbox' | 'live'.
+  //
+  // SET ONLY WHERE A SUBSCRIPTION IS CREATED — see section-n. A status-only
+  // patch from a webhook must not carry it, because relabelling an existing row
+  // from whatever env this deployment happens to be configured for is how a
+  // sandbox subscription would come to be recorded as live. The environment is
+  // a fact about where the subscription was CREATED and never changes after.
+  environment?: string | null;
 }
 
 // One row per tenant, so this is "update if present, insert if not".

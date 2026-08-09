@@ -246,6 +246,11 @@ Deno.serve(async (req: Request) => {
     cancel_at_period_end: false,
     canceled_at: null,
     grace_ends_at: null,
+    // The subscription was just created at THIS environment's PayPal, against a
+    // plan looked up with this same PAYPAL_ENV above — so this is recorded, not
+    // guessed. Without it, sandbox and live subscriptions are indistinguishable
+    // in the table; see section-n-subscription-environment.sql.
+    environment: PAYPAL_ENV,
   });
 
   return json({
