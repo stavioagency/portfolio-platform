@@ -30,6 +30,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { json } from "../_shared/http.ts";
 import { getProvider } from "../_shared/provider.ts";
+import { PAYPAL_ENV } from "../_shared/paypal.ts";
 import type { NormalizedEvent } from "../_shared/provider.ts";
 import {
   adminClient,
@@ -192,6 +193,11 @@ async function healMissingSubscription(
     // local row to keep anything from (guarded above). Whatever PayPal says,
     // including nothing, is all we have.
     current_period_end: remote.currentPeriodEnd,
+    // The other path that brings a subscription into existence. The event got
+    // here through a verified webhook signature and the row was read back from
+    // this environment's PayPal, so the environment is known rather than
+    // assumed. See section-n-subscription-environment.sql.
+    environment: PAYPAL_ENV,
   });
 }
 

@@ -69,6 +69,14 @@ export interface SubscriptionPatch {
   cancel_at_period_end?: boolean;
   grace_ends_at?: string | null;
   canceled_at?: string | null;
+  // Which provider environment the subscription lives at: 'sandbox' | 'live'.
+  //
+  // SET ONLY WHERE A SUBSCRIPTION IS CREATED — see section-n. A status-only
+  // patch from a webhook must not carry it, because relabelling an existing row
+  // from whatever env this deployment happens to be configured for is how a
+  // sandbox subscription would come to be recorded as live. The environment is
+  // a fact about where the subscription was CREATED and never changes after.
+  environment?: string | null;
 }
 
 // One row per tenant, so this is "update if present, insert if not".
@@ -149,6 +157,44 @@ export async function subscriptionByTenant(admin: SupabaseClient, tenantId: stri
     .maybeSingle();
   if (error) throw new Error(`subscription_lookup_failed: ${error.message}`);
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// Comp intent
+// ---------------------------------------------------------------------------
+// DELIBERATELY NOT PART OF SubscriptionPatch. comp_kind is metadata about a
+// GRANT — who we intend to ask to pay — while every other write in this file is
+// driven by something the provider said about a subscription. Folding it into
+// the generic patch would let a future webhook branch carry it along by
+// accident, and the one thing an operator's intent must never be is a side
+// effect of a PayPal event.
+//
+// THE `status = 'comped'` FILTER IS THE POINT. section-m-convertible-comps.sql
+// records that comp_kind is meaningful only for a comped row; this makes that
+// structural rather than advisory. The statement cannot touch a paid, pending
+// or cancelled row even if a caller's validation were bypassed, so the worst a
+// bug upstream can do is fail to write.
+//
+// IT CHANGES NO ENTITLEMENT. tenant_has_active_subscription() does not read
+// comp_kind and must never read it: a comp stays entitled whichever kind it is.
+// Being wrong here costs a wrong button, never a client's access.
+//
+// Returns the updated row, or null when nothing matched — an RLS- or
+// predicate-filtered UPDATE reports success having changed nothing (HANDOFF
+// §6), so the caller must be able to tell "not a comp" from "done".
+export async function setCompKind(
+  admin: SupabaseClient,
+  tenantId: string,
+  kind: "grandfather" | "convertible",
+) {
+  const { data, error } = await admin
+    .from("subscriptions")
+    .update({ comp_kind: kind })
+    .eq("tenant_id", tenantId)
+    .eq("status", "comped")
+    .select("tenant_id, status, comp_kind");
+  if (error) throw new Error(`comp_kind_write_failed: ${error.message}`);
+  return data?.[0] ?? null;
 }
 
 // ---------------------------------------------------------------------------

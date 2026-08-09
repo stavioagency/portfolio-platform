@@ -20,7 +20,7 @@
 // Returns: { ok, approve_url, subscription_id, status }
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { cors, json, isUuid } from "../_shared/http.ts";
-import { getProvider } from "../_shared/provider.ts";
+import { getProvider, type SubscriptionStatus } from "../_shared/provider.ts";
 import { PAYPAL_ENV } from "../_shared/paypal.ts";
 import { verifyGrant } from "../_shared/grant.ts";
 import {
@@ -46,6 +46,56 @@ function safeRedirect(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+// STARTING A CHECKOUT MUST NEVER TAKE ACCESS AWAY.
+//
+// There is one subscription row per tenant (unique (tenant_id)), so the write
+// at the end of this function UPDATES whatever is already there. Writing
+// `pending` over it is normally harmless — a tenant with no subscription, or a
+// lapsed one, has nothing to lose. A COMPED row does: `comped` is entitled
+// unconditionally in tenant_has_active_subscription(), `pending` is entitled by
+// nothing, and the gap between them is a live client's public site going dark.
+//
+// It would also be PERMANENT rather than momentary. Nothing walks a customer
+// back from PayPal, so an approval that is simply abandoned leaves the row on
+// `pending` forever with no event able to correct it — the section-K failure
+// mode exactly: a recoverable mistake made unrecoverable.
+//
+// So a comped row keeps its status through checkout, and only the ACTIVATED
+// webhook moves it. Everything else about the write is unchanged, and must be:
+// `provider` and `provider_subscription_id` are what billing-webhook matches on
+// (subscriptionByProviderId), so a row that withheld them would take the
+// payment and never find its way home. Eleven of the comped rows carry
+// provider = 'none' from section-h, which is precisely why the provider column
+// has to be overwritten rather than preserved alongside the status.
+//
+// Comped is not currently reachable here — the already_subscribed guard below
+// still refuses it — so this is the safety property being put in place BEFORE
+// the gate that needs it, not a live code path.
+export function checkoutStatus(
+  existingStatus: string | null | undefined,
+  createdStatus: SubscriptionStatus,
+): SubscriptionStatus {
+  return existingStatus === "comped" ? "comped" : createdStatus;
+}
+
+// Which local rows cannot be trusted to mean "no live subscription at PayPal"?
+//
+// `pending` is the original case: the customer may have approved seconds ago
+// with the webhook still in flight. `comped` joins it for a converting
+// workspace — once checkoutStatus() keeps the status, a first attempt leaves a
+// comped row carrying a real provider_subscription_id, and a second attempt
+// that skipped this check would create a parallel subscription and bill the
+// customer twice, with only the newer one visible here.
+//
+// The provider id is what makes the question askable at all; without one there
+// is nothing to look up and nothing that could already be live.
+export function needsRemoteVerification(
+  status: string | null | undefined,
+  providerSubscriptionId: string | null | undefined,
+): boolean {
+  return !!providerSubscriptionId && (status === "pending" || status === "comped");
 }
 
 Deno.serve(async (req: Request) => {
@@ -131,7 +181,13 @@ Deno.serve(async (req: Request) => {
   // So ask PayPal, which is the only party that knows. If it is already live,
   // adopt it and refuse. If it is still unapproved, it is abandoned and will
   // expire at PayPal on its own, so a fresh one is safe.
-  if (existing?.status === "pending" && existing.provider_subscription_id) {
+  //
+  // needsRemoteVerification() extends the same protection to a comped row that
+  // is mid-conversion — see checkoutStatus(). Adopting there writes a real
+  // status over `comped`, which is not a revocation but an activation: they
+  // approved, so they are entitled by payment instead of by grant. Nothing is
+  // lost either way, because a comped row has no current_period_end to keep.
+  if (needsRemoteVerification(existing?.status, existing?.provider_subscription_id)) {
     try {
       const remote = await provider.getSubscription(existing.provider_subscription_id);
       if (["active", "trialing", "past_due"].includes(remote.status)) {
@@ -172,16 +228,29 @@ Deno.serve(async (req: Request) => {
   // Recorded as pending — see the header. This row grants nothing; it exists so
   // the webhook has something to attach to, and so the dashboard can say
   // "waiting for PayPal" instead of "not subscribed".
+  //
+  // The one exception is a comped row, which keeps its status: see
+  // checkoutStatus(). Everything else here is written either way, including for
+  // a comp — the provider ids are what the webhook matches on, and the plan and
+  // amount are what was actually bought. lib/billing-status.js keys `comped`
+  // off the STATUS before it looks at any plan or date, so a comped row wearing
+  // a real plan_code still reads as granted access until the webhook says
+  // otherwise, and the Subscribers screen still keeps it out of MRR.
   await upsertSubscription(admin, tenantId, {
     provider: provider.name,
     provider_subscription_id: created.id,
     plan_code: planCode,
-    status: created.status,
+    status: checkoutStatus(existing?.status, created.status),
     amount: planRow.amount,
     currency: planRow.currency,
     cancel_at_period_end: false,
     canceled_at: null,
     grace_ends_at: null,
+    // The subscription was just created at THIS environment's PayPal, against a
+    // plan looked up with this same PAYPAL_ENV above — so this is recorded, not
+    // guessed. Without it, sandbox and live subscriptions are indistinguishable
+    // in the table; see section-n-subscription-environment.sql.
+    environment: PAYPAL_ENV,
   });
 
   return json({

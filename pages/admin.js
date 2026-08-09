@@ -34,6 +34,9 @@ import {
 import { subscribersCsv, exportFilename } from '../lib/billing-export';
 import { shouldPollForActivation, POLL_INTERVAL_MS } from '../lib/billing-poll';
 import { edgeErrorCode, billingActionError } from '../lib/billing-errors';
+import { strandedByDeleting, releaseReport, releaseMessage } from '../lib/account-release';
+import { deletionBlock, deletionBlockMessage, deletionUnknownMessage } from '../lib/workspace-deletion';
+import { deleteTenantStorage } from '../lib/storage-cleanup';
 import {
   Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
@@ -3429,6 +3432,36 @@ function TenantAdminSection({ lang, part = 'settings' }) {
     await reloadTenants();
   }
 
+  // THE BILLING GATE ON DELETION.
+  //
+  // `tenants` cascades into `subscriptions`, `billing_customers`, `payments` and
+  // `invoices`. Delete a workspace whose PayPal subscription is still live and
+  // the provider_subscription_id — the only thing that could ever cancel it —
+  // goes with it. PayPal keeps charging, and nothing on our side knows.
+  //
+  // So this refuses, rather than cancelling on the owner's behalf. Cancelling is
+  // an irreversible call to a payment provider; it belongs to the deliberate
+  // button in the Billing tab that already does it, not to a side effect of a
+  // different action. Once that cancel lands the state is 'canceling' and this
+  // gate opens immediately — the owner does not have to wait out the paid period.
+  //
+  // FAILS CLOSED. Unlike the members read below, which is best effort, a
+  // subscription read that fails blocks the delete: "we could not check" and
+  // "there is nothing to check" must never collapse into the same answer.
+  async function billingGate(tenantId) {
+    const { data, error } = await supabase
+      .from('subscriptions')
+      .select('status, plan_code, current_period_end, cancel_at_period_end, grace_ends_at, trial_ends_at, provider, provider_subscription_id')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (error) {
+      console.warn('[tenant] subscription check failed; refusing to delete:', error);
+      return deletionUnknownMessage(ar);
+    }
+    const block = deletionBlock(data);
+    return block ? deletionBlockMessage(block, ar) : '';
+  }
+
   // PERMANENTLY delete the active workspace. Distinct from "Delete portfolio" in
   // Account, which only CLEARS a workspace's content and leaves the workspace itself —
   // which is why a suspended demo workspace kept reappearing in the switcher with no
@@ -3437,16 +3470,31 @@ function TenantAdminSection({ lang, part = 'settings' }) {
   // Every table referencing tenants is ON DELETE CASCADE (profile, projects,
   // tenant_admins, tenant_domains, analytics_events), so one delete removes the lot.
   // RLS already restricts this to platform owners.
+  //
+  // WHAT THE CASCADE DOES NOT REACH IS auth.users. The account outlives its
+  // workspace holding an email that the unique index then refuses to reissue, so
+  // deleting a test signup used to burn that address permanently. The delete now
+  // finishes the job by releasing the stranded login through the SAME call
+  // "Unattached logins" makes — see lib/account-release.js. Nothing is deleted
+  // there either: the address is parked and kept in `released_email`.
   async function deleteWorkspace() {
     if (!tenant) return;
+    setWsErr(''); setWsMsg('');
+
+    // Before the dialog: refusing after someone has typed a slug to confirm an
+    // irreversible action reads as the tool wasting their time, and the answer
+    // is the same either way.
+    const blocked = await billingGate(tenant.id);
+    if (blocked) { setWsErr(blocked); return; }
+
     const label = tenant.name || tenant.slug;
     // Require the SLUG, not a generic word: the switcher means the active workspace
     // is often not the one you were last looking at, and this is unrecoverable.
     const ok = await confirm({
       title: ar ? 'حذف مساحة العمل نهائيًا؟' : 'Delete workspace permanently?',
       description: ar
-        ? `سيؤدي هذا إلى حذف «${label}» بالكامل: الملف الشخصي والمشاريع والنطاقات والإحصائيات ووصول العميل. لا يمكن التراجع. لن يُحذف حساب دخول العميل، فقد يكون مرتبطًا بمساحات أخرى.`
-        : `This permanently deletes "${label}" and everything in it: profile, projects, domains, analytics and client access. It cannot be undone. The client's LOGIN is not deleted — they may belong to other workspaces.`,
+        ? `سيؤدي هذا إلى حذف «${label}» بالكامل: الملف الشخصي والمشاريع والنطاقات والإحصائيات ووصول العميل. لا يمكن التراجع. لن يُحذف حساب الدخول، لكن يُحرَّر بريده ليصبح قابلًا للاستخدام من جديد — إلا إذا كان مرتبطًا بمساحة أخرى.`
+        : `This permanently deletes "${label}" and everything in it: profile, projects, domains, analytics and client access. It cannot be undone. The LOGIN is not deleted, but its email is released for reuse — unless it belongs to another workspace too.`,
       requireText: tenant.slug,
       // Inlined rather than t('type_to_confirm'): this component takes `lang` and
       // builds its strings from `ar`, it has no translator in scope.
@@ -3460,6 +3508,31 @@ function TenantAdminSection({ lang, part = 'settings' }) {
     setWsErr(''); setWsMsg(''); setWsBusy(true);
     const doomed = tenant;
     try {
+      // And again, now. A `pending` subscription activates on a webhook we do
+      // not control, and typing a slug takes long enough for one to land. This
+      // is the check that actually guards the delete; the one above only saves
+      // the typing.
+      const stillBlocked = await billingGate(doomed.id);
+      if (stillBlocked) { setWsErr(stillBlocked); return; }
+
+      // WHO THIS STRANDS — read BEFORE the delete, because tenant_admins cascades
+      // with the tenant and list_workspace_members JOINs it: a moment later there
+      // is nobody left to ask about. The RPC is the only way to this; tenant_admins
+      // is readable own-row only, so the browser cannot join a workspace to its
+      // client without it.
+      //
+      // Best effort on purpose. Losing this list costs one "Unattached logins"
+      // click later, which is exactly where the owner was before — it must never
+      // stop a delete the owner has already confirmed.
+      let stranded = [];
+      try {
+        const { data: members, error: membersErr } = await supabase.rpc('list_workspace_members');
+        if (membersErr) throw membersErr;
+        stranded = strandedByDeleting(members || [], doomed.id);
+      } catch (memberErr) {
+        console.warn('[tenant] could not read members before delete:', memberErr);
+      }
+
       // Delete the tenant FIRST, then clean storage. The other order risks wiping a
       // live workspace's images and then failing to delete it; orphaned files are a
       // far cheaper mistake than deleted files for a workspace that still exists.
@@ -3469,11 +3542,18 @@ function TenantAdminSection({ lang, part = 'settings' }) {
 
       // Best effort: the tenant is already gone, so a failure here leaves unreachable
       // files, not a broken workspace. Never let it surface as a failed delete.
+      //
+      // PAGED, in lib/storage-cleanup.js. This was one list capped at 1000 and one
+      // remove, which silently kept everything past the first page — and with the
+      // tenant row gone there is nothing left that names the prefix, so those files
+      // could never be found again.
       try {
-        const prefix = `t-${doomed.id}`;
-        const { data: files } = await supabase.storage.from('media').list(prefix, { limit: 1000 });
-        if (files && files.length) {
-          await supabase.storage.from('media').remove(files.map((f) => `${prefix}/${f.name}`));
+        const { removed, error: storageErr } = await deleteTenantStorage(
+          supabase.storage.from('media'),
+          doomed.id,
+        );
+        if (storageErr) {
+          console.warn('[tenant] workspace deleted; storage cleanup incomplete after', removed, 'file(s):', storageErr);
         }
       } catch (storageErr) {
         console.warn('[tenant] workspace deleted; storage cleanup failed:', storageErr);
@@ -3485,9 +3565,19 @@ function TenantAdminSection({ lang, part = 'settings' }) {
           localStorage.removeItem('admin_selected_tenant');
         }
       } catch (_) {}
+      // FREE THE EMAIL. Only now: release_account refuses an account that still
+      // has a membership, and until the line above ran, this one did. Every
+      // failure is carried into the message rather than thrown — the workspace is
+      // already gone, and turning "the address is still held" into a failed
+      // delete would describe the wrong thing.
+      const report = releaseReport(await releaseAccounts(stranded));
+      if (report.failed.length) {
+        console.warn('[tenant] workspace deleted; email still held by', report.failed.length, 'login(s)');
+      }
+
       setTenant(null);
       await reloadTenants();
-      setWsMsg(ar ? 'تم حذف المساحة' : 'Workspace deleted');
+      setWsMsg(releaseMessage(report, ar));
     } catch (err) {
       console.error('[tenant] delete failed:', err);
       setWsErr(err?.message || (ar ? 'فشل الحذف' : 'Delete failed'));
@@ -3531,8 +3621,8 @@ function TenantAdminSection({ lang, part = 'settings' }) {
             </div>
           </form>
           <p className="hint">{ar
-            ? 'التعليق يوقف الموقع مؤقتًا ويمكن التراجع عنه. الحذف نهائي ويشمل المشاريع والنطاقات والإحصائيات.'
-            : 'Suspending takes the site offline and is reversible. Deleting is permanent and includes projects, domains and analytics.'}</p>
+            ? 'التعليق يوقف الموقع مؤقتًا ويمكن التراجع عنه. الحذف نهائي ويشمل المشاريع والنطاقات والإحصائيات، ويحرّر بريد الحساب لإعادة استخدامه.'
+            : 'Suspending takes the site offline and is reversible. Deleting is permanent — projects, domains and analytics — and frees the account email for reuse.'}</p>
           {wsErr && <div className="ts-err">{wsErr}</div>}
           {wsMsg && <div className="ts-ok">{wsMsg} ✓</div>}
         </>
@@ -4034,6 +4124,32 @@ function makeEmailUpdater(creds, setCreds, ar) {
       return { error: ar ? 'تعذّر تحديث البريد.' : 'Could not update the email.' };
     }
   };
+}
+
+// Park the addresses of accounts a delete has just stranded, one call each.
+//
+// The same `release_account` the "Unattached logins" button invokes — owner-gated
+// server-side, and it re-checks membership itself, so a stale list here can only
+// ever be refused, never acted on wrongly. Sequential because it is almost always
+// a single account and a rejected batch is harder to report than a rejected call.
+//
+// Never throws: every outcome comes back as a row for releaseReport().
+async function releaseAccounts(userIds) {
+  const out = [];
+  for (const user_id of userIds || []) {
+    try {
+      const { data, error } = await supabase.functions.invoke('client-recovery', {
+        body: { action: 'release_account', user_id },
+      });
+      const failed = error || data?.error;
+      if (failed) console.error('[recovery] release after delete failed:', data?.error || failed?.message);
+      out.push({ user_id, ok: !failed, code: String(data?.error || failed?.message || '') });
+    } catch (err) {
+      console.error('[recovery] release after delete threw:', err);
+      out.push({ user_id, ok: false, code: 'invoke_failed' });
+    }
+  }
+  return out;
 }
 
 async function resolveUserId(email) {
@@ -5451,7 +5567,7 @@ function SubscribersOverview({ lang, onOpen }) {
         if (ids.length === 0) { if (!cancelled) setRows([]); return; }
         const [subsRes, membersRes] = await Promise.all([
           supabase.from('subscriptions')
-            .select('tenant_id, plan_code, status, amount, currency, current_period_end, cancel_at_period_end, grace_ends_at, trial_ends_at, created_at')
+            .select('tenant_id, plan_code, status, comp_kind, amount, currency, current_period_end, cancel_at_period_end, grace_ends_at, trial_ends_at, created_at')
             .in('tenant_id', ids),
           supabase.rpc('list_workspace_members'),
         ]);
@@ -5556,6 +5672,51 @@ function SubscribersOverview({ lang, onOpen }) {
       setReloadToken((n) => n + 1);
     } catch (err) {
       console.error('[subscribers] cancel failed:', err);
+      toast.error(billingActionError(err?.message, lang));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // Record whether a comped workspace is a permanent grant or one we intend to
+  // convert to a paying subscription. See section-m-convertible-comps.sql.
+  //
+  // THIS CHANGES NOTHING THE CLIENT CAN SEE, AND NOTHING THEY CAN DO. comp_kind
+  // is metadata: tenant_has_active_subscription() does not read it, so the
+  // workspace is exactly as entitled afterwards, and billing-checkout still
+  // refuses every comped tenant whatever its kind. It records intent so a later
+  // change can act on it.
+  //
+  // The confirmation is deliberately ASYMMETRIC. Making a workspace convertible
+  // changes a promise made to a real client — they were told the access was
+  // permanent — so it is confirmed. Making it permanent again is the safe
+  // direction and the undo, and friction on an undo is friction in the wrong
+  // place.
+  async function changeCompKind(row, kind) {
+    if (kind === 'convertible') {
+      const ok = await confirm({
+        title: ar ? 'اجعل هذه المساحة قابلة للتحويل؟' : 'Make this workspace convertible?',
+        description: ar
+          ? `${row.name} لديه وصول مجاني دائم. هذا يجعله مؤهلًا لأن يُطلب منه الدفع لاحقًا. وصوله لا يتغيّر الآن، والتراجع ممكن في أي وقت.`
+          : `${row.name} was granted permanent free access. This makes them eligible to be asked to pay later. Their access does not change now, and it is reversible at any time.`,
+        confirmLabel: ar ? 'اجعله قابلًا للتحويل' : 'Make convertible',
+        cancelLabel: ar ? 'رجوع' : 'Back',
+      });
+      if (!ok) return;
+    }
+    setBusyId(row.id);
+    try {
+      const data = await invokeBilling('billing-subscription', {
+        action: 'set_comp_kind', tenant_id: row.id, comp_kind: kind,
+      });
+      // `changed` comes back false when the value was re-applied. Reporting a
+      // no-op as a change teaches an operator to distrust the message.
+      toast.success(data?.changed === false
+        ? (ar ? 'بدون تغيير.' : 'No change.')
+        : (ar ? 'تم التحديث.' : 'Updated.'));
+      setReloadToken((n) => n + 1);
+    } catch (err) {
+      console.error('[subscribers] comp_kind failed:', err);
       toast.error(billingActionError(err?.message, lang));
     } finally {
       setBusyId(null);
@@ -5771,6 +5932,34 @@ function SubscribersOverview({ lang, onOpen }) {
                           {p.hidden ? (ar ? 'اختبار' : 'TEST') : p.name[ar ? 'ar' : 'en']}
                         </Button>
                       ))}
+                    </>
+                  )}
+                  {/* COMP INTENT. A SIBLING of the payment-link block above,
+                      never inside it, and that separation is the whole point:
+                      the links render on `!entitled`, comps are entitled, so a
+                      comp gets none of them — grandfather or convertible alike.
+                      Nothing here opens a checkout or mints a link. Marking a
+                      comp convertible records intent for a later change; today
+                      billing-checkout still refuses every comped tenant. */}
+                  {r.billing.state === 'comped' && (
+                    <>
+                      <span className="cl-flag">
+                        {r.subscription?.comp_kind === 'convertible'
+                          ? (ar ? 'وصول ممنوح — قابل للتحويل' : 'Granted — convertible')
+                          : (ar ? 'وصول ممنوح — دائم' : 'Granted — permanent')}
+                      </span>
+                      <Button
+                        type="button" variant="secondary" size="sm"
+                        loading={busyId === r.id}
+                        onClick={() => changeCompKind(
+                          r,
+                          r.subscription?.comp_kind === 'convertible' ? 'grandfather' : 'convertible',
+                        )}
+                      >
+                        {r.subscription?.comp_kind === 'convertible'
+                          ? (ar ? 'اجعله دائمًا' : 'Make permanent')
+                          : (ar ? 'اجعله قابلًا للتحويل' : 'Make convertible')}
+                      </Button>
                     </>
                   )}
                   {r.billing.entitled && r.billing.state !== 'comped' && !r.subscription?.cancel_at_period_end && (
