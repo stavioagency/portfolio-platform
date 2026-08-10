@@ -123,9 +123,17 @@ until it is.
 - the hidden one-cent `test` plan in `lib/billing-plans.js` plus its
   `provider_plans` row
 - subscription `I-M65XW1E7MM82`
-- the self-signup test workspaces: `gegeg` and `niggatesting` (both paid and
-  active), and `woee`, `testnigga`, `testsubject` (verified but never paid, and
-  as of the section K cleanup they correctly have no subscription row at all)
+- the self-signup test workspaces `gegeg` and `niggatesting` (both paid and
+  active)
+
+**Removed 2026-08-09/10**, through the admin delete path with the billing gate
+and account release running: `woee`, `designakum1`, `designakum11`,
+`designakum0`, `designakum00`, `testsubject`, `testnigga`, `broskitest`,
+`bronigga`. Six logins were parked on `.invalid` with their originals kept in
+`released_email`; no auth user was deleted. `zz-signup-live` and `niggatesting`
+still hold ACTIVE **sandbox** PayPal subscriptions and are correctly blocked
+from deletion until those are cancelled at PayPal — that ordering is the whole
+point of the gate, see [architecture/billing.md](../architecture/billing.md).
 
 ### 8. The riyal symbol
 
@@ -138,6 +146,37 @@ the literal currency code** — a spreadsheet needs a code, not an image.
 It is read by the functions but missing from
 `supabase/functions/.env.example`, so a fresh local setup silently falls back to
 a default.
+
+### 10. The paged storage cleanup has never run against a real file
+
+`lib/storage-cleanup.js` replaced a single `list(prefix, { limit: 1000 })` —
+which deleted only the first page of a workspace's media and stranded the rest
+forever, since the tenant row that named the prefix was already gone. It is
+covered by unit tests, including a 2500-file case against a fake bucket.
+
+**It has not been exercised in production.** The 2026-08-09/10 cleanup deleted
+nine workspaces and every one of them had `storage_objects = 0`:
+
+| woee | designakum1 | designakum11 | designakum0 | designakum00 |
+| testsubject | testnigga | broskitest | bronigga | |
+
+So "no storage orphans" was verified nine times and proves nothing about the
+paging — every run took the empty-folder branch and returned after one `list`.
+**Do not read that cleanup as evidence this works.**
+
+What would actually test it: a workspace holding more than `PAGE_SIZE` (100)
+objects, deleted through the admin path, then
+`select count(*) from storage.objects where bucket_id='media' and name like
+'t-<id>/%'` returning 0. None of the junk tenants qualified and none of the real
+clients should be deleted to find out, so this most likely needs a purpose-built
+workspace with >100 uploads on a staging tenant.
+
+Related risk while it is unproven: the failure is silent. `deleteTenantStorage`
+returns its error rather than throwing, and `deleteWorkspace` only
+`console.warn`s it — correct, because the tenant is already gone by then and a
+storage failure must not read as a failed delete, but it means a real leak would
+not surface in the UI. Check the browser console, or the query above, after any
+deletion of a workspace that had uploads.
 
 ---
 
