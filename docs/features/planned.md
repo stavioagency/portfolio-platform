@@ -178,6 +178,41 @@ storage failure must not read as a failed delete, but it means a real leak would
 not surface in the UI. Check the browser console, or the query above, after any
 deletion of a workspace that had uploads.
 
+### 11. Deleting a tenant destroys its billing history, with no archive
+
+Deleting a workspace irreversibly destroys its payments, invoices and billing
+customer record. There is no soft delete, no archive table and no export:
+
+```
+payments.tenant_id          → tenants   ON DELETE CASCADE
+invoices.tenant_id          → tenants   ON DELETE CASCADE
+billing_customers.tenant_id → tenants   ON DELETE CASCADE
+```
+
+(`payments.subscription_id` and `invoices.subscription_id` are `SET NULL`, so a
+payment outlives its *subscription* — but not its *tenant*.)
+
+**It also punches permanent gaps in the numbered invoice sequence.** Invoice
+numbers come from `next_invoice_number()`, which only ever counts up, so a
+deleted invoice's number is never reissued. Deleting `zz-billing-test` on
+2026-08-10 removed `INV-2026-000001` and left the series starting at 000002;
+deleting `gegeg` would remove `INV-2026-000004` and leave a hole mid-sequence.
+
+**This was acceptable for the test tenants** — all four invoices in existence at
+the time were sandbox, for money that was never real, and none was ever sent to
+anyone. Recorded because the same code path is what an operator will reach for
+the first time a real customer asks to be removed.
+
+**It is NOT acceptable before a real customer workspace is ever deleted.** A
+paying customer's payment record, their invoice, and that invoice's number would
+all vanish with no way to reconstruct them, and most jurisdictions expect a
+numbered invoice series to be gapless and retained for years. Whatever the fix
+is — retention table, export-before-delete, refusing to delete a tenant that has
+ever been paid for — it has to exist before that happens.
+
+Not designed here on purpose; this entry is the record that the gap is known,
+not a proposal.
+
 ---
 
 ## P2 — not started, not urgent
