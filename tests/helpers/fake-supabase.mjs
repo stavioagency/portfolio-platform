@@ -110,14 +110,27 @@ export class EdgeStore {
       },
       auth: {
         admin: {
-          // GoTrue applies the `email` filter server-side; the function still
-          // re-checks the address it gets back, and this reproduces both halves.
-          async listUsers({ email } = {}) {
+          // Modelled on the REAL SDK, which is stricter than this fake used to
+          // be. @supabase/auth-js builds exactly one request here:
+          //
+          //     GET /admin/users?page=<page>&per_page=<perPage>
+          //
+          // There is NO email filter. An `email` property on the params object
+          // is silently dropped, and the call returns the requested page of
+          // every user in the project.
+          //
+          // This fake used to honour `email` and ignore paging — the exact
+          // inverse of reality — so three functions that looked up an account
+          // with `listUsers({ page: 1, perPage: 1, email })` passed their tests
+          // while finding nobody but the newest account in production. Do not
+          // "helpfully" reinstate the filter: a fake more capable than the real
+          // client is how that bug survived review, a deploy and a live
+          // customer report.
+          async listUsers({ page = 1, perPage = 50 } = {}) {
             const fail = store.takeFailure('auth', 'listUsers');
             if (fail) return { data: null, error: { message: fail } };
-            const users = email
-              ? store.users.filter((u) => (u.email ?? '').toLowerCase() === String(email).toLowerCase())
-              : store.users.slice();
+            const start = (page - 1) * perPage;
+            const users = store.users.slice(start, start + perPage);
             return { data: { users }, error: null };
           },
           async getUserById(id) {

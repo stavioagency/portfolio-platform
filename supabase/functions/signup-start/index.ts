@@ -28,6 +28,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { cors, json } from "../_shared/http.ts";
 import { signVerificationToken } from "../_shared/signup-token.ts";
+import { findUserByEmail as lookupUserByEmail } from "../_shared/find-user.ts";
 import {
   emailError, normalizeEmail, passwordError, slugError, normalizeSlug, workspaceNameError,
 } from "../_shared/signup-rules.ts";
@@ -179,12 +180,19 @@ Deno.serve(async (req: Request) => {
 
 // deno-lint-ignore no-explicit-any
 async function findUserByEmail(admin: any, email: string) {
-  // listUsers is paginated and there is no getUserByEmail in this SDK version.
-  // The filter is applied server-side by GoTrue.
-  const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1, email });
-  if (error) throw new Error(`user_lookup_failed: ${error.message}`);
-  const user = data?.users?.find((u: { email?: string }) => (u.email ?? "").toLowerCase() === email);
-  return user ?? null;
+  // listUsers does NOT take an email filter — it silently ignores anything
+  // beyond page/perPage. This used to pass `{ page: 1, perPage: 1, email }`,
+  // which meant "is there an account for this address" was answered by looking
+  // at the single newest account in the project and nothing else. See
+  // _shared/find-user.ts.
+  //
+  // Wrong in a quieter way here than in request-password-reset: a returning
+  // customer looked like a brand-new one, so signup tried to CREATE their
+  // account, and GoTrue's own unique constraint was the only thing left
+  // stopping a duplicate. The "you already have an account" mail — the branch
+  // that exists so a returning customer is not left staring at a form — was
+  // effectively unreachable.
+  return await lookupUserByEmail(admin, email);
 }
 
 /**

@@ -12,7 +12,8 @@
 // `status` on the strength of a request; it writes only what the provider has
 // already confirmed, and leaves the rest to BILLING.SUBSCRIPTION.*.
 //
-// Body: { action: 'cancel' | 'change_plan' | 'create_link' | 'set_comp_kind',
+// Body: { action: 'cancel' | 'change_plan' | 'create_link' | 'set_comp_kind'
+//                  | 'grant_comp',
 //          tenant_id, ... }
 //
 // set_comp_kind is the odd one out and deliberately so: it touches no provider,
@@ -30,6 +31,7 @@ import {
   subscriptionByTenant,
   upsertSubscription,
   setCompKind,
+  grantComp,
 } from "../_shared/billing-db.ts";
 
 // The only two values comp_kind may take, checked HERE rather than left to the
@@ -175,6 +177,73 @@ Deno.serve(async (req: Request) => {
       // so beats reporting every call as a change.
       changed: previous !== kind,
     });
+  }
+
+  // ---------------------------------------------------------------------
+  // grant_comp — give this workspace complimentary access.
+  // ---------------------------------------------------------------------
+  // MUST STAY ABOVE THE `no_subscription` 404 BELOW, for the same reason
+  // set_comp_kind sits above the paid-subscription guard: this action exists
+  // precisely for tenants that have NO subscription row, so placed after it
+  // the branch would be unreachable — every call answered 404, with a passing
+  // deploy and a button that never works.
+  //
+  // OWNERS ONLY. The is_tenant_admin() check above is not enough on its own:
+  // section F gives platform owners tenant-admin parity, but it equally passes
+  // an ordinary client admin on their OWN workspace — who would otherwise be
+  // able to grant themselves free access. Of every action in this file this is
+  // the one where that distinction is load-bearing.
+  //
+  // It writes entitlement, which nothing else here does. That is not a
+  // departure from the rule at the top of this file — "change it at the
+  // provider first, let the webhook write the row" governs PROVIDER-backed
+  // subscriptions, and a comp has no provider to ask. There is no PayPal call
+  // to make and no webhook that will ever arrive; the operator's decision is
+  // the whole of the fact. PayPal logic is untouched.
+  if (action === "grant_comp") {
+    const { data: isOwner, error: ownerErr } = await caller.rpc("is_platform_owner");
+    if (ownerErr) return json({ error: "authz_check_failed", detail: ownerErr.message }, 500);
+    if (isOwner !== true) return json({ error: "forbidden_not_owner" }, 403);
+
+    // Defaults to a permanent grant when unspecified: every comp in production
+    // is a 'grandfather', and the safer default is the one that does NOT mark
+    // a client as someone to invoice later. An explicitly WRONG value is still
+    // refused rather than silently defaulted — a caller that said something
+    // gets an answer about what it said.
+    const kind = body.comp_kind === undefined || body.comp_kind === null
+      ? "grandfather"
+      : normalizeCompKind(body.comp_kind);
+    if (!kind) {
+      return json({ error: "invalid_comp_kind", allowed: ["grandfather", "convertible"] }, 400);
+    }
+
+    // Read first, so the common conflict gets a message naming what is already
+    // there. The INSERT's unique index is the real guard — this read is a
+    // courtesy and is deliberately not trusted: two owners clicking at once
+    // both pass here and the database still refuses the second.
+    const existing = await subscriptionByTenant(admin, tenantId);
+    if (existing) {
+      return json(
+        { error: "already_has_subscription", status: existing.status },
+        409,
+      );
+    }
+
+    const granted = await grantComp(admin, tenantId, kind);
+    // null means the unique index caught what the read above missed: another
+    // grant, or a checkout, landed in between. A conflict, not a fault.
+    if (!granted) return json({ error: "already_has_subscription" }, 409);
+
+    // The audit record. Same reasoning as set_comp_kind: there is no audit
+    // table, and billing_events is raw provider webhooks keyed on
+    // (provider, provider_event_id) — writing operator actions there would
+    // corrupt both its meaning and its idempotency. This log line and
+    // `created_at` on the row are the trace, and the caller's user id is the
+    // part that cannot be reconstructed from the row afterwards.
+    console.log(
+      `[billing-subscription] comp GRANTED kind=${kind} tenant=${tenantId} by=${who.user.id}`,
+    );
+    return json({ ok: true, status: granted.status, comp_kind: granted.comp_kind });
   }
 
   const sub = await subscriptionByTenant(admin, tenantId);

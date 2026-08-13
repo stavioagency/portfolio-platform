@@ -70,6 +70,37 @@ test('an existing account gets a reset mail, and a token row to match', async ()
   });
 });
 
+// The P0 this file did not catch for two weeks. `listUsers` takes page and
+// perPage and NOTHING else — an `email` property is silently dropped — so
+// `listUsers({ page: 1, perPage: 1, email })` looked up the one newest account
+// in the project and compared the requested address against that. Every other
+// customer fell into the "no account" branch: ok:true, no mail, no token row.
+//
+// It passed because the fake honoured a filter the real SDK does not have.
+// The fake now models the real thing, and this asserts the property that
+// actually matters: an account that is not the first one findable must still
+// get its reset mail.
+test('a reset works for an account that is not the newest in the project', async () => {
+  await withRuntime(async (rt) => {
+    const request = await loadEdgeFunction(REQUEST);
+    // Enough accounts that a single-page lookup cannot cover them by accident,
+    // with the real customer buried in the middle rather than at either end.
+    for (let i = 0; i < 60; i++) rt.store.addUser({ email: `filler${i}@example.com` });
+    const user = rt.store.addUser({ email: 'buried@example.com' });
+    for (let i = 60; i < 120; i++) rt.store.addUser({ email: `filler${i}@example.com` });
+
+    const res = await request(post({ email: 'buried@example.com' }));
+
+    assert.equal(res.status, 200);
+    assert.equal(rt.sent.length, 1, 'the buried account must still receive a reset mail');
+    assert.equal(rt.sent[0].to[0], 'buried@example.com');
+
+    const rows = rt.store.rows('password_reset_tokens');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].user_id, user.id);
+  });
+});
+
 test('the row holds the HASH — the raw token is nowhere in the database', async () => {
   await withRuntime(async (rt) => {
     const user = rt.store.addUser({ email: 'noura@example.com' });

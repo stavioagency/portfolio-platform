@@ -504,6 +504,289 @@ testing.
 
 ---
 
+## 10a. Granting a comp
+
+`billing-subscription` action **`grant_comp`** — Subscribers → "Grant free
+access". Owners only. Built 2026-08-13; before it, no product path could
+*create* a comp and every comp in production came from one bulk SQL backfill
+(all seven rows share `created_at = 2026-08-06 00:57:39.709533+00`).
+
+**Why it had to exist.** "+ Add client" creates the tenant and the login but
+writes no subscription row, so `tenant_has_active_subscription()` is false, and
+section K gates **writes** on entitlement. A client onboarded that way could
+sign in, see the dashboard and see their public site render — reads are gated by
+`tenants.status`, not entitlement — while **every save was refused by RLS**.
+They were a read-only tenant of their own workspace, and the only fix was a
+hand-written INSERT against production.
+
+The granted row is byte-identical in shape to the backfilled ones, so a granted
+comp and an old one are indistinguishable to every reader:
+
+| column | value | why |
+|---|---|---|
+| `provider` | `'none'` | there is no provider behind a grant |
+| `provider_subscription_id` | null | nothing to point at |
+| `plan_code` | `'comped'` | `COMP_PLAN_CODE`; never a `provider_plans` row |
+| `status` | `'comped'` | already entitled by `tenant_has_active_subscription()` |
+| `comp_kind` | `'grandfather'` unless told otherwise | the safer default: it does not mark anyone to invoice later |
+| `environment` | null | see below |
+| `amount` / `currency` | null | there is no price |
+
+**`environment` stays null on purpose.** That column is the sandbox/live axis
+and it is a PayPal fact; a comp has no PayPal. Null is what keeps grants out of
+the environment migration in §10b entirely, rather than making them part of it.
+
+**Three properties worth keeping:**
+
+- **INSERT, never upsert.** `subscriptions_tenant_id_key` is UNIQUE on
+  `tenant_id`, so a second grant raises 23505 and the helper returns null, which
+  the action reports as `already_has_subscription` (409). An upsert here would
+  let a mis-clicked grant overwrite a **paying** subscription — wiping its
+  provider id and period, turning a customer into a freebie and destroying the
+  only local pointer to their PayPal agreement. The database refusing is the
+  feature; the handler's read-before-write is only a courtesy, and two owners
+  clicking at once both pass it.
+- **Owners only, re-checked with `is_platform_owner()`.** The generic
+  `is_tenant_admin()` check at the top of the function is *not* sufficient:
+  section F gives platform owners tenant-admin parity, but it equally passes an
+  ordinary client admin on their own workspace — who would otherwise grant
+  themselves free access. Of every action in the file this is where that
+  distinction is load-bearing.
+- **Handled ABOVE the `no_subscription` 404.** The action exists for tenants
+  with no subscription, so below that guard it is unreachable — every call 404s,
+  with a passing deploy and a button that never works. `set_comp_kind`
+  documents the identical trap against the paid-subscription guard.
+  `tests/billing-comp-grant.test.mjs` fails if either branch moves.
+
+**No PayPal call is made**, and that is not a departure from the rule at the top
+of the function ("change it at the provider first, let the webhook write the
+row"). That rule governs provider-backed subscriptions; a comp has no provider
+to ask and no webhook will ever arrive, so the operator's decision is the whole
+of the fact.
+
+**Auditability:** there is no audit table, and `billing_events` is not one — it
+is raw provider webhooks keyed on `(provider, provider_event_id)`, and writing
+operator actions there would corrupt both its meaning and its idempotency. The
+trace is `created_at` on the row plus a log line carrying the acting owner's
+user id, which is the part that cannot be reconstructed from the row afterwards.
+
+**What it deliberately does not do:** it does not touch `tenants.status`. A
+comped workspace that is still `disabled` (the state self-signup leaves) stays
+unpublished — granting access and publishing a site are different decisions, and
+folding them together would let one button do both by surprise. There is also
+no "ungrant": the way back is deleting the subscription, which this screen does
+not offer.
+
+---
+
+## 10c. Environment strategy — audited 2026-08-13
+
+**Environments are separated by DEPLOYMENT CONFIG, not by data.** `PAYPAL_ENV`
+is one global variable read in `_shared/paypal.ts`, and it selects the API base
+(`api-m.paypal.com` vs `api-m.sandbox.paypal.com`) alongside whichever
+`PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` / `PAYPAL_WEBHOOK_ID` are set. There
+is exactly **one** PayPal live at a time. `subscriptions.environment` does not
+change that; it is a *record* of which PayPal a row came from.
+
+**Where `environment` is honoured:**
+
+| Path | Use |
+|---|---|
+| `activeProviderPlan()` | plan lookup filters on `(provider, environment, plan_code)` |
+| `billing-plans-sync` | writes and filters on `PAYPAL_ENV` |
+| `billing-checkout` | stamps `environment: PAYPAL_ENV` at creation |
+| `billing-webhook` (adopt-orphan) | stamps it when adopting a subscription |
+
+**Where it is NOT honoured — the gap:** `tenant_has_active_subscription()`
+reads `status` and nothing else, and no admin screen distinguishes a sandbox row
+from a live one.
+
+**Set only at creation, never on a patch.** Both stamping sites are paths where
+a subscription comes into existence. Status patches from webhooks deliberately
+do not carry `environment`, so a flip of `PAYPAL_ENV` cannot relabel existing
+rows. Verified in `billing-webhook`; keep it that way.
+
+**Webhooks are environment-aware implicitly, and fail CLOSED.** Both PayPals
+deliver to the same endpoint URL; separation happens at verification, which
+posts the event back to the *current* environment's API against the *current*
+`PAYPAL_WEBHOOK_ID`. A sandbox event arriving while `PAYPAL_ENV=live` cannot
+verify and is rejected 401. That is correct security, and it has a consequence
+worth stating plainly: **while the platform is live, sandbox subscriptions are
+frozen** — no webhook can cancel, expire or update them. They can only be
+changed in the database.
+
+### Production state at audit (2026-08-13)
+
+`PAYPAL_ENV` has been `live` since 2026-08-09, and live plans exist.
+
+| Rows | environment | status | entitled? |
+|---|---|---|---|
+| 2 (`zz-signup-live`, `niggatesting`) | **sandbox** | active | **YES — on fake money** |
+| 2 (`onecenttest`, `ggghsj`) | live | pending | no |
+| 7 | null (comps) | comped | yes |
+| provider_plans | 3 live + 3 sandbox | active | — |
+
+**There are currently ZERO real paying customers.** Every entitled workspace is
+either a comp or one of the two sandbox subscriptions. That is what makes this
+safe to fix now and expensive to fix later.
+
+### The recommended model, and the predicate NOT to use
+
+Entitlement should **not** compare against "the current application
+environment". `tenant_has_active_subscription()` is a SQL function with no
+access to `PAYPAL_ENV`, so making it runtime-aware would couple the database to
+deployment config — and worse, it would mean flipping a config variable
+silently revokes access for everyone on the other side. Access changes belong
+in data, deliberately, not as a side effect of a deploy.
+
+The correct rule is that **a sandbox subscription never entitles, ever**:
+
+```sql
+and s.environment is distinct from 'sandbox'
+```
+
+> **Use `IS DISTINCT FROM 'sandbox'`, NEVER `= 'live'`.**
+> All seven comps carry `environment = NULL`. `environment = 'live'` would
+> evaluate NULL to false and **revoke access from every comped client at once**
+> — including `designakum` and `f9designer`. This is the single most dangerous
+> line in the whole migration.
+
+Longer term the real fix is structural: sandbox testing should not touch the
+production database at all. A separate Supabase project (or branch) for sandbox
+billing removes the entire class of problem, and makes the predicate above a
+belt-and-braces backstop rather than the primary defence.
+
+### Migration order (not yet executed — planning only)
+
+Order matters more than content here.
+
+1. **Neutralise the two sandbox rows first.** They cannot be cancelled through
+   PayPal while `PAYPAL_ENV=live` (see fail-closed above), so this is a database
+   action: expire the rows, or delete the workspaces if they are junk. Note that
+   deleting a tenant cascades its billing history — see the note on that.
+2. **Then** add the predicate. Doing it in this order means the change is a
+   no-op at the moment it lands, instead of yanking access from two workspaces
+   as a surprise.
+3. **Deactivate the sandbox webhook** in the sandbox PayPal dashboard, so
+   sandbox events stop reaching the production endpoint at all (§9 step 8).
+4. Leave the two `pending` live rows alone — `pending` does not entitle.
+5. Treat the secrets as an atomic SET. `PAYPAL_ENV`, client id, secret and
+   webhook id must change together; a half-changed set means every API call or
+   every webhook fails.
+
+---
+
+## 10b. Sandbox never entitles — CLOSED 2026-08-13 (was: entitlement ignored `environment`)
+
+**Fixed.** `section-o-sandbox-entitlement.sql` added one line to
+`tenant_has_active_subscription()`:
+
+```sql
+and s.environment is distinct from 'sandbox'
+```
+
+Before it, entitlement read `status` only, so a sandbox subscription at
+`status='active'` granted exactly the access a paid live one does — and since
+section K gates *writes*, that meant editing and saving a real workspace
+forever, on fake money.
+
+**`IS DISTINCT FROM 'sandbox'`, never `= 'live'`.** Comps carry
+`environment = NULL`; `= 'live'` evaluates NULL to not-true and would revoke all
+seven comped clients at once, `designakum` and `f9designer` included. The rule
+is "sandbox never entitles", not "only live entitles". Do not "tidy" this.
+
+Applied when there were **zero real paying customers** — every entitled
+workspace was a comp or one of two owner test rows — which is what made it free
+to do. Verified after applying: 7 comps entitled, both sandbox rows false, both
+live `pending` rows unchanged.
+
+The two sandbox subscriptions (`zz-signup-live`, `niggatesting`) were then set
+to `status='expired'` with `canceled_at` stamped. They could not be cancelled at
+PayPal — verification fails closed while `PAYPAL_ENV=live`, so the sandbox API
+is unreachable — making a database write the only route. Their tenants were
+deliberately NOT deleted: a tenant delete cascades payments, invoices and
+billing_customers with no archive, and that call belongs to the owner.
+
+---
+
+## 10d. Webhook environment separation — reviewed 2026-08-13
+
+Both PayPal environments deliver to the **same endpoint URL**. Separation
+happens entirely at verification, and it fails closed:
+
+1. `billing-webhook` reads the RAW body and calls `verifyWebhook` **before
+   anything touches the database**. An unverified event is discarded with 401
+   and never reaches `billing_events`.
+2. `verifyWebhook` posts the event back to the **current** environment's API
+   (`BASE`, from `PAYPAL_ENV`) against the **current** `PAYPAL_WEBHOOK_ID`.
+3. A missing `PAYPAL_WEBHOOK_ID` refuses to verify rather than assuming.
+4. `cert_url` is hostname-checked against `paypal.com` before being fetched —
+   it arrives in an attacker-controllable header.
+5. A verification that errors is treated as failure, never as "probably fine".
+
+**Consequences, both intended:**
+
+- A **sandbox event cannot affect production** while `PAYPAL_ENV=live`: the live
+  API will not validate a sandbox signature, so it 401s. Confirmed by the two
+  sandbox subscriptions, which no webhook has been able to touch.
+- The same mechanism means **sandbox subscriptions are frozen** — unreachable by
+  webhook, changeable only in the database. That is why §10b expired them
+  directly.
+
+`environment` is stamped **only where a subscription comes into existence**
+(`billing-checkout` on create, `billing-webhook` on adopt-orphan). Status
+patches deliberately do not carry it, so flipping `PAYPAL_ENV` cannot relabel
+existing rows. Keep it that way.
+
+**Secrets are an atomic SET.** `PAYPAL_ENV`, `PAYPAL_CLIENT_ID`,
+`PAYPAL_CLIENT_SECRET` and `PAYPAL_WEBHOOK_ID` must change together; a
+half-changed set means every API call or every webhook fails. Not changed in
+this pass — nothing required it.
+
+**Still open:** the sandbox webhook should be deactivated in the sandbox PayPal
+dashboard (§9 step 8) so those events stop reaching production at all. Today
+they are correctly rejected, but rejecting noise is worse than not receiving it.
+
+Audited 2026-08-13. Recorded because it is the mechanism behind "a test user
+signed up, never paid, and still had a working dashboard", which had been filed
+as an access-control bug.
+
+`subscriptions.environment` records which PayPal a subscription lives at
+(`sandbox` / `live`). **`tenant_has_active_subscription()` does not read that
+column**, so a subscription created against sandbox PayPal — with fake money, by
+anyone who can reach the checkout — satisfies entitlement exactly like a paid
+live one.
+
+Two production workspaces are entitled today on sandbox subscriptions alone:
+
+| Workspace | tenant status | subscription | environment | entitled |
+|---|---|---|---|---|
+| `zz-signup-live` | active | active | **sandbox** | yes |
+| `niggatesting` | active | active | **sandbox** | yes |
+
+Both are the owner's own test signups, so nothing is currently being given away
+to a stranger. The exposure is that nothing *structural* stops it: the platform
+is in sandbox ([[paypal-env-sandbox-only]] — no live `provider_plans` exist),
+so every subscription that can be created right now is a sandbox one.
+
+**Do not "fix" this by adding `and environment = 'live'` to the function.** That
+predicate would instantly revoke both workspaces above, and would revoke every
+real customer the moment the live migration created live rows alongside sandbox
+ones. The environment cutover is a data migration (§9), and this check belongs
+in it — as one step, deliberately ordered, not as an isolated edit. Until then
+the correct reading of an entitled sandbox workspace is "test data", and the
+list above is the whole of it.
+
+The signup flow itself is **not** the defect and needs no new gate: self-signup
+tenants are created `disabled` with no subscription row, and both current
+self-signups (`murtaza`, `gggzuu`) are correctly `disabled` / not entitled.
+What an unpaid customer *can* do is load the dashboard shell — see
+[overview.md](overview.md) on where the boundary actually sits; that is by
+design, because the Billing tab is how they pay, and writes are stopped by RLS
+rather than by hiding the UI.
+
+---
+
 ## 11. Adding another provider
 
 The interface is `supabase/functions/_shared/provider.ts`. Write an adapter

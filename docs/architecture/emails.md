@@ -81,6 +81,85 @@ conditional on mail.
 FIRST**, before suspecting anything else. See
 [workflows/debugging.md](../workflows/debugging.md).
 
+**Then check that the code got as far as trying to send.** Reset mail was
+missing for two weeks in Aug 2026 and the key was fine the whole time — the
+function was deciding the account did not exist and returning before it reached
+`sendMail`. Resend, the domain, and the secrets were all healthy; the user
+lookup was broken (auth.md §7 item 4).
+
+The distinguishing signal is in the logs and costs one query:
+
+| Log line | Meaning |
+|---|---|
+| `RESEND_API_KEY unset` | secrets problem — the original hypothesis |
+| `resend rejected <status>` | key or `MAIL_FROM` domain problem |
+| `no account for that address` | **the lookup failed, not the mail** |
+| `reset mail sent lang=…` | we sent it; the problem is downstream of us |
+
+A second, sharper check for password reset specifically: **`password_reset_tokens`
+should have a row for every request.** Zero rows means the function returned
+before minting a token, which rules out every mail-side cause immediately. A
+mail problem still writes the row.
+
+---
+
+## 4b. Full inventory — audited 2026-08-13
+
+Every email this platform can send. Four functions, all Resend; **no live path
+reaches Supabase's mailer** (the only mentions in the codebase are historical
+comments explaining why it was abandoned).
+
+| Email | Trigger | Provider | AR | EN | Branded | Status |
+|---|---|---|---|---|---|---|
+| Password reset | "Forgot password" | Resend | ✅ | ✅ | ✅ | **OK** |
+| Credentials / welcome | owner "+ Add client" | Resend | ✅ | ✅ | ✅ | **OK** |
+| Credentials re-send | owner `send_welcome` | Resend | ✅ | ✅ | ✅ | OK — but destructive, see auth.md §7.1 |
+| Signup verification | public `/signup` | Resend | ✅ | ✅ | ❌ | **off-brand** |
+| "You already have an account" | signup w/ confirmed email | Resend | ✅ | ✅ | ❌ | **off-brand** |
+| Payment confirmed | — | — | — | — | — | **DOES NOT EXIST** |
+| Payment failed | — | — | — | — | — | **DOES NOT EXIST** |
+| Subscription cancelled | — | — | — | — | — | **DOES NOT EXIST** |
+| Plan changed | — | — | — | — | — | **DOES NOT EXIST** |
+| Renewal / receipt | — | — | — | — | — | **DOES NOT EXIST** |
+| Admin/operator notifications | — | — | — | — | — | **DOES NOT EXIST** |
+
+### Finding 1 — signup emails are off-brand (cosmetic, not broken)
+
+`signup-start` renders its two emails with `background:#4f6ef2` and no card
+layout. Every other email uses the brand blue `#2C6FE0` on `#0C1530` text with a
+bordered credentials/CTA card. It also hardcodes two separate `dir="rtl"` /
+LTR blocks instead of the `ar ? "rtl" : "ltr"` wrapper the other three share.
+
+Both languages are present and correct, and RTL works — this is **branding
+drift, not a defect**. It matters more than its size suggests because these are
+the *first two emails a self-signup customer ever receives*, and they look
+unlike everything that follows. Fix during the UX phase when templates are
+being touched anyway; there is no reliability reason to touch it now.
+
+### Finding 2 — signup uses URL language only, and that is CORRECT
+
+`signup-start` resolves language from `body.lang` alone rather than `pickLang()`.
+Not a bug: no account exists yet, so there is no `admin_lang`, no `lang` and no
+tenant to read. The URL is the only signal available, which is exactly the rule
+in §5. The other three all use the full chain.
+
+### Finding 3 — there are NO billing emails at all
+
+A customer pays and hears nothing. No confirmation, no receipt, no renewal
+notice, no failed-payment warning, no cancellation confirmation. The billing
+state machine is complete and the webhook knows about every one of these
+events — `payment_succeeded`, `payment_failed`, `subscription_cancelled` — so
+the *triggers already exist*; only the sending does not.
+
+Consequences worth stating: a failed payment is the one case where silence
+directly costs money, because the customer does not know to fix their card
+before the grace period expires (`past_due` → `grace_ends_at`). And a
+subscription with no receipt is a support ticket and a chargeback risk.
+
+**Not built here deliberately** — this is a feature, and this phase is
+stabilisation. It is the largest *product* gap the audit found, and it belongs
+in the launch plan rather than the UX plan.
+
 ---
 
 ## 5. Language

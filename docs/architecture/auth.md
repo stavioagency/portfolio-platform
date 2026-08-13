@@ -253,6 +253,47 @@ both `admin.js` clear sites were correct as written, as that note said.
 longer applies to password reset, which no longer uses them. Still true for any
 Supabase-issued invite link.
 
+**4. `listUsers` HAS NO EMAIL FILTER — FOUND AND FIXED 2026-08-13.** This is the
+single most expensive wrong belief this codebase has held, so it is written up
+in full.
+
+`admin.auth.admin.listUsers({ page, perPage, email })` builds exactly one
+request:
+
+```
+GET /admin/users?page=<page>&per_page=<perPage>
+```
+
+`email` — and any other property — is **dropped before the request is made**.
+No error, no warning, no empty result. Three functions passed it and carried a
+comment claiming "the filter is applied server-side by GoTrue". It never was.
+
+With `perPage: 1` the effect was total: the call returned the **single newest
+account in the project**, the caller compared the requested address against it,
+and concluded "no such account" for everyone else. Concretely, at 25 accounts,
+**password reset worked for exactly one person** — whoever had signed up most
+recently — and silently did nothing for the other 24. Because the endpoint
+answers `{ok:true}` unconditionally (§4, deliberate, keep it), the failure was
+invisible from outside: no error, no mail, and `password_reset_tokens` sat at
+**zero rows since the feature shipped**.
+
+`signup-start` had the same lookup, failing more quietly: a returning customer
+looked new, so the "you already have an account" branch was unreachable and
+GoTrue's unique constraint was the only thing preventing a duplicate.
+`invite-client` used a bare `listUsers()`, which returns only the first 50
+accounts — latent, not yet live, at 25.
+
+**The tests passed the whole time.** `tests/helpers/fake-supabase.mjs`
+implemented the email filter the real SDK lacks and ignored paging — the exact
+inverse of reality. A fake more capable than the real client is not a test, and
+this one survived review, a deploy and a customer report. The fake now models
+the real behaviour; `tests/password-reset.test.mjs` has a case that buries an
+account behind a page boundary and fails if the old lookup returns.
+
+The fix is `supabase/functions/_shared/find-user.ts` — `findUserByEmail()`, which
+pages, and `listAllUsers()` for callers that need the whole set. **Never look up
+a user by passing `email` to `listUsers`.**
+
 ---
 
 ## 8. Mapping integrity, as audited

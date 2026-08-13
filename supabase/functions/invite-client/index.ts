@@ -31,6 +31,7 @@
 // Returns: { ok, tenant, email, username, temp_password, emailed, email_error }
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { findUserByEmail } from "../_shared/find-user.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -251,9 +252,13 @@ Deno.serve(async (req: Request) => {
     .select("username").eq("username", username).maybeSingle();
   if (takenName) return json({ error: "username_taken" }, 409);
 
-  const { data: listed } = await admin.auth.admin.listUsers();
-  const emailExists = (listed?.users ?? []).some((u) => (u.email ?? "").toLowerCase() === email);
-  if (emailExists) return json({ error: "email_taken" }, 409);
+  // Paged. A bare listUsers() returns only the FIRST 50 accounts, so this
+  // check would have started passing addresses that already exist as soon as
+  // the project grew past that — silently, and with the failure landing later
+  // as a raw GoTrue duplicate error instead of a clean "email_taken". The
+  // project is at 25 accounts, so this was a latent bug, not yet a live one.
+  const existing = await findUserByEmail(admin, email);
+  if (existing) return json({ error: "email_taken" }, 409);
 
   // 5) Create the account WITH a password, already confirmed so they can sign in
   //    right away. must_set_password lives in user_metadata (not app_metadata) so the
