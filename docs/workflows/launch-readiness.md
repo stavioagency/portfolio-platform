@@ -1,4 +1,47 @@
-# Launch readiness — manual tasks, the live checkout test, and health checks
+# Launch readiness — the checklist, the live checkout test, and health checks
+
+## 0. The launch checklist
+
+Sorted by what actually stops a launch. Everything here is explained in full
+below or in the document named.
+
+### BLOCKERS — do not accept a paying customer until these are done
+
+| # | Item | Why it blocks |
+|---|---|---|
+| 1 | **Run the live checkout test** (§2) | The path from *customer pays* → *customer has access* has NEVER run. Both live subscription rows are `pending`; every entitled workspace is a comp. This is unproven, not merely untested. |
+
+That is the whole blocker list. Everything below is a real gap, but none of it
+stops the first customer from succeeding.
+
+### IMPORTANT — before spending money on marketing
+
+| # | Item | Why |
+|---|---|---|
+| 2 | **Failed-payment email** ([emails.md §4b](../architecture/emails.md)) | The one silence that directly costs money. `past_due` grants a grace period the customer is never told about, so they discover it as a lockout. The webhook already recognises `payment_failed`; only the sending is missing. |
+| 3 | **Payment confirmation / receipt** | A charge with no receipt is a support ticket and a chargeback risk. |
+| 4 | **Cancellation confirmation** | A cancellation the customer cannot see is a cancellation they will email about. |
+| 5 | **Run the health checks** (§3) | Written, not automated. They only help if someone runs them. Five queries, about a minute. |
+| 6 | **Re-brand the two signup emails** | Off-brand (`#4f6ef2`, no card) and they are the FIRST two emails a self-signup customer ever sees. Cheap, but it is a first impression. |
+
+### LATER — fold into the UX redesign
+
+| # | Item | Why it can wait |
+|---|---|---|
+| 7 | Show `environment` in the Subscribers list | An operator cannot currently distinguish a sandbox row from a live one. Now low-risk, since sandbox no longer entitles. |
+| 8 | Plan-change / renewal notices | Nice to have; neither causes a lockout. |
+| 9 | Automating the health checks on a schedule | Manual is fine at this size. |
+| 10 | Non-destructive credentials re-send ([auth.md §7.1](../architecture/auth.md)) | `send_welcome` silently invalidates a working password. Real, but operator-only and already documented. |
+
+**A note on sequencing the billing emails (2–4):** they are a *product* feature,
+and the UX redesign will decide what the billing experience feels like.
+Building them now risks building them twice. The exception is the
+failed-payment email, which is a reliability concern rather than an
+experience one and is worth doing regardless.
+
+---
+
+# Manual tasks, the live checkout test, and health checks
 
 Written 2026-08-13, at the end of the stabilisation phase. Everything in the
 codebase that stabilisation could fix is fixed and deployed. What remains is
@@ -9,9 +52,29 @@ Read this before declaring the platform open to customers.
 
 ---
 
-## 1. Manual task: disable the sandbox webhook
+## 1. Manual task: disable the sandbox webhook — ✅ DONE 2026-08-13
 
-**Status: NOT DONE. Owner action, PayPal dashboard, ~2 minutes.**
+The sandbox webhook pointing at the production `billing-webhook` has been
+**deleted by the owner**. Kept below because the reasoning explains what the
+logs should now look like, and what it would mean if that changed.
+
+**Verification available to us is corroborating, not proof:** no
+`signature verification FAILED` line has appeared since. That is consistent
+with the endpoint being gone — but it is equally consistent with no sandbox
+event having been sent, so treat it as agreement rather than confirmation. The
+authoritative check is the sandbox PayPal dashboard showing no webhook.
+
+**What it means going forward:** a `signature verification FAILED` line is now
+a real signal rather than expected noise. If one appears it is a LIVE webhook
+failing to verify, which is a genuine incident — see billing.md §10
+troubleshooting, most likely `PAYPAL_WEBHOOK_ID` no longer matching the live
+app.
+
+---
+
+## 1b. Why it was done (original note)
+
+**Was: NOT DONE. Owner action, PayPal dashboard, ~2 minutes.**
 
 `PAYPAL_ENV` is `live`, so sandbox events reaching the production endpoint are
 already rejected — verification posts them to the live API against the live
@@ -77,6 +140,48 @@ the entitlement flip can only be proven by one real payment.
 
 Step 9 is the real acceptance criterion. Steps 2 and 9 are the same action
 either side of a payment, and the difference between them *is* the product.
+
+### The one query to watch throughout
+
+Run this after every step. It is the whole test in one row, and it is the
+fastest way to see which step actually moved something:
+
+```sql
+select t.slug, t.status as tenant_status, t.created_via,
+       s.status as sub_status, s.environment, s.provider_subscription_id,
+       s.current_period_end,
+       public.tenant_has_active_subscription(t.id) as entitled
+from public.tenants t
+left join public.subscriptions s on s.tenant_id = t.id
+where t.slug = '<your test slug>';
+```
+
+**What success looks like, as a single before/after:**
+
+| | after step 2 (signed up, unpaid) | after step 6 (paid) |
+|---|---|---|
+| `tenant_status` | `disabled` | **`active`** |
+| `sub_status` | *(no row)* | **`active`** |
+| `environment` | — | **`live`** |
+| `provider_subscription_id` | — | **`I-…`** |
+| `entitled` | `false` | **`true`** |
+| saving in the dashboard | **refused** | **works** |
+
+If `entitled` is true but saving still fails, the problem is section K / RLS,
+not billing. If `sub_status` reaches `active` but `tenant_status` stays
+`disabled`, the ACTIVATED webhook ran partially — capture the row and stop.
+
+Also watch, in the same window:
+
+```sql
+select received_at, provider, event_type
+from public.billing_events order by received_at desc limit 10;
+```
+
+and the function logs for `billing-webhook`. A **`signature verification
+FAILED`** line during this test is now unambiguous — the sandbox webhook is
+gone, so it can only be the live webhook failing, and the test should stop
+until that is understood.
 
 ### If it fails
 

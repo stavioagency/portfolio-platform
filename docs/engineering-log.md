@@ -15,6 +15,34 @@ Every entry: date, what was investigated, what was concluded, what changed.
 
 ---
 
+## 2026-08-13 — Foundation checkpoint: stabilisation merged to main, sandbox webhook removed
+
+**Merged** `stabilization/foundation-2026-08` into `main` with `--no-ff`
+(`340bb91`). No conflicts. Pre-merge audit: clean tree, no secrets in the full
+branch diff, no env files, and the only application change outside docs/tests
+was 49 purely additive lines in `admin.js` confined to `SubscribersOverview`.
+Post-merge: 473/473 tests, production build compiled, and the deployed
+`billing-subscription` v11 bundle diffed byte-for-byte against `main` — all
+seven files match, so **production and the repository are now in sync**.
+
+**Sandbox webhook deleted by the owner.** The endpoint pointing at the
+production `billing-webhook` is gone from the sandbox PayPal app. The
+consequence worth recording: a `signature verification FAILED` log line is no
+longer expected noise, it is a real incident signal — almost certainly the live
+`PAYPAL_WEBHOOK_ID` no longer matching. Our own evidence (no failures since) is
+corroborating rather than proof, since no sandbox event may have been sent.
+
+**Verified live, by query rather than assumption:** the sandbox guard is
+present in `tenant_has_active_subscription()`, zero sandbox rows entitle, zero
+comps are broken (all 7 still entitled), and both sandbox subscriptions sit at
+`expired`.
+
+**Added** a launch checklist to `workflows/launch-readiness.md` splitting
+blockers from important-before-marketing from redesign-era work. There is
+exactly **one blocker: the live checkout has never run.**
+
+---
+
 ## 2026-08-13 — Billing safety phase: grant_comp confirmed live, sandbox entitlement closed
 
 **grant_comp is LIVE — deployed by the owner, not by this session.**
