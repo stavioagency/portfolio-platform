@@ -77,6 +77,7 @@ Details: [environments/platform.md](environments/platform.md) ·
 | Something is broken and you are starting cold | [workflows/debugging.md](workflows/debugging.md) |
 | "Has anyone looked at this before?" | [engineering-log.md](engineering-log.md) |
 | Launching: manual tasks, the live checkout test, health checks | [workflows/launch-readiness.md](workflows/launch-readiness.md) |
+| Anything about the UX redesign — start here, before designing | [ux/designakum-ux-context.md](ux/designakum-ux-context.md) |
 
 Files outside `docs/` that are still authoritative:
 

@@ -15,6 +15,34 @@ Every entry: date, what was investigated, what was concluded, what changed.
 
 ---
 
+## 2026-08-13 — UX context handoff written; stabilisation phase closed
+
+**Wrote** `docs/ux/designakum-ux-context.md`, a self-contained brief for a
+fresh session starting the redesign. No UI code touched and no design proposed.
+
+Grounded in the codebase rather than recollection, and three facts in it are
+worth surfacing here because they will shape the redesign more than anything
+the founder listed:
+
+  * **pages/admin.js is ~6,550 lines and is BOTH portals**, switched by role at
+    runtime on a single `/admin` route. Tab state is internal, so nothing in
+    the dashboard is linkable. The "generic feeling" the founder describes has
+    a structural cause: the information architecture is a conditional, not a
+    structure.
+  * **The dependency rule is a hard design constraint, not a preference.** Five
+    runtime deps, no Tailwind, no TypeScript, no component library. A blueprint
+    assuming a modern component stack is not implementable here, and that has
+    to be known before the design exists rather than discovered at build time.
+  * **The onboarding friction is vocabulary, not step count.** "+ Add client"
+    is already one form; what makes it feel manual is being asked for a slug
+    and a username. Neither can simply be deleted — the slug becomes the public
+    URL and the username is used by sign-in resolution.
+
+Closes the stabilisation phase. The one launch blocker (the live checkout has
+never run end to end) is a verification task and does not block UX work.
+
+---
+
 ## 2026-08-13 — Foundation checkpoint: stabilisation merged to main, sandbox webhook removed
 
 **Merged** `stabilization/foundation-2026-08` into `main` with `--no-ff`
