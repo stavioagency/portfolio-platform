@@ -5692,6 +5692,38 @@ function SubscribersOverview({ lang, onOpen }) {
   // permanent — so it is confirmed. Making it permanent again is the safe
   // direction and the undo, and friction on an undo is friction in the wrong
   // place.
+  // Grant complimentary access to a workspace that has no subscription.
+  //
+  // CONFIRMED, unlike the comp_kind toggle next to it, because the two are not
+  // comparable. comp_kind is metadata and reversible from the same row; this
+  // WRITES ENTITLEMENT, and there is no "ungrant" button to undo it with — the
+  // only way back is deleting the subscription, which is not something this
+  // screen offers. Ask first.
+  async function grantCompAccess(row) {
+    const ok = await confirm({
+      title: ar ? 'منح وصول مجاني؟' : 'Grant free access?',
+      description: ar
+        ? `سيحصل ${row.name} على وصول كامل بدون دفع. هذا يسمح له بتعديل موقعه وحفظ التغييرات. لا يوجد اشتراك ولا تجديد ولا مبلغ مستحق.`
+        : `${row.name} will get full access without paying. This is what lets them edit their site and save changes. There is no subscription, no renewal and nothing to pay.`,
+      confirmLabel: ar ? 'منح الوصول' : 'Grant access',
+      cancelLabel: ar ? 'رجوع' : 'Back',
+    });
+    if (!ok) return;
+    setBusyId(row.id);
+    try {
+      await invokeBilling('billing-subscription', {
+        action: 'grant_comp', tenant_id: row.id,
+      });
+      toast.success(ar ? 'تم منح الوصول.' : 'Access granted.');
+      setReloadToken((n) => n + 1);
+    } catch (err) {
+      console.error('[subscribers] grant_comp failed:', err);
+      toast.error(billingActionError(err?.message, lang));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function changeCompKind(row, kind) {
     if (kind === 'convertible') {
       const ok = await confirm({
@@ -5961,6 +5993,23 @@ function SubscribersOverview({ lang, onOpen }) {
                           : (ar ? 'اجعله قابلًا للتحويل' : 'Make convertible')}
                       </Button>
                     </>
+                  )}
+                  {/* GRANT COMPLIMENTARY ACCESS. Shown only when there is NO
+                      subscription row at all, which is exactly the case the
+                      action accepts — it 409s on anything else, and a button
+                      whose only outcome is a conflict is worse than no button.
+                      This is the state "+ Add client" leaves a workspace in:
+                      the client can sign in and read, and section K refuses
+                      every write, until someone grants them access. Before
+                      this existed that meant hand-written SQL. */}
+                  {!r.subscription && (
+                    <Button
+                      type="button" variant="secondary" size="sm"
+                      loading={busyId === r.id}
+                      onClick={() => grantCompAccess(r)}
+                    >
+                      {ar ? 'منح وصول مجاني' : 'Grant free access'}
+                    </Button>
                   )}
                   {r.billing.entitled && r.billing.state !== 'comped' && !r.subscription?.cancel_at_period_end && (
                     <Button

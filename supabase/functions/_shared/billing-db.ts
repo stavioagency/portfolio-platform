@@ -197,6 +197,67 @@ export async function setCompKind(
   return data?.[0] ?? null;
 }
 
+// The plan_code every comp carries. Mirrors lib/billing-plans.js COMP_PLAN_CODE
+// — two runtimes, no shared module path, the same mirror problem as
+// signup-rules.ts. It is NOT a row in provider_plans and must never become one:
+// a comp has no provider, no price and nothing to sync.
+export const COMP_PLAN_CODE = "comped";
+
+// GRANT a comp — the business action "give this client complimentary access".
+//
+// Until 2026-08-13 there was no product path to this and every comp in
+// production came from one bulk SQL backfill, which meant a client onboarded
+// through "+ Add client" had no subscription row, was therefore unentitled, and
+// (section K gates WRITES on entitlement) could sign in and read but never save.
+// docs/architecture/billing.md §10a has the full account.
+//
+// THE SHAPE IS COPIED FROM THE ROWS THE BACKFILL WROTE, deliberately, so a
+// granted comp and a backfilled one are indistinguishable to every reader:
+//   provider 'none'          there is no provider behind a grant
+//   provider_subscription_id null
+//   plan_code 'comped'
+//   environment null         the sandbox/live axis is a PayPal fact and a comp
+//                            has no PayPal. Leaving it null is what keeps this
+//                            out of the environment migration entirely.
+//   amount / currency null   there is no price
+//
+// INSERT, NEVER UPSERT. `subscriptions_tenant_id_key` is UNIQUE on tenant_id,
+// so a second grant raises 23505 and this returns null rather than quietly
+// overwriting. That matters more than it looks: an upsert here would let a
+// mis-clicked "grant" wipe a PAYING subscription's provider id and period,
+// converting a customer into a freebie and losing the only local pointer to
+// their PayPal agreement. The database refusing is the feature.
+//
+// Returns the new row, or null when the tenant already has ANY subscription.
+export async function grantComp(
+  admin: SupabaseClient,
+  tenantId: string,
+  kind: "grandfather" | "convertible",
+) {
+  const { data, error } = await admin
+    .from("subscriptions")
+    .insert({
+      tenant_id: tenantId,
+      provider: "none",
+      provider_subscription_id: null,
+      plan_code: COMP_PLAN_CODE,
+      status: "comped",
+      comp_kind: kind,
+      environment: null,
+      amount: null,
+      currency: null,
+    })
+    .select("tenant_id, status, plan_code, comp_kind, created_at");
+  // 23505 = unique_violation. The ONLY expected failure, and it means "this
+  // tenant already has a subscription" — which the caller reports as a
+  // conflict, not an error. Anything else is a real fault and throws.
+  if (error) {
+    if (error.code === "23505") return null;
+    throw new Error(`comp_grant_failed: ${error.message}`);
+  }
+  return data?.[0] ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Payments and invoices
 // ---------------------------------------------------------------------------

@@ -7,8 +7,15 @@ not. The point of this system is that a session loads ~5 KB of map instead of
 
 This is the **only** index. Do not create `CONTEXT.md`, `STATUS.md`,
 `SESSION.md`, `NOTES.md`, `HANDOFF_V2.md`, `AUDIT_FINAL.md` or anything of that
-shape. If something you learn is durable, edit the document that owns it. If it
-is only true today, it does not belong in the repo at all.
+shape. If something you learn is durable, edit the document that owns it.
+
+There is **one** exception, added deliberately on 2026-08-13:
+[engineering-log.md](engineering-log.md) holds investigation history — what was
+examined, what was ruled out, what was decided against. It exists because
+"we already checked that, and here is why it was not the cause" is expensive to
+rediscover and belongs nowhere else. It is append-only and newest-first.
+**Architecture and current truths still go in the owning document, never in the
+log**, and never in this file.
 
 ---
 
@@ -68,6 +75,7 @@ Details: [environments/platform.md](environments/platform.md) ·
 | How to run, test and commit | [workflows/development.md](workflows/development.md) |
 | Shipping code, SQL or a function | [workflows/deployment.md](workflows/deployment.md) |
 | Something is broken and you are starting cold | [workflows/debugging.md](workflows/debugging.md) |
+| "Has anyone looked at this before?" | [engineering-log.md](engineering-log.md) |
 
 Files outside `docs/` that are still authoritative:
 
@@ -91,11 +99,25 @@ Files outside `docs/` that are still authoritative:
 4. **Never reintroduce a default or singleton tenant.** See
    [decisions/decisions.md](decisions/decisions.md); this one served a real
    client's site to strangers.
+4b. **A sandbox subscription never grants access, and the predicate is
+   `environment IS DISTINCT FROM 'sandbox'` — never `= 'live'`.** Comps carry a
+   NULL environment; `= 'live'` would revoke every comped client at once.
+   Decided and applied 2026-08-13 in `section-o-sandbox-entitlement.sql`;
+   reasoning in [architecture/billing.md](architecture/billing.md) §10b.
 5. **Never replace Supabase Auth with custom password storage**, and never write
    custom password hashing.
 6. **Verify claims against the database before acting on them.** More than one
    reported failure here turned out to be correct behaviour observed at the
    wrong moment.
+6b. **Never look up a user with `listUsers({ email })`.** It has no email
+   filter and silently ignores the argument, returning whatever page you asked
+   for. Use `_shared/find-user.ts`. This shipped a password reset that worked
+   for exactly one account in the project; the full account is in
+   [architecture/auth.md](architecture/auth.md) §7.
+6c. **A test double must never be more capable than the thing it replaces.**
+   The bug above passed 458 tests because the Supabase fake implemented a
+   filter the real SDK does not have. When a test and production disagree,
+   suspect the fake.
 7. **Finish with `npm test` and a build**, then read the diff.
 8. **Update documentation only when architecture or a decision changed.** A bug
    fix that leaves the design intact needs no doc edit. Resist the urge to

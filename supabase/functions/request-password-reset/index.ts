@@ -32,6 +32,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { cors, json } from "../_shared/http.ts";
 import { emailError, normalizeEmail } from "../_shared/signup-rules.ts";
+import { findUserByEmail } from "../_shared/find-user.ts";
 import { RESET_TTL_MS, sha256Hex } from "../_shared/reset-token.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -158,16 +159,18 @@ Deno.serve(async (req: Request) => {
   try {
     const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
-    // listUsers is paginated and there is no getUserByEmail in this SDK
-    // version; the filter is applied server-side by GoTrue. Same lookup
-    // signup-start uses.
-    const { data: found, error: lookupErr } = await admin.auth.admin.listUsers({
-      page: 1, perPage: 1, email,
-    });
-    if (lookupErr) throw new Error(`user_lookup_failed: ${lookupErr.message}`);
-    const user = (found?.users ?? []).find(
-      (u: { email?: string }) => (u.email ?? "").toLowerCase() === email,
-    );
+    // There is no getUserByEmail in this SDK version, and listUsers does NOT
+    // take an email filter however much it looks like it should — see
+    // _shared/find-user.ts, which walks the pages. This function previously
+    // passed `{ page: 1, perPage: 1, email }` and, because the `email` was
+    // dropped, compared the requested address against the single newest
+    // account in the project. Every other customer got the "no account"
+    // branch below, which is silent by design: hence "returns ok, sends
+    // nothing, writes no token row" for all but one person.
+    //
+    // A lookup FAILURE throws, and is caught and logged by the handler's
+    // catch. It must never be confused with an absent account.
+    const user = await findUserByEmail(admin, email);
     // No such account. This is the branch the whole "same answer" rule exists
     // for: it must be indistinguishable from the one below, including in how
     // long it takes to anyone who is not timing very carefully.

@@ -81,6 +81,26 @@ conditional on mail.
 FIRST**, before suspecting anything else. See
 [workflows/debugging.md](../workflows/debugging.md).
 
+**Then check that the code got as far as trying to send.** Reset mail was
+missing for two weeks in Aug 2026 and the key was fine the whole time — the
+function was deciding the account did not exist and returning before it reached
+`sendMail`. Resend, the domain, and the secrets were all healthy; the user
+lookup was broken (auth.md §7 item 4).
+
+The distinguishing signal is in the logs and costs one query:
+
+| Log line | Meaning |
+|---|---|
+| `RESEND_API_KEY unset` | secrets problem — the original hypothesis |
+| `resend rejected <status>` | key or `MAIL_FROM` domain problem |
+| `no account for that address` | **the lookup failed, not the mail** |
+| `reset mail sent lang=…` | we sent it; the problem is downstream of us |
+
+A second, sharper check for password reset specifically: **`password_reset_tokens`
+should have a row for every request.** Zero rows means the function returned
+before minting a token, which rules out every mail-side cause immediately. A
+mail problem still writes the row.
+
 ---
 
 ## 5. Language
