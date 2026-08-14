@@ -1,5 +1,20 @@
 # Where the paywall belongs
 
+> **SUPERSEDED, 2026-08-14, by [publishing-model.md](publishing-model.md).**
+> Written before the publishing decisions were locked. Two of its
+> recommendations are now known to be wrong and are corrected there:
+>
+> * it proposed an **Edge Function** for the publish action. Publishing needs no
+>   service_role key and no provider secret — only the caller's own identity,
+>   which Postgres already has. A SECURITY DEFINER RPC is smaller, has no deploy
+>   step, and cannot drift from a bundled `_shared` copy.
+> * it proposed a **signed preview token**. A token *is* a shareable public
+>   preview link, which the locked Option A rules out. The same-origin session
+>   answers the question with nothing to leak, expire or revoke.
+>
+> It also missed `can_write_media()` and the `tenant_domains` trap entirely.
+> Kept for the reasoning that still holds; read the newer document first.
+
 **A recommendation, not an implementation.** Nothing here is built. It exists so
 the Phase 1 UI is designed against the boundary the product is moving to, rather
 than the one it has.
