@@ -24,6 +24,21 @@ test('every real route is refused', () => {
   }
 });
 
+test('the routes the admin split will need are refused before they exist', () => {
+  // `studio` and `console` are the two halves of the coming split, `me` is the
+  // signed-in user's own page. None of them is a route yet, which is exactly
+  // why this test exists: reservation has to beat the customer to the word.
+  // Note `me` is shorter than SLUG_MIN, so today it is refused for length —
+  // assert only that it is refused, and that the set carries it for the day
+  // the minimum changes.
+  assert.equal(slugError('studio'), 'slug_reserved');
+  assert.equal(slugError('console'), 'slug_reserved');
+  assert.notEqual(slugError('me'), '', '`me` must never be claimable');
+  for (const word of ['studio', 'console', 'me']) {
+    assert.ok(RESERVED_SLUGS.has(word), `${word} must be in RESERVED_SLUGS`);
+  }
+});
+
 test('names that would impersonate the platform are refused', () => {
   for (const slug of ['designakum', 'official', 'support', 'security', 'noreply']) {
     assert.equal(slugError(slug), 'slug_reserved');

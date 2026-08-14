@@ -22,6 +22,8 @@ const RESERVED_SLUGS = new Set([
   "login", "signin", "sign-in", "signout", "sign-out", "register", "verify",
   "account", "billing", "checkout", "pricing", "plans", "invoice", "invoices",
   "dashboard", "settings", "support", "help", "docs", "blog", "about",
+  // the coming admin split, reserved before either route exists
+  "studio", "console", "me",
   "contact", "status", "health", "webhook", "webhooks", "callback",
   "designakum", "official", "www", "mail", "email", "root", "system",
   "security", "abuse", "postmaster", "no-reply", "noreply",

@@ -1543,7 +1543,15 @@ function tenantStoragePath(tenant, name) {
 
 // Slugs that would collide with real routes — a static route always wins over the
 // dynamic /[slug] page, so such a tenant would be unreachable.
-const RESERVED_SLUGS = ['admin', 'privacy', 'terms', 'api', '_next', '404', '500', 'favicon.ico'];
+// A THIRD copy of the list, and much shorter than lib/reserved-slugs.js — this
+// one guards the operator's own slug field. It is deliberately not unified with
+// the signup list here: the signup list is longer, and adopting it wholesale
+// would start refusing edits to tenants that already hold one of those words.
+// Widening it is its own change, with a collision query behind it.
+// `studio`/`console`/`me` are added because the operator must not be able to
+// hand out a word the coming routes need either.
+const RESERVED_SLUGS = ['admin', 'privacy', 'terms', 'api', '_next', '404', '500', 'favicon.ico',
+  'studio', 'console', 'me'];
 
 // A blank slug is invalid; keep slugs to a safe host-friendly charset.
 function normalizeSlug(v) {
