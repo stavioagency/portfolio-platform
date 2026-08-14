@@ -42,13 +42,17 @@ including to token work.
 
 ## 1.2 Route preparation — **prepare only, create nothing**
 
-- [ ] ⚠️ **Re-run the slug collision query** immediately before merging — **NOT
-      re-run; needs a database read this session did not take**:
+- [x] **Re-run the slug collision query** — **re-run 2026-08-14 against
+      `gphrzvjlstznhypcfgre`, read-only: 13 tenants, 0 collisions** on
+      `studio` / `console` / `me`, checked case- and whitespace-insensitively.
+      Same 13 tenants as the earlier count, so nothing was claimed in between:
       ```sql
       SELECT slug FROM tenants WHERE slug IN ('studio','console','me');
       ```
-      **Checked 2026-08-14: 13 tenants, 0 collisions.** Self-serve signup is
-      live, so a customer could claim one of these words at any time
+      Incidental finding: exactly one tenant holds a word from the wider
+      reserved list — `designakum`, the platform's own workspace. That is the
+      empirical confirmation of why `admin.js`'s shorter list was not unified
+      with the long signup list: doing so would begin refusing edits to it.
 - [x] Add `studio`, `console`, `me` to `RESERVED_SLUGS` — **`51ae194`**, in all
       three copies: `lib/reserved-slugs.js`, the Edge Function's
       `_shared/signup-rules.ts`, and the operator's shorter list in `admin.js`.
@@ -165,11 +169,26 @@ Ordered. Each is independently revertible. Full spec in execution plan §4.2.
       theme's `--text-tertiary` (3.44:1) and `--text-muted` (2.30:1). See
       `tests/contrast.test.mjs`; fixing it means re-spacing the light ramp,
       which is a Phase 1 design decision
-- [ ] ⚠️ Manual: `/admin` and `/` in **light + dark × Arabic + English** — four
-      passes. **Not performed.** The token, motion and icon changes are all
-      visual, and no automated check substitutes for looking at them
-- [ ] ⚠️ Confirm `/{slug}` public sites still resolve — **not verified**;
-      needs a running server against real tenant data
+- [x] Manual: **four passes done** on `/admin` (sign-in), plus `/signup` and
+      `/subscribe`. Confirmed against computed style, not just by eye:
+      `--brand` renders `#2A6BCE` in light and `#598CD9` in dark, `--brand-ink`
+      flips white ↔ navy, `--accent*` resolve to the brand, no `background-image`
+      on any button (the gradient is gone), 44px minimum touch target, `0.22s`
+      = `--t-ui` transitions, Manrope throughout, RTL correct with
+      `line-height: 28px` (the 1.75 Arabic token), credential inputs correctly
+      pinned `dir="ltr"`, Arabic labels correctly dropping tracking and
+      uppercase, and Latin numerals in the Arabic copy. No console errors
+- [ ] ⚠️ Confirm `/{slug}` public sites still resolve — **still not verified.**
+      `/` and `/{slug}` need a host that maps to a real tenant; the checked
+      surfaces were the auth and checkout pages
+- [ ] ⚠️ **NEW — theme flash on every load.** The admin theme is stored in
+      `localStorage.admin_theme` and applied by React after hydration, and
+      there is no blocking inline script in `pages/_document.js` to set it
+      before first paint. Every load therefore paints the DARK tokens first and
+      flips to light after hydration — reproduced on `/signup`, where the
+      dark-theme brand `#598CD9` is visible on the button mid-flash. Affects
+      every light-theme user on every page. Not a Phase 0 regression (it
+      predates the token work) but the token work made it obvious
 - [x] `git status` clean
 
 ---
