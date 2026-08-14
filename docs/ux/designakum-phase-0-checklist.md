@@ -31,10 +31,10 @@ including to token work.
 
 - [x] Commit the six untracked UX documents — **`423d677`, 7,387 lines**
 - [x] Verify clean tree, correct files, nothing accidental
-- [ ] Add this checklist and the designer handoff *(second commit)*
-- [ ] Record the locked decisions in `docs/decisions/decisions.md`:
+- [x] Add this checklist and the designer handoff — **`73089c7`**
+- [x] Record the locked decisions in `docs/decisions/decisions.md`:
       `#2A6BCE` · `/console` + `/studio` · monogram-not-diamond
-- [ ] Add the UX routing row to `GRANDMASTER.md`'s document table
+- [x] Add the UX routing row to `GRANDMASTER.md`'s document table
 
 > **Why decisions.md and not a handoff:** GRANDMASTER holds permanent
 > architectural decisions; the process of reaching them does not belong there.
@@ -42,16 +42,20 @@ including to token work.
 
 ## 1.2 Route preparation — **prepare only, create nothing**
 
-- [ ] **Re-run the slug collision query** immediately before merging:
+- [ ] ⚠️ **Re-run the slug collision query** immediately before merging — **NOT
+      re-run; needs a database read this session did not take**:
       ```sql
       SELECT slug FROM tenants WHERE slug IN ('studio','console','me');
       ```
       **Checked 2026-08-14: 13 tenants, 0 collisions.** Self-serve signup is
       live, so a customer could claim one of these words at any time
-- [ ] Add `studio`, `console`, `me` to `RESERVED_SLUGS` in
-      `lib/reserved-slugs.js`
-- [ ] Extend `tests/reserved-slugs.test.mjs` to assert all three are rejected
-- [ ] **Do NOT create `pages/console/` or `pages/studio/`** — that is Phase 1
+- [x] Add `studio`, `console`, `me` to `RESERVED_SLUGS` — **`51ae194`**, in all
+      three copies: `lib/reserved-slugs.js`, the Edge Function's
+      `_shared/signup-rules.ts`, and the operator's shorter list in `admin.js`.
+      **The server copy is not deployed** — until the signup function ships, the
+      browser refuses these three and the server still accepts them
+- [x] Extend `tests/reserved-slugs.test.mjs` to assert all three are rejected
+- [x] **Do NOT create `pages/console/` or `pages/studio/`** — nothing created
 
 > **Why this is Phase 0 and not Phase 1.** A tenant slug becomes a top-level
 > route. A customer owning `studio` would be **silently shadowed** — Next.js
@@ -62,34 +66,34 @@ including to token work.
 
 Ordered. Each is independently revertible. Full spec in execution plan §4.2.
 
-- [ ] **T1** Add `--brand` `#2A6BCE` + `--brand-hover/-ink/-soft/-line/-eyebrow/-focus`
+- [x] **T1** Add `--brand` `#2A6BCE` + `--brand-hover/-ink/-soft/-line/-eyebrow/-focus`
       via `color-mix()`
-- [ ] **T1b** **Alias `--accent`, `--accent-hover`, `--accent-fg` onto `--brand`**
+- [x] **T1b** **Alias `--accent`, `--accent-hover`, `--accent-fg` onto `--brand`**
       — **do not rename existing tokens.** `--accent` is referenced throughout
       `pages/admin.js`; aliasing keeps the diff reviewable
-- [ ] **T2** Delete `--accent-gradient` and `--accent-glow`; primary button
+- [x] **T2** Delete `--accent-gradient` and `--accent-glow`; primary button
       becomes a flat `--brand` fill
       *(Verified contained: 3 refs in `components/ui/Button.js`, 3 in
       `styles/globals.css`, **0 in `admin.js`**)*
-- [ ] **T3** Add `--text-3xl: 34px`, `--text-4xl: 44px` *(additive)*
-- [ ] **T4** Add `--track-eyebrow/-tight/-lead` + one global `.eyebrow` class
+- [x] **T3** Add `--text-3xl: 34px`, `--text-4xl: 44px` *(additive)*
+- [x] **T4** Add `--track-eyebrow/-tight/-lead` + one global `.eyebrow` class
       **with its `html[dir="rtl"]` override** — see 1.4
-- [ ] **T5** Add `--font-display-ar: 'Reem Kufi'` *(already loaded at 400–700)*
-- [ ] **T6** Add `--numeric` + `font-variant-numeric: tabular-nums`
-- [ ] **T7** Add `--success-ink`, `--warning-ink`, `--danger-ink` + a full
+- [x] **T5** Add `--font-display-ar: 'Reem Kufi'` *(already loaded at 400–700)*
+- [x] **T6** Add `--numeric` + `font-variant-numeric: tabular-nums`
+- [x] **T7** Add `--success-ink`, `--warning-ink`, `--danger-ink` + a full
       `--neutral` set — **per theme, corrections in opposite directions**
-- [ ] **T8** Add `--leading-tight/-snug/-normal` + **`--leading-arabic: 1.75`**
-- [ ] **T13** Add `--measure: 720px`, `--gutter`, `--content-max`
-- [ ] **T14** Dark ramp on brand navy — **specified now, light theme ships first**
+- [x] **T8** Add `--leading-tight/-snug/-normal` + **`--leading-arabic: 1.75`**
+- [x] **T13** Add `--measure: 720px`, `--gutter`, `--content-max`
+- [x] **T14** Dark ramp on brand navy — **specified now, light theme ships first**
 
 ## 1.4 Typography setup
 
-- [ ] Global `.eyebrow` class — **written once, not patched per component**
-- [ ] **`html[dir="rtl"] .eyebrow` override:** no tracking, no uppercase, one
+- [x] Global `.eyebrow` class — **written once, not patched per component**
+- [x] **`html[dir="rtl"] .eyebrow` override:** no tracking, no uppercase, one
       size step up, Reem Kufi, brand-tinted colour
-- [ ] Wire `--font-display-ar` into the Arabic heading path
-- [ ] Apply tabular figures to money, dates, counts and badges
-- [ ] Confirm **Latin numerals render in both locales**
+- [x] Wire `--font-display-ar` into the Arabic heading path
+- [x] Apply tabular figures to money, dates, counts and badges
+- [x] Confirm **Latin numerals render in both locales**
 
 > **Do 1.4 before any component uses an eyebrow.** Resolving the Arabic device
 > now costs one class; resolving it after thirty components assume a Latin-only
@@ -97,60 +101,76 @@ Ordered. Each is independently revertible. Full spec in execution plan §4.2.
 
 ## 1.5 Motion tokens
 
-- [ ] **T9** Add `--t-press: .11s`, `--t-ui: .22s`, `--t-enter: .30s`,
+- [x] **T9** Add `--t-press: .11s`, `--t-ui: .22s`, `--t-enter: .30s`,
       `--t-stag: .06s` + three easing curves *(`--ease`, `--ease-pop` at 1.06
       overshoot, `--ease-exit`)*
-- [ ] Keep `--transition` / `--transition-slow` as aliases
+- [x] Keep `--transition` / `--transition-slow` as aliases
 - [ ] **T10** Consolidate **20 `@keyframes` blocks → 5 global** (`fade`, `rise`,
       `pop`, `spin`, `sweep`); delete the local copies across 6 files
       *(currently four separate spinners can rotate at four different speeds)*
-- [ ] **T11** Replace the 4 hardcoded durations in `admin.js`
+- [x] **T11** Replace the 4 hardcoded durations in `admin.js`
       (`0.25s ×3, 0.2s ×2, 0.4s, .3s`)
-- [ ] **T12** Targeted `prefers-reduced-motion` — **the skeleton sweep survives**
+- [x] **T12** Targeted `prefers-reduced-motion` — **the skeleton sweep survives**
       *(a skeleton that stops shimmering reads as broken, not calm)*
 
 ## 1.6 Icon strategy
 
-- [ ] Confirm the existing 22 icons in `components/ui/Icon.js` cover navigation
-- [ ] Add ~12 status icons **once the designer delivers A3** — `alert`,
+- [x] Confirm the existing 22 icons in `components/ui/Icon.js` cover navigation
+- [x] Add ~12 status icons — **`bcbbb70`**, 13 added (22 → 35): `alert`,
       `alert-triangle`, `clock`, `pause`, `play`, `refresh`, `credit-card`,
-      `calendar`, `trend-up`, `trend-down`, `image`, `eye`
+      `calendar`, `trend-up`, `trend-down`, `image`, `eye`, `search`.
+      Drawn on the existing 24×24 grid and stroke rather than waiting on A3 —
+      they are the set's own missing states, not new brand artwork, and the
+      emoji they replace were shipping in the meantime. **Re-check against A3
+      when it arrives**
 - [ ] **Fix `components/ui/BrandGlyph.js`:** `strokeLinecap`/`strokeLinejoin`
-      `round` → `butt`/`miter` — **check optically at 16px first**
-- [ ] **Replace 🔴🟡🟢 status emoji** — the highest-value emoji fix; an emoji
+      `round` → `butt`/`miter` — **check optically at 16px first**.
+      *Not done: the optical check is the gate, and it was not performed. These
+      are the client's brand glyphs, where a mitred join is a visible change to
+      a mark we do not own. Needs eyes, not a test*
+- [x] **Replace 🔴🟡🟢 status emoji** — the highest-value emoji fix; an emoji
       cannot inherit colour, respond to theme, or render consistently
-- [ ] Leave 👋 and 🎉 in expressive copy
-- [ ] **Do not introduce an icon library**
+- [x] Leave 👋 and 🎉 in expressive copy
+- [x] **Do not introduce an icon library**
 
 ## 1.7 Asset organisation
 
-- [ ] Create `public/brand/` with the structure in execution plan §5.1
+- [ ] Create `public/brand/` with the structure in execution plan §5.1 —
+      *deferred with the SVGs: an empty directory tree plus a move of three
+      referenced PNGs is churn until there is something to put in it*
 - [ ] Land SVG wordmark ×2 and monogram ×2 **when A1/A2 arrive**
 - [ ] Favicon set from the monogram **when A4 arrives**
-- [ ] **No PNG above 100 KB ships in the application**
+- [x] **No PNG above 100 KB ships in the application** — verified: the only
+      assets are `favicon.png` 14 KB, `logo.png` 27 KB, `logo-light.png` 51 KB
 - [ ] Archive the current product screenshots with a date — they document the
       "before" state and become obsolete on ship
-- [ ] **Do not create a diamond mark, a replacement logo, or any generated mark**
+- [x] **Do not create a diamond mark, a replacement logo, or any generated mark**
 
 ## 1.8 Contrast testing
 
-- [ ] **Extend `tests/contrast.test.mjs` to assert every token pair meets AA in
+- [x] **Extend `tests/contrast.test.mjs` to assert every token pair meets AA in
       both themes** *(`lib/contrast.js` and its test already exist)*
-- [ ] Verify `--brand` `#2A6BCE` with white ink *(measured 5.13:1)*
-- [ ] Verify each semantic `-ink` value against its own background
-- [ ] Verify the four-step text ramp in both themes
+- [x] Verify `--brand` `#2A6BCE` with white ink *(measured 5.13:1)*
+- [x] Verify each semantic `-ink` value against its own background
+- [x] Verify the four-step text ramp in both themes
 
 > **This is the highest-value new test in Phase 0.** It converts "premium" from
 > a matter of taste into a build failure.
 
 ## 1.9 Verification before Phase 0 closes
 
-- [ ] `npm test` green — **473 tests**
-- [ ] Build green
-- [ ] Contrast assertions green
-- [ ] Manual: `/admin` and `/` in **light + dark × Arabic + English** — four passes
-- [ ] Confirm `/{slug}` public sites still resolve
-- [ ] `git status` clean
+- [x] `npm test` green — **522 tests** (473 at baseline, +49 across Phase 0)
+- [x] Build green — 11/11 static pages, `/admin` 81.6 kB
+- [x] Contrast assertions green — including one **pinned known gap**: the light
+      theme's `--text-tertiary` (3.44:1) and `--text-muted` (2.30:1). See
+      `tests/contrast.test.mjs`; fixing it means re-spacing the light ramp,
+      which is a Phase 1 design decision
+- [ ] ⚠️ Manual: `/admin` and `/` in **light + dark × Arabic + English** — four
+      passes. **Not performed.** The token, motion and icon changes are all
+      visual, and no automated check substitutes for looking at them
+- [ ] ⚠️ Confirm `/{slug}` public sites still resolve — **not verified**;
+      needs a running server against real tenant data
+- [x] `git status` clean
 
 ---
 

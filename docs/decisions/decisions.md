@@ -277,3 +277,69 @@ explicit request.**
 Prose rots the same way those eleven SQL files did. One index, one owner per
 fact, links instead of restatement. A fact written in two places will be wrong in
 one of them within a month.
+
+---
+
+## Design foundation
+
+*Locked during the UX redesign, Phase 0. Full reasoning in
+[ux/designakum-design-system-final.md](../ux/designakum-design-system-final.md);
+these are the parts that are architecture rather than taste.*
+
+### Why the brand blue is `#2A6BCE` and not `#2C6FE0`
+
+The documentation said `#2C6FE0`. The logo did not: of 64,839 opaque pixels in
+`public/logo-light.png`, 54,973 are exactly `#2A6BCE`. The asset is what ships,
+so the asset wins and the document was wrong.
+
+It is one blue. In this interface blue means "act here" and nothing else, which
+is why informational states are grey rather than a second, softer blue — an
+informational chip sharing the accent stops the accent meaning anything.
+
+`--brand-base` is the constant and is identical in every theme; `--brand` is the
+theme's *rendering* of it, because a light-theme accent painted on a dark ground
+is unreadable. The dark theme lightens the fill and flips the ink to navy: white
+on the dark theme's brand measures 3.4:1.
+
+*Cost:* two values to keep in step, asserted in `tests/contrast.test.mjs`.
+
+### Why `--accent` was aliased onto `--brand` instead of renamed
+
+`--accent` is referenced throughout `pages/admin.js`. Renaming it would have
+produced a diff nobody could review; aliasing changed the whole product in one
+line. New code uses `--brand`.
+
+The alias is load-bearing and therefore tested: `admin.js` had previously set
+`--accent` to a literal `#4f6ef2` on `.dashboard` and `.signin-wrap`, which
+shadowed the token layer entirely — the brand colour landed in `globals.css` and
+had **no effect whatsoever** on the two largest surfaces in the product. A test
+now fails if any file under `pages/` or `components/` assigns a literal colour
+to `--accent*` again.
+
+### Why `/console` and `/studio` are reserved before they exist
+
+A tenant slug becomes a top-level route, and Next.js resolves static routes
+first — so a customer holding `studio` is not an error, they are silently
+unreachable the day `/studio` ships. Self-serve signup has been public since
+2026-08-07, so the word is claimable right now.
+
+Reserving costs nothing while the routes do not exist. Waiting costs either a
+paying customer's address or the route. `studio`, `console` and `me` are in all
+three copies of the list; the parity test is what keeps them in step.
+
+### Why the mark stays a monogram, and no diamond was drawn
+
+The diamond reads as a motif in the logo's dots, not as a mark that survives at
+16px. Generating a replacement logo was explicitly out of scope: the brand is
+the client's, and a mark invented mid-refactor is a mark nobody approved.
+
+### Why emoji were removed from the interface but kept in copy
+
+An emoji cannot inherit `currentColor`, so it ignores hover, focus and disabled;
+it does not follow the theme; it does not scale with the type ramp; and it is a
+different picture on every OS. As an interface glyph that is a bug. In prose it
+is a word — 👋 in a greeting and 🎉 on a finished workspace read the same in both
+languages and stay.
+
+*Cost:* thirteen more glyphs in `components/ui/Icon.js` (35 total). Still no
+icon library, and the dependency list is still frozen at five.

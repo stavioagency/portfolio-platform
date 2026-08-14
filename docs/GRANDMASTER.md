@@ -78,6 +78,8 @@ Details: [environments/platform.md](environments/platform.md) ·
 | "Has anyone looked at this before?" | [engineering-log.md](engineering-log.md) |
 | Launching: manual tasks, the live checkout test, health checks | [workflows/launch-readiness.md](workflows/launch-readiness.md) |
 | Anything about the UX redesign — start here, before designing | [ux/designakum-ux-context.md](ux/designakum-ux-context.md) |
+| Colour, type, motion, icons — before adding a token or a hex value | [ux/designakum-design-system-final.md](ux/designakum-design-system-final.md) + `styles/globals.css` |
+| What Phase 0 locked, and what is still blocked on the designer | [ux/designakum-phase-0-checklist.md](ux/designakum-phase-0-checklist.md) |
 
 Files outside `docs/` that are still authoritative:
 
