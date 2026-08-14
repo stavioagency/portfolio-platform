@@ -100,13 +100,43 @@
   /* density multiplier — admin Appearance editor overrides this */
   --density: 1;
 
-  /* ---- Typography scale ------------------------------------------------- */
+  /* ---- Typography scale -------------------------------------------------
+     The scale used to stop at 26px against a 14px body — a lead-to-body ratio
+     of 1.86x, which is the mechanical reason nothing on a page could lead.
+     Premium interfaces run nearer 3x, and they get there from the TOP: their
+     body copy is often smaller than ours, not larger. So these two sizes are
+     added and nothing existing moves. --text-4xl is the one number or sentence
+     that leads a screen; if a screen needs two of them, it is two screens. */
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 14px;
   --text-lg: 16px;
   --text-xl: 20px;
   --text-2xl: 26px;
+  --text-3xl: 34px;   /* page titles                          */
+  --text-4xl: 44px;   /* the single lead per screen           */
+
+  /* ---- Tracking ----------------------------------------------------------
+     Tracking is a function of size: tight on display sizes so they read as
+     designed, loose on small uppercase labels so they read as labelled.
+     --track-eyebrow is LATIN ONLY — see the .eyebrow rule below. */
+  --track-eyebrow: 0.12em;
+  --track-normal: 0;
+  --track-tight: -0.02em;   /* --text-3xl */
+  --track-lead: -0.03em;    /* --text-4xl */
+
+  /* Arabic display face. Reem Kufi is already in the single font <link> in
+     pages/_document.js at 400-700, so this costs no additional request. It is
+     a Kufi face — geometric and flat-terminalled, the closest loaded match to
+     the logo's own construction. DISPLAY ONLY: headings and eyebrows. Body
+     text stays IBM Plex Sans Arabic, which is humanist and legible at size. */
+  --font-display-ar: 'Reem Kufi', 'Cairo', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+
+  /* Figures that must align in columns and read as data rather than prose.
+     Manrope carries tabular figures as an OpenType feature, so this needs no
+     extra font request — and a tabular Latin figure renders identically inside
+     an Arabic RTL line, which is what "Latin numerals in both locales" needs. */
+  --font-numeric: var(--font-sans);
 
   /* ---- Elevation -------------------------------------------------------- */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
@@ -257,6 +287,52 @@ a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
 input, textarea, select { font-family: inherit; }
 img { display: block; max-width: 100%; height: auto; }
+
+/* ---- The eyebrow ---------------------------------------------------------
+   A small label above a page or section title, naming what the screen is for.
+   Written ONCE, here, because the Arabic case is not a variation on the Latin
+   one and patching it per component is how it drifts.
+
+   LATIN gets uppercase + tracking. ARABIC CAN HAVE NEITHER:
+     - Arabic is cursive. letter-spacing severs the joins between letterforms,
+       which is broken typography rather than a style choice.
+     - Arabic has no letter case, so text-transform does nothing but risk
+       mangling transliterated fragments.
+
+   So the Arabic eyebrow carries the same signal by different means: the
+   geometric display face, one size step up to hold presence without tracking,
+   and the brand tint instead of case. Same job, different mechanism. */
+.eyebrow {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  line-height: var(--leading-snug);
+}
+
+html[dir='rtl'] .eyebrow {
+  font-family: var(--font-display-ar);
+  font-size: var(--text-sm);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--brand-eyebrow);
+}
+
+/* Arabic body copy needs more room than Latin: ascenders, descenders and
+   diacritics collide at the Latin line height. */
+html[dir='rtl'] body { line-height: var(--leading-arabic); }
+
+/* ---- Figures -------------------------------------------------------------
+   Money, dates, counts and badges. Tabular figures keep columns aligned and
+   make a number read as a fact rather than as prose. `.numeric` is deliberately
+   a utility rather than a component: the same treatment is needed inside table
+   cells, chips, stat tiles and email-shaped markup. */
+.numeric {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
 
 /* Subtle scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }

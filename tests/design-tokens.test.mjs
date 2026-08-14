@@ -219,6 +219,54 @@ test('the informational state is grey, not a second blue', () => {
   }
 });
 
+// ------------------------------------------------------------- typography ---
+
+test('the type scale reaches a display size that can lead a screen', () => {
+  const px = (v) => Number(String(v).replace('px', ''));
+  const body = px(DARK['--text-md']);
+  const lead = px(DARK['--text-4xl']);
+  assert.ok(DARK['--text-3xl'], 'missing --text-3xl');
+  assert.ok(lead, 'missing --text-4xl');
+  // The old scale topped out at 26px against a 14px body — 1.86x, which is why
+  // nothing could lead. Widen from the top; the body deliberately does not move.
+  assert.ok(lead / body >= 3, `lead-to-body ratio is ${(lead / body).toFixed(2)}x, needs >= 3`);
+});
+
+test('tracking is defined as a function of size', () => {
+  for (const token of ['--track-eyebrow', '--track-tight', '--track-lead']) {
+    assert.ok(DARK[token], `missing ${token}`);
+  }
+  // Display sizes track negative, small caps track positive.
+  assert.ok(DARK['--track-lead'].startsWith('-'), '--track-lead should be negative');
+  assert.ok(!DARK['--track-eyebrow'].startsWith('-'), '--track-eyebrow should be positive');
+});
+
+test('the Arabic display face is one already in the font request', () => {
+  assert.match(DARK['--font-display-ar'], /Reem Kufi/);
+  const doc = readFileSync(join(HERE, '..', 'pages', '_document.js'), 'utf8');
+  assert.match(doc, /Reem\+Kufi/, 'Reem Kufi is not in the single font <link>');
+  // No fifth family: the four-into-one <link> was deliberate performance work.
+  const families = (doc.match(/family=/g) || []).length;
+  assert.ok(families <= 4, `font request grew to ${families} families`);
+});
+
+test('the Arabic eyebrow drops tracking and case', () => {
+  // Arabic is cursive — letter-spacing severs the joins — and it has no case.
+  // Applying the Latin eyebrow treatment to it is broken typography, so the
+  // override is asserted rather than trusted to survive future edits.
+  const rtl = CSS_CODE.match(/html\[dir='rtl'\]\s*\.eyebrow\s*{([^}]*)}/);
+  assert.ok(rtl, 'no html[dir=rtl] .eyebrow override found');
+  assert.match(rtl[1], /letter-spacing:\s*0/, 'RTL eyebrow must not be tracked');
+  assert.match(rtl[1], /text-transform:\s*none/, 'RTL eyebrow must not be uppercased');
+  assert.match(rtl[1], /--font-display-ar/, 'RTL eyebrow should use the display face');
+});
+
+test('figures are tabular so columns align in both locales', () => {
+  const numeric = CSS_CODE.match(/\.numeric\s*{([^}]*)}/);
+  assert.ok(numeric, 'no .numeric utility found');
+  assert.match(numeric[1], /tabular-nums/);
+});
+
 // ----------------------------------------------------------------- layout ---
 
 test('the layout and line-height tokens exist', () => {
