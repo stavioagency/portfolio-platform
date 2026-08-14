@@ -221,6 +221,27 @@ const ICONS = {
       <circle cx="12" cy="12" r="3" />
     </>
   ),
+  // ---- Shell chrome --------------------------------------------------------
+  // Only the theme switch. `menu` and `close` were already in the set — the
+  // uniqueness test caught the duplicate `menu` this block first added, which
+  // is precisely what it is for. The shell uses those two existing names.
+  sun: (
+    <>
+      <circle cx="12" cy="12" r="4.2" />
+      <line x1="12" y1="1.8" x2="12" y2="4" />
+      <line x1="12" y1="20" x2="12" y2="22.2" />
+      <line x1="4.4" y1="4.4" x2="6" y2="6" />
+      <line x1="18" y1="18" x2="19.6" y2="19.6" />
+      <line x1="1.8" y1="12" x2="4" y2="12" />
+      <line x1="20" y1="12" x2="22.2" y2="12" />
+      <line x1="4.4" y1="19.6" x2="6" y2="18" />
+      <line x1="18" y1="6" x2="19.6" y2="4.4" />
+    </>
+  ),
+  // Stroked, not filled: one filled glyph in a row of stroked ones breaks the
+  // uniform weight the set exists to hold, and the icon test asserts it.
+  moon: <path d="M20.5 14.4A8.6 8.6 0 0 1 9.6 3.5a8.6 8.6 0 1 0 10.9 10.9z" />,
+
   // Replaces the 🔍 the admin still uses for search.
   search: (
     <>

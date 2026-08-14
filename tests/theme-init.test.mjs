@@ -45,9 +45,19 @@ function routeOf(file) {
   return rel === 'index' ? '/' : `/${rel.replace(/\/index$/, '')}`;
 }
 
-// The routes whose components set the attribute themselves.
+// The routes whose components theme themselves — EITHER by setting the
+// attribute directly, as the original five pages do, OR by calling the
+// applyTheme() helper, as the Phase 1 shells do.
+//
+// Both spellings have to count. The first version of this scan looked only for
+// the literal setAttribute, so when /console and /studio started theming through
+// lib/shell-prefs.js the scan stopped seeing them, the lists agreed, and the
+// test went green while both new routes had the flash back. A guard that cannot
+// see the thing it guards is worse than no guard, because it reports success.
+const THEMES_ITSELF = /setAttribute\(\s*['"]data-admin-theme['"]|\bapplyTheme\b/;
+
 const themedRoutes = pageFiles()
-  .filter((f) => /setAttribute\(\s*['"]data-admin-theme['"]/.test(readFileSync(f, 'utf8')))
+  .filter((f) => THEMES_ITSELF.test(readFileSync(f, 'utf8')))
   .map(routeOf)
   .sort();
 
