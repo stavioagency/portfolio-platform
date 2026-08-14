@@ -13,7 +13,7 @@
 // theme blocks and nothing else.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { parseColor, contrastRatio } from '../lib/contrast.js';
@@ -104,6 +104,27 @@ test('the retired blue never comes back', () => {
   // The pre-redesign accents should also be gone from the token layer.
   assert.equal(/--accent:\s*#9FA7FF/i.test(CSS_CODE), false, 'old dark accent still set');
   assert.equal(/--accent:\s*#4f57d8/i.test(CSS_CODE), false, 'old light accent still set');
+});
+
+test('the gradient and its coloured glow stay retired, everywhere', () => {
+  // Deleting these tokens without chasing every consumer would have left
+  // `background: var(--accent-gradient)` resolving to nothing — invisible
+  // buttons on checkout and on the email-verification landing, which are two
+  // paths a customer cannot route around. The first grep for consumers only
+  // covered three files and missed three more, so this guard scans the tree.
+  const roots = ['pages', 'components', 'lib', 'styles'];
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!/\.(js|mjs|css)$/.test(entry.name)) continue;
+      const body = readFileSync(full, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      if (/--accent-gradient|--accent-glow/.test(body)) offenders.push(full);
+    }
+  };
+  for (const r of roots) walk(join(HERE, '..', r));
+  assert.deepEqual(offenders, [], `gradient tokens are referenced again in: ${offenders.join(', ')}`);
 });
 
 test('--accent aliases the brand in both themes, so old call sites follow', () => {

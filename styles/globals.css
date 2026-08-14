@@ -66,12 +66,12 @@
   --accent-hover: var(--brand-hover);
   --accent-fg: var(--brand-ink);
 
-  /* The admin's primary button has always been this blue gradient (it existed in
-     four copies as .btn-primary-inline / .ts-primary). It is a token now so the
-     Button primitive reproduces it exactly, in both themes. */
-  --accent-gradient: linear-gradient(180deg, #6d86ff, #4f6ef2);
-  --accent-gradient-hover: linear-gradient(180deg, #8098ff, #5f7cf5);
-  --accent-glow: 0 4px 14px rgba(79, 110, 242, 0.25);
+  /* The gradient and its coloured glow are RETIRED. The admin's primary button
+     was a blue gradient in colours that were not the brand (#6d86ff → #4f6ef2,
+     glow rgba(79,110,242,.25)). The mark is flat — one solid colour, no
+     gradient, glow or shadow — so the button is now a flat --brand fill. The
+     only consumer was components/ui/Button.js. --shadow-sm/md/lg remain for
+     genuine elevation; a coloured glow around a button is not elevation. */
 
   /* foreground to place ON a filled danger surface */
   --danger-fg: #240b0b;

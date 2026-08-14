@@ -205,9 +205,9 @@ export default function VerifySignup() {
            component's anchor never receives the styles. */
         .vf-btn { display: inline-flex; align-items: center; justify-content: center;
           margin-top: var(--space-2); padding: 10px var(--space-5); border-radius: var(--radius-md);
-          text-decoration: none; background: var(--accent-gradient); color: var(--accent-fg);
-          font-size: var(--text-md); font-weight: 600; box-shadow: var(--accent-glow); }
-        .vf-btn:hover { background: var(--accent-gradient-hover); }
+          text-decoration: none; background: var(--brand); color: var(--brand-ink);
+          font-size: var(--text-md); font-weight: 600; }
+        .vf-btn:hover { background: var(--brand-hover); }
         .vf-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         .vf-link { color: var(--accent); font-size: var(--text-sm); text-decoration: none; }
         .vf-link:hover { text-decoration: underline; }

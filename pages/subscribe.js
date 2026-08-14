@@ -379,10 +379,10 @@ export default function Subscribe() {
           display: inline-flex; align-items: center; justify-content: center;
           margin-top: var(--space-2); padding: 10px var(--space-5);
           border-radius: var(--radius-md); text-decoration: none;
-          background: var(--accent-gradient); color: var(--accent-fg);
-          font-size: var(--text-md); font-weight: 600; box-shadow: var(--accent-glow);
+          background: var(--brand); color: var(--brand-ink);
+          font-size: var(--text-md); font-weight: 600;
         }
-        .co-btn-link:hover { background: var(--accent-gradient-hover); }
+        .co-btn-link:hover { background: var(--brand-hover); }
         .co-btn-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         .co-spinner {
           width: 22px; height: 22px; border-radius: 50%;

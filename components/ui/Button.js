@@ -61,12 +61,16 @@ export default function Button({
           .sm { min-height: 44px; padding: 0 var(--space-4); font-size: var(--text-md); }
         }
 
+        /* FLAT, and deliberately so. The logo is a single solid colour with no
+           gradient, glow or shadow anywhere in it, so a gradient button was
+           making a claim about depth and material that the brand does not make.
+           A gradient is also underivable from one token: every future accent
+           change would mean re-authoring two stops and a coloured shadow. */
         .primary {
-          background: var(--accent-gradient);
-          color: var(--accent-fg);
-          box-shadow: var(--accent-glow);
+          background: var(--brand);
+          color: var(--brand-ink);
         }
-        .primary:hover:not(:disabled) { background: var(--accent-gradient-hover); }
+        .primary:hover:not(:disabled) { background: var(--brand-hover); }
 
         .secondary {
           background: var(--bg-elevated);
