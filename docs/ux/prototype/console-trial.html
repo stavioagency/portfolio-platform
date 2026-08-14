@@ -124,6 +124,8 @@ html[dir="rtl"] .nav a.on{box-shadow:inset -2px 0 0 0 var(--brand)}
 h1{margin:2px 0 var(--space-2);font-size:var(--text-3xl);font-weight:800;
   letter-spacing:var(--track-tight);line-height:1.15}
 .saidplain{margin:0 0 var(--space-6);color:var(--text-secondary);font-size:var(--text-lg)}
+h1{text-wrap:balance;max-inline-size:22ch}
+.lead-sm{font-size:var(--text-2xl);max-inline-size:30ch}
 
 /* attention groups */
 .group{border:1px solid var(--border);border-radius:var(--radius-lg);
@@ -236,6 +238,72 @@ html[dir="rtl"] .block h3{letter-spacing:0;text-transform:none;font-size:var(--t
 .sent.risk b{color:var(--danger-ink)}
 .riyal{inline-size:15px;block-size:15px;vertical-align:-2px;opacity:.9}
 
+/* State change is continuous, never a teleport: the row collapses its own
+   height and the group count ticks down, so the operator SEES the queue
+   shorten. That is the reward for clearing it. */
+.row{overflow:hidden}
+.row.resolving{
+  animation:rowOut var(--t-enter) var(--ease-exit) forwards;
+}
+@keyframes rowOut{
+  0%{opacity:1;transform:none}
+  40%{opacity:0;transform:translateY(-4px)}
+  100%{opacity:0;transform:translateY(-4px);block-size:0;padding-block:0;border-block-start-width:0}
+}
+.gnum{transition:color var(--t-ui) var(--ease)}
+.gnum.tick{animation:tick var(--t-ui) var(--ease)}
+@keyframes tick{50%{transform:translateY(-3px);opacity:.4}}
+.group.done .rows-empty{display:block}
+.rows-empty{display:none;padding:11px var(--space-5);border-block-start:1px solid var(--border);
+  background:var(--bg-primary);color:var(--text-tertiary);font-size:var(--text-sm)}
+.toast{position:fixed;inset-block-end:var(--space-5);inset-inline-start:50%;
+  transform:translateX(-50%) translateY(10px);opacity:0;pointer-events:none;
+  background:var(--bg-elevated);border:1px solid var(--border-strong);
+  border-radius:var(--radius-md);padding:10px var(--space-5);font-size:var(--text-sm);
+  font-weight:700;box-shadow:var(--shadow-md);z-index:80;
+  transition:opacity var(--t-enter) var(--ease),transform var(--t-enter) var(--ease-pop)}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+/* Press feedback: one rule, every button inherits it. */
+.btn:active{transform:scale(.985)}
+.fchip:active,.seg button:active{transform:scale(.985)}
+/* Modal: arrives with --ease-pop (6% overshoot) because it ARRIVES.
+   Leaves with --ease-exit, faster, because leaving should not be admired. */
+.scrim{position:fixed;inset:0;background:rgba(6,9,18,.55);opacity:0;pointer-events:none;
+  z-index:70;transition:opacity var(--t-ui) var(--ease)}
+.scrim.on{opacity:1;pointer-events:auto}
+.modal{position:fixed;inset-inline:0;inset-block-start:8vh;margin-inline:auto;
+  inline-size:min(560px,92vw);background:var(--bg-primary);border:1px solid var(--border-strong);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow-md);padding:var(--space-6);
+  z-index:75;opacity:0;transform:scale(.98) translateY(6px);pointer-events:none;
+  transition:opacity var(--t-ui) var(--ease-exit),transform var(--t-ui) var(--ease-exit)}
+.modal.on{opacity:1;transform:none;pointer-events:auto;
+  transition:opacity var(--t-enter) var(--ease),transform var(--t-enter) var(--ease-pop)}
+.modal h2{margin:4px 0 var(--space-5);font-size:var(--text-2xl);font-weight:800;
+  letter-spacing:var(--track-tight)}
+.mfield{display:flex;flex-direction:column;gap:5px;margin-block-end:var(--space-4)}
+.mfield label{font-size:var(--text-sm);font-weight:600;color:var(--text-secondary)}
+.mctl{border:1px solid var(--border);background:var(--bg-secondary);border-radius:var(--radius-md);
+  padding:10px var(--space-4);min-block-size:42px;display:flex;align-items:center}
+.forkwrap{margin-block:var(--space-5) var(--space-4);padding-block-start:var(--space-4);
+  border-block-start:1px solid var(--border)}
+.fork{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3);margin-block-start:var(--space-3)}
+.forkopt{text-align:start;border:1px solid var(--border);background:var(--bg-secondary);
+  border-radius:var(--radius-md);padding:var(--space-4);display:flex;flex-direction:column;gap:5px;
+  transition:border-color var(--t-ui) var(--ease),background-color var(--t-ui) var(--ease)}
+.forkopt b{font-size:var(--text-md);font-weight:700}
+.forkopt span{font-size:var(--text-sm);color:var(--text-tertiary);line-height:1.5}
+.forkopt:hover{border-color:var(--border-strong)}
+.forkopt.on{border-color:var(--brand);background:var(--brand-soft)}
+.forkopt.on b{color:var(--brand-eyebrow)}
+/* Progressive disclosure: the reason only exists once it is relevant. */
+.reasonwrap{max-block-size:0;opacity:0;overflow:hidden;
+  transition:max-block-size var(--t-enter) var(--ease),opacity var(--t-ui) var(--ease),
+             margin-block-start var(--t-enter) var(--ease)}
+.reasonwrap.on{max-block-size:200px;opacity:1;margin-block-start:var(--space-4)}
+.reasons{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-block-start:var(--space-3)}
+.reasonnote{margin:var(--space-3) 0 0;font-size:var(--text-sm);color:var(--text-tertiary);line-height:1.6}
+.mfoot{display:flex;gap:var(--space-3);justify-content:flex-end;margin-block-start:var(--space-5);
+  padding-block-start:var(--space-4);border-block-start:1px solid var(--border)}
 .hidden{display:none!important}
 @media (max-width:900px){.nav{display:none}.main{padding:var(--space-5)}}
 </style>
@@ -319,7 +387,8 @@ html[dir="rtl"] .block h3{letter-spacing:0;text-transform:none;font-size:var(--t
           <div class="row"><span class="who" data-t="cn0">Noura Al-Otaibi</span><span class="what" data-t="r6">nooraa.design · 9 days</span>
             <span class="acts"><button class="btn" data-t="showHow">Show them how</button></span><span class="go"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></div>
         </div>
-      </div>
+      <div class="rows-empty" data-t="groupClear">Nothing left here.</div>
+        </div>
 
       <div id="todayCalm" class="hidden">
         <div class="calm">
@@ -335,7 +404,7 @@ html[dir="rtl"] .block h3{letter-spacing:0;text-transform:none;font-size:var(--t
     <!-- ══ CLIENTS ══ -->
     <section id="scr-clients" class="hidden">
       <div class="eyebrow" data-t="ebClients">Everyone</div>
-      <h1 data-t="clientsLead">Clients</h1>
+      <h1 data-t="clientsLead">Everyone trusting Designakum.</h1>
       <p class="saidplain" data-t="clientsSub">Fourteen people have a portfolio with us.</p>
 
       <div class="filters">
@@ -360,11 +429,11 @@ html[dir="rtl"] .block h3{letter-spacing:0;text-transform:none;font-size:var(--t
           <button class="btn ghost" data-t="openArrow">Open →</button></div>
         <div class="crow"><span class="dot live"></span>
           <span class="id"><b data-t="cn2">Sara Al-Harbi</b><span>designakum.site/sara</span></span>
-          <span class="st" data-t="c3">Live · complimentary · 12 visitors this week</span>
+          <span class="st" data-t="c3">Complimentary · partnership · 12 visitors this week</span>
           <button class="btn ghost" data-t="openArrow">Open →</button></div>
         <div class="crow"><span class="dot off"></span>
           <span class="id"><b data-t="cn3">Studio Meem</b><span>designakum.site/meem</span></span>
-          <span class="st" data-t="c4">Free — building · 2 projects so far</span>
+          <span class="st" data-t="c4">Building · 2 projects so far</span>
           <button class="btn ghost" data-t="openArrow">Open →</button></div>
         <div class="crow"><span class="dot off"></span>
           <span class="id"><b data-t="cn4">Nawaf Qurashi</b><span>designakum.site/nawaf</span></span>
@@ -445,7 +514,7 @@ html[dir="rtl"] .block h3{letter-spacing:0;text-transform:none;font-size:var(--t
     <!-- ══ FINANCE ══ -->
     <section id="scr-finance" class="hidden">
       <div class="eyebrow" data-t="ebFinance">The business</div>
-      <h1 data-t="financeLead">Finance</h1>
+      <h1 class="lead-sm" data-t="financeLead">Where the money is safe, and where it needs attention.</h1>
       <p class="saidplain" data-t="financeSub">Where the money is, and what is at risk.</p>
 
       <div class="sentences">
@@ -479,6 +548,45 @@ html[dir="rtl"] .block h3{letter-spacing:0;text-transform:none;font-size:var(--t
   </main>
 </div>
 
+<div class="scrim" id="scrim"></div>
+<div class="modal" id="addModal" role="dialog" aria-modal="true">
+  <div class="eyebrow" data-t="mEyebrow">New client</div>
+  <h2 data-t="mTitle">Who are we setting up?</h2>
+  <div class="mfield"><label data-t="mName">Their name</label><div class="mctl" id="mNameV">Nawaf Qurashi</div></div>
+  <div class="mfield"><label data-t="mEmail">Their email</label><div class="mctl" style="direction:ltr">nawaf@example.com</div></div>
+  <div class="mfield"><label data-t="mAddr">Portfolio address</label><div class="mctl" style="direction:ltr">designakum.site/nawaf</div></div>
+
+  <div class="forkwrap">
+    <div class="eyebrow" data-t="mHow">How does this one work?</div>
+    <div class="fork">
+      <button class="forkopt on" id="optStandard">
+        <b data-t="mStdT">Standard customer</b>
+        <span data-t="mStdB">They build their portfolio, then subscribe to publish it. The normal way.</span>
+      </button>
+      <button class="forkopt" id="optComp">
+        <b data-t="mCompT">Complimentary</b>
+        <span data-t="mCompB">We sponsor it. They publish without ever paying.</span>
+      </button>
+    </div>
+    <div class="reasonwrap" id="reasonWrap">
+      <div class="eyebrow" data-t="mWhy">Why are we sponsoring it?</div>
+      <div class="reasons">
+        <button class="fchip on" data-t="rPartner">Partnership</button>
+        <button class="fchip" data-t="rShowcase">Showcase</button>
+        <button class="fchip" data-t="rFriend">Friend</button>
+        <button class="fchip" data-t="rEarly">Early adopter</button>
+      </div>
+      <p class="reasonnote" data-t="mCompNote">This is an owner-granted exception, not a plan. It never appears in revenue, and they are never shown a price.</p>
+    </div>
+  </div>
+
+  <div class="mfoot">
+    <button class="btn ghost" id="mCancel" data-t="mCancel">Cancel</button>
+    <button class="btn" id="mSend" data-t="mSend">Send the invite</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
 <script>
 function art(el,a,b,kind){
   if(!el) return;
@@ -509,10 +617,10 @@ const T={
   r5:'Built 6 days ago · never signed in',r6:'nooraa.design · 9 days',
   grant:'Grant time',open:'Open',cancelPlan:'Cancel plan',sendWelcome:'Send welcome',showHow:'Show them how',
   calmTitle:'Nothing needs you today',calmBody:'Everything is paid, live and resolving.',
-  ebClients:'Everyone',clientsLead:'Clients',clientsSub:'Fourteen people have a portfolio with us.',
+  ebClients:'Everyone',clientsLead:'Everyone trusting Designakum.',clientsSub:'Fourteen people have a portfolio with us.',
   fAll:'All',fLive:'Live',fBuilding:'Building',fNeeds:'Needs attention',fPaused:'Paused',fEnded:'Ended',
   c1:'Live · renews 1 Sep · 38 visitors this week',c2:'Payment failed · 4 days to fix',
-  c3:'Live · complimentary · 12 visitors this week',c4:'Free — building · 2 projects so far',
+  c3:'Complimentary · partnership · 12 visitors this week',c4:'Building · 2 projects so far',
   c5:'Built 6 days ago · never signed in',
   tagDomain:'Domain',tagPay:'Payment',tagLogin:'Login',openArrow:'Open →',addClient:'+ Add a client',
   backAll:'← All clients',ebClient:'Client',openPortfolio:'Open their portfolio',
@@ -522,7 +630,7 @@ const T={
   bAccess:'Access',kEmail:'Sign-in',kLast:'Last signed in',vLast:'Yesterday',resetPw:'Reset password',
   bNotes:'Notes',notesBody:'Came through Instagram, February. Wants the portfolio to lead with packaging work, not identity. Agreed to a free first month while she moved her domain — that ended in June and she is paying normally now.',
   techDetails:'Technical details',
-  ebFinance:'The business',financeLead:'Finance',financeSub:'Where the money is, and what is at risk.',
+  ebFinance:'The business',financeLead:'Where the money is safe, and where it needs attention.',financeSub:'Where the money is, and what is at risk.',
   gAtRisk:'At risk',gAtRiskDef:'A renewal charge failed. They keep their portfolio while there is time left on the clock.',
   gRenew:'Renewing this month',gRenewDef:'Nothing to do. Here so the month is not a surprise.',
   gComp:'Complimentary',gCompDef:'Given access by us. Never counted in revenue.',
@@ -534,6 +642,16 @@ const T={
   cn5:'Layla Nasser',
   cn6:'Test client',
   cn7:'Faisal Al-Dosari',
+  mEyebrow:'New client',mTitle:'Who are we setting up?',
+  mName:'Their name',mEmail:'Their email',mAddr:'Portfolio address',
+  mHow:'How does this one work?',
+  mStdT:'Standard customer',mStdB:'They build their portfolio, then subscribe to publish it. The normal way.',
+  mCompT:'Complimentary',mCompB:'We sponsor it. They publish without ever paying.',
+  mWhy:'Why are we sponsoring it?',
+  rPartner:'Partnership',rShowcase:'Showcase',rFriend:'Friend',rEarly:'Early adopter',
+  mCompNote:'This is an owner-granted exception, not a plan. It never appears in revenue, and they are never shown a price.',
+  mCancel:'Cancel',mSend:'Send the invite',
+  groupClear:'Nothing left here.',doneToast:'Done — one fewer thing.',sentToast:'Invite sent.',
   rn1:'1 September · monthly',rn2:'4 September · yearly',rc1:'Since launch · permanent'},
  ar:{tagline:'نموذج بصري · ليس نسخة نهائية',role:'المالك',
   navToday:'اليوم',navClients:'العملاء',navFinance:'المالية',navActivity:'السجل',navSettings:'الإعدادات',
@@ -548,10 +666,10 @@ const T={
   r5:'أُنشئ قبل 6 أيام · لم يدخل بعد',r6:'nooraa.design · 9 أيام',
   grant:'امنح مهلة',open:'افتح',cancelPlan:'ألغِ الاشتراك',sendWelcome:'أرسل الترحيب',showHow:'اشرح لهم',
   calmTitle:'لا شيء يحتاج إليك اليوم',calmBody:'كل الاشتراكات مدفوعة والمواقع تعمل.',
-  ebClients:'الجميع',clientsLead:'العملاء',clientsSub:'أربعة عشر شخصًا لديهم موقع معنا.',
+  ebClients:'الجميع',clientsLead:'كل من وثق بديزاينكم.',clientsSub:'أربعة عشر شخصًا لديهم موقع معنا.',
   fAll:'الكل',fLive:'منشور',fBuilding:'قيد الإنشاء',fNeeds:'يحتاج انتباه',fPaused:'موقوف',fEnded:'منتهٍ',
   c1:'منشور · يتجدد 1 سبتمبر · 38 زائرًا هذا الأسبوع',c2:'فشل الدفع · بقي 4 أيام',
-  c3:'منشور · وصول ممنوح · 12 زائرًا هذا الأسبوع',c4:'مجاني — قيد الإنشاء · مشروعان حتى الآن',
+  c3:'وصول ممنوح · شراكة · 12 زائرًا هذا الأسبوع',c4:'قيد الإنشاء · مشروعان حتى الآن',
   c5:'أُنشئ قبل 6 أيام · لم يدخل بعد',
   tagDomain:'النطاق',tagPay:'الدفع',tagLogin:'الدخول',openArrow:'افتح ←',addClient:'+ أضف عميلًا',
   backAll:'← كل العملاء',ebClient:'عميل',openPortfolio:'افتح موقعهم',
@@ -561,7 +679,7 @@ const T={
   bAccess:'الدخول',kEmail:'بريد الدخول',kLast:'آخر دخول',vLast:'أمس',resetPw:'أعد تعيين كلمة المرور',
   bNotes:'ملاحظات',notesBody:'جاءت عبر إنستقرام في فبراير. تريد أن يتصدّر الموقع أعمال التغليف لا الهوية. اتفقنا على شهر مجاني أثناء نقل نطاقها — انتهى في يونيو وهي تدفع بشكل طبيعي الآن.',
   techDetails:'تفاصيل تقنية',
-  ebFinance:'الأعمال',financeLead:'المالية',financeSub:'أين المال، وما المعرّض للخطر.',
+  ebFinance:'الأعمال',financeLead:'أين المال بأمان، وأين يحتاج انتباهك.',financeSub:'أين المال، وما المعرّض للخطر.',
   gAtRisk:'معرّض للخطر',gAtRiskDef:'فشلت دفعة التجديد. يحتفظون بمواقعهم ما دام في المهلة وقت.',
   gRenew:'يتجدد هذا الشهر',gRenewDef:'لا شيء تفعله. موجود حتى لا يفاجئك الشهر.',
   gComp:'وصول ممنوح',gCompDef:'منحناهم الوصول. لا يُحتسب في الإيرادات أبدًا.',
@@ -573,6 +691,16 @@ const T={
   cn5:'ليلى ناصر',
   cn6:'عميل تجريبي',
   cn7:'فيصل الدوسري',
+  mEyebrow:'عميل جديد',mTitle:'من الذي نُجهّز له؟',
+  mName:'الاسم',mEmail:'البريد الإلكتروني',mAddr:'عنوان الموقع',
+  mHow:'كيف يعمل هذا الحساب؟',
+  mStdT:'عميل عادي',mStdB:'يبني موقعه ثم يشترك لينشره. الطريقة المعتادة.',
+  mCompT:'وصول ممنوح',mCompB:'نحن نرعاه. ينشر موقعه دون أن يدفع.',
+  mWhy:'ما سبب الرعاية؟',
+  rPartner:'شراكة',rShowcase:'عرض أعمال',rFriend:'صديق',rEarly:'من الأوائل',
+  mCompNote:'هذا استثناء يمنحه المالك، وليس خطة. لا يظهر في الإيرادات أبدًا، ولا يُعرض عليهم أي سعر.',
+  mCancel:'إلغاء',mSend:'أرسل الدعوة',
+  groupClear:'لم يبقَ شيء هنا.',doneToast:'تم — أمر أقل.',sentToast:'أُرسلت الدعوة.',
   rn1:'1 سبتمبر · شهري',rn2:'4 سبتمبر · سنوي',rc1:'منذ الإطلاق · دائم'}
 };
 const LEAD={en:{hi:'Good morning, Feras',busy:'Five things need you.',calm:'Nothing needs you today.',
@@ -622,7 +750,7 @@ function apply(){
   P('s-record',screen==='record');P('s-finance',screen==='finance');
   P('s-busy',load==='busy');P('s-calm',load==='calm');
   P('b-en',!ar);P('b-ar',ar);
-  paint();
+  paint(); wireResolve();
 }
 function setTheme(t){document.documentElement.setAttribute('data-theme',t);
   P('b-light',t==='light');P('b-dark',t==='dark');paint();}
@@ -641,5 +769,67 @@ document.getElementById('n-finance').onclick=e=>{e.preventDefault();screen='fina
 document.querySelectorAll('.crow').forEach(b=>b.onclick=()=>{screen='record';apply();});
 document.querySelectorAll('.row').forEach(r=>r.onclick=e=>{if(e.target.closest('.btn'))return;screen='record';apply();});
 
-setTheme('light'); apply();
+
+// ── Motion: resolving a row ───────────────────────────────────────────────
+// The row collapses its own height and the group count ticks down, so the
+// operator SEES the queue shorten. One animated thing per action.
+function wireResolve(){
+  document.querySelectorAll('.group .row .btn').forEach(btn=>{
+    if(btn.dataset.wired) return; btn.dataset.wired='1';
+    btn.addEventListener('click',e=>{
+      e.stopPropagation();
+      const row=btn.closest('.row'), group=btn.closest('.group');
+      if(!row||row.classList.contains('resolving')) return;
+      row.classList.add('resolving');
+      const num=group.querySelector('.gnum');
+      setTimeout(()=>{
+        const left=Math.max(0,parseInt(num.textContent,10)-1);
+        num.textContent=left; num.classList.add('tick');
+        setTimeout(()=>num.classList.remove('tick'),240);
+        if(left===0) group.classList.add('done');
+        const badge=document.getElementById('navcount');
+        const total=Math.max(0,parseInt(badge.textContent,10)-1);
+        badge.textContent=total;
+        if(total===0) badge.classList.add('hidden');
+        const t=T[lang];
+        document.getElementById('todaySub').textContent =
+          total===0 ? LEAD[lang].calm : (lang==='ar'? total+' أمور تحتاج إليك.' : total+' things need you.');
+        toast(t.doneToast);
+      },260);
+    });
+  });
+}
+let toastTimer;
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('on');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('on'),2200);
+}
+
+// ── Add a client: the fork ───────────────────────────────────────────────
+function openModal(){document.getElementById('scrim').classList.add('on');
+  document.getElementById('addModal').classList.add('on');}
+function closeModal(){document.getElementById('scrim').classList.remove('on');
+  document.getElementById('addModal').classList.remove('on');}
+document.querySelector('.ghostrow').onclick=openModal;
+document.getElementById('scrim').onclick=closeModal;
+document.getElementById('mCancel').onclick=closeModal;
+document.getElementById('optStandard').onclick=()=>{
+  document.getElementById('optStandard').classList.add('on');
+  document.getElementById('optComp').classList.remove('on');
+  document.getElementById('reasonWrap').classList.remove('on');
+};
+document.getElementById('optComp').onclick=()=>{
+  document.getElementById('optComp').classList.add('on');
+  document.getElementById('optStandard').classList.remove('on');
+  document.getElementById('reasonWrap').classList.add('on');
+};
+document.querySelectorAll('.reasons .fchip').forEach(c=>c.onclick=()=>{
+  document.querySelectorAll('.reasons .fchip').forEach(x=>x.classList.remove('on'));
+  c.classList.add('on');
+});
+document.getElementById('mSend').onclick=()=>{closeModal();toast(T[lang].sentToast);};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+
+setTheme('light'); apply(); wireResolve();
 </script>
