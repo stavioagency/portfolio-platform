@@ -3912,10 +3912,10 @@ function ClientHome({ lang, onNavigate }) {
 
       <h2>{ar ? 'إجراءات سريعة' : 'Quick actions'}</h2>
       <div className="ch-actions">
-        <button className="ch-action" onClick={() => onNavigate('profile')}>👤 {ar ? 'تعديل الملف' : 'Edit profile'}</button>
-        <button className="ch-action" onClick={() => onNavigate('projects')}>📁 {ar ? 'إضافة مشروع' : 'Add project'}</button>
-        <button className="ch-action" onClick={() => onNavigate('appearance')}>🎨 {ar ? 'تخصيص التصميم' : 'Customize design'}</button>
-        <button className="ch-action" onClick={() => onNavigate('account')}>🌐 {ar ? 'ربط نطاق' : 'Connect domain'}</button>
+        <button className="ch-action" onClick={() => onNavigate('profile')}><Icon name="user" size={16} />{ar ? 'تعديل الملف' : 'Edit profile'}</button>
+        <button className="ch-action" onClick={() => onNavigate('projects')}><Icon name="folder" size={16} />{ar ? 'إضافة مشروع' : 'Add project'}</button>
+        <button className="ch-action" onClick={() => onNavigate('appearance')}><Icon name="palette" size={16} />{ar ? 'تخصيص التصميم' : 'Customize design'}</button>
+        <button className="ch-action" onClick={() => onNavigate('account')}><Icon name="globe" size={16} />{ar ? 'ربط نطاق' : 'Connect domain'}</button>
       </div>
 
       {/* the whole "· 3/7" meta is withheld until the count is known — an
@@ -3968,7 +3968,7 @@ function ClientHome({ lang, onNavigate }) {
         .ch-bar { height: 6px; background: var(--bg-elevated); border-radius: 999px; margin-top: 8px; overflow: hidden; }
         .ch-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s ease; }
         .ch-actions { display: flex; flex-wrap: wrap; gap: 8px; max-width: 640px; margin-bottom: var(--space-4); }
-        .ch-action { padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--text-primary); min-height: 44px; }
+        .ch-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--text-primary); min-height: 44px; }
         .ch-action:hover { border-color: var(--border-strong); }
       `}</style>
     </div>
@@ -5274,7 +5274,7 @@ function BillingEditor({ t, lang }) {
       <div className="editor">
         <h1>{t('billing_title')}</h1>
         <EmptyState
-          icon="⚠️"
+          icon={<Icon name="alert-triangle" size={24} />}
           title={error}
           action={<Button variant="secondary" size="sm" onClick={load}>{t('billing_retry')}</Button>}
         />
@@ -5925,7 +5925,7 @@ function SubscribersOverview({ lang, onOpen }) {
       ) : visible.length === 0 ? (
         <EmptyState
           compact
-          icon="🔍"
+          icon={<Icon name="search" size={24} />}
           title={derived.length === 0
             ? (ar ? 'لا يوجد مشتركون بعد.' : 'No subscribers yet.')
             : (ar ? 'لا نتائج مطابقة.' : 'Nothing matches that.')}
@@ -6324,7 +6324,7 @@ function ImageUpload({ value, onUpload, onClear, aspect, hint, t }) {
       ) : (
         <label className="upload">
           <input type="file" accept="image/*" onChange={handleFile} />
-          <span>{uploading ? t('uploading') : `📷 ${t('choose_image')}`}</span>
+          <span>{uploading ? t('uploading') : <><Icon name="image" size={15} />{t('choose_image')}</>}</span>
         </label>
       )}
       {hint && <div className="img-hint">{hint}</div>}
@@ -6334,6 +6334,7 @@ function ImageUpload({ value, onUpload, onClear, aspect, hint, t }) {
         .preview { position: relative; display: inline-block; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border); }
         .preview img { max-width: 200px; max-height: 200px; display: block; }
         .remove { position: absolute; top: 6px; inset-inline-end: 6px; width: 26px; height: 26px; background: rgba(0,0,0,0.7); color: white; border-radius: 50%; font-size: 16px; border: none; cursor: pointer; font-family: inherit; }
+        .upload span { display: inline-flex; align-items: center; gap: 8px; }
         .upload { display: inline-flex; align-items: center; padding: 10px 16px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; transition: var(--transition); }
         .upload:hover { border-color: var(--border-strong); background: var(--bg-hover); }
         .upload input { display: none; }

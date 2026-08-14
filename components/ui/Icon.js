@@ -139,6 +139,95 @@ const ICONS = {
       <line x1="18" y1="5" x2="21" y2="8" />
     </>
   ),
+
+  // ---- State and attention -------------------------------------------------
+  // The existing set covers navigation, which is why the admin still reaches
+  // for an emoji whenever it needs to say something is late, paused or
+  // retrying. These are the glyphs the owner's attention system and the
+  // client's status lines need. Same 24x24 grid and stroke weight as above —
+  // a set is only a set if a new glyph is indistinguishable in weight from an
+  // old one.
+  alert: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="8" x2="12" y2="12.5" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </>
+  ),
+  'alert-triangle': (
+    <>
+      <path d="M10.3 3.6 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0z" />
+      <line x1="12" y1="9" x2="12" y2="13.5" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15.5 14" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+      <line x1="8" y1="3" x2="8" y2="7" />
+      <line x1="16" y1="3" x2="16" y2="7" />
+    </>
+  ),
+  pause: (
+    <>
+      <rect x="7" y="5" width="3.5" height="14" rx="1" />
+      <rect x="13.5" y="5" width="3.5" height="14" rx="1" />
+    </>
+  ),
+  // Directional: a play triangle points the way text runs, so it mirrors.
+  play: <path d="M7 4.8v14.4a1 1 0 0 0 1.5.87l12-7.2a1 1 0 0 0 0-1.74l-12-7.2A1 1 0 0 0 7 4.8z" />,
+  refresh: (
+    <>
+      <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6" />
+      <polyline points="20.5 3.5 20.5 9 15 9" />
+    </>
+  ),
+  'credit-card': (
+    <>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <line x1="2" y1="10" x2="22" y2="10" />
+      <line x1="6" y1="15" x2="10" y2="15" />
+    </>
+  ),
+  'trend-up': (
+    <>
+      <polyline points="3 17 9.5 10.5 13.5 14.5 21 7" />
+      <polyline points="15.5 7 21 7 21 12.5" />
+    </>
+  ),
+  'trend-down': (
+    <>
+      <polyline points="3 7 9.5 13.5 13.5 9.5 21 17" />
+      <polyline points="15.5 17 21 17 21 11.5" />
+    </>
+  ),
+  image: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.8" />
+      <polyline points="21 16 15.5 10.5 5 20" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  // Replaces the 🔍 the admin still uses for search.
+  search: (
+    <>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <line x1="15.2" y1="15.2" x2="21" y2="21" />
+    </>
+  ),
 };
 
 export const ICON_NAMES = Object.keys(ICONS);
