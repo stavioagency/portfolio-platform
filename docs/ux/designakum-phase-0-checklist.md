@@ -56,8 +56,9 @@ including to token work.
 - [x] Add `studio`, `console`, `me` to `RESERVED_SLUGS` — **`51ae194`**, in all
       three copies: `lib/reserved-slugs.js`, the Edge Function's
       `_shared/signup-rules.ts`, and the operator's shorter list in `admin.js`.
-      **The server copy is not deployed** — until the signup function ships, the
-      browser refuses these three and the server still accepts them
+      **Deployed 2026-08-14**: `signup-verify` v8 and `signup-start` v9, both
+      ACTIVE with `verify_jwt: false` preserved. The reservation is now real —
+      the server, not just the browser, refuses these three
 - [x] Extend `tests/reserved-slugs.test.mjs` to assert all three are rejected
 - [x] **Do NOT create `pages/console/` or `pages/studio/`** — nothing created
 
