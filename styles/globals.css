@@ -34,8 +34,38 @@
   --text-tertiary: rgba(255, 255, 255, 0.45);
   --text-muted: rgba(255, 255, 255, 0.3);
 
-  --accent: #9FA7FF;
-  --accent-hover: #b5bcff;
+  /* ---- Brand ------------------------------------------------------------
+     --brand-base is the BRAND CONSTANT and is identical in every theme. It is
+     measured from public/logo-light.png, where 54,973 of 64,839 opaque pixels
+     are exactly this value. The documentation used to say #2C6FE0; the asset
+     disagreed, and the asset is what ships. Do not reintroduce #2C6FE0, and do
+     not add a second blue — in this interface blue means "act here" and
+     nothing else, which is why informational states are grey (see --neutral).
+
+     --brand is the THEME RENDERING of that constant. A light-theme accent
+     painted onto a dark ground is unreadable, so the dark theme lightens it
+     and flips the ink to navy. Every derived value below is a literal hex
+     rather than color-mix() so that tests/contrast.test.mjs can parse and
+     assert it — lib/contrast.js reads hex and rgb(), not color-mix(). The
+     derivation is given in the comment beside each one. */
+  --brand-base: #2A6BCE;
+
+  /* dark theme: 78% brand + 22% white, so the fill separates from the page */
+  --brand: #598CD9;
+  --brand-hover: #6D9ADE;            /* 88% --brand + 12% white              */
+  --brand-ink: #0C1530;              /* navy ON the fill: white would be 3.4:1 */
+  --brand-soft: rgba(89, 140, 217, 0.14);
+  --brand-line: rgba(89, 140, 217, 0.32);
+  --brand-focus: rgba(89, 140, 217, 0.55);
+  --brand-eyebrow: #BDD1F0;          /* 40% --brand + 60% --text-primary      */
+
+  /* Aliases. --accent is referenced throughout pages/admin.js; pointing it at
+     the brand changes the whole product in one line, and renaming it instead
+     would have produced a diff nobody could review. New code uses --brand. */
+  --accent: var(--brand);
+  --accent-hover: var(--brand-hover);
+  --accent-fg: var(--brand-ink);
+
   /* The admin's primary button has always been this blue gradient (it existed in
      four copies as .btn-primary-inline / .ts-primary). It is a token now so the
      Button primitive reproduces it exactly, in both themes. */
@@ -43,8 +73,7 @@
   --accent-gradient-hover: linear-gradient(180deg, #8098ff, #5f7cf5);
   --accent-glow: 0 4px 14px rgba(79, 110, 242, 0.25);
 
-  /* foreground to place ON a filled accent/danger surface */
-  --accent-fg: #ffffff;
+  /* foreground to place ON a filled danger surface */
   --danger-fg: #240b0b;
 
   --radius-sm: 8px;
@@ -84,16 +113,47 @@
   --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.30);
   --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.45);
 
-  /* ---- Status colours (paired fg / bg / border) -------------------------- */
+  /* ---- Status colours (fill / bg / border / ink) --------------------------
+     --*-ink is the READABLE TEXT colour for a chip or label sitting on the
+     matching --*-bg. It is not the same value as the fill: a colour saturated
+     enough to fill a 4px bar is not legible as 11px text, and the correction
+     runs in OPPOSITE directions per theme — lighter than the fill on dark,
+     darker than the fill on light. Asserted in tests/contrast.test.mjs.
+
+     --neutral is the informational state, and it is deliberately GREY rather
+     than blue: blue is spent on the primary action, and an informational chip
+     that shares the accent colour stops the accent meaning anything. A comped
+     workspace is neutral — it is a fact about a relationship, not a problem. */
   --success: #6ee7a8;
   --success-bg: rgba(110, 231, 168, 0.12);
   --success-border: rgba(110, 231, 168, 0.28);
+  --success-ink: #8CF0BC;
   --warning: #f5c56b;
   --warning-bg: rgba(245, 197, 107, 0.12);
   --warning-border: rgba(245, 197, 107, 0.28);
+  --warning-ink: #F8D79A;
   --danger: #ff8080;
   --danger-bg: rgba(255, 128, 128, 0.12);
   --danger-border: rgba(255, 128, 128, 0.28);
+  --danger-ink: #FF9E9E;
+  --neutral: #82919D;
+  --neutral-bg: rgba(130, 145, 157, 0.12);
+  --neutral-border: rgba(130, 145, 157, 0.28);
+  --neutral-ink: #A9B6C1;
+
+  /* ---- Layout ------------------------------------------------------------ */
+  --measure: 720px;        /* one column of content, per editor */
+  --gutter: 28px;          /* page margin; 16px below 720px     */
+  --content-max: 1280px;
+
+  /* ---- Line height -------------------------------------------------------
+     Arabic is NOT set at the Latin line height. Ascenders, descenders and
+     diacritics collide, and the text reads cramped. This is the most common
+     bilingual typesetting mistake in products of this shape. */
+  --leading-tight: 1.15;   /* --text-3xl / --text-4xl */
+  --leading-snug: 1.35;    /* headings, card titles   */
+  --leading-normal: 1.55;  /* body — Latin            */
+  --leading-arabic: 1.75;  /* body — Arabic           */
 
   /* ---- Layering --------------------------------------------------------- */
   --z-modal: 400;
@@ -124,9 +184,19 @@
   --text-tertiary: rgba(12, 21, 48, 0.50);
   --text-muted: rgba(12, 21, 48, 0.36);
 
-  --accent: #4f57d8;
-  --accent-hover: #3d45c4;
-  --accent-fg: #ffffff;
+  /* Light theme renders the brand constant directly — this is the theme the
+     redesign perfects first, and the value the logo actually is. */
+  --brand: #2A6BCE;
+  --brand-hover: #2661BB;            /* 88% --brand + 12% #0C1530 */
+  --brand-ink: #ffffff;              /* white on the fill: 5.13:1 */
+  --brand-soft: rgba(42, 107, 206, 0.12);
+  --brand-line: rgba(42, 107, 206, 0.28);
+  --brand-focus: rgba(42, 107, 206, 0.55);
+  --brand-eyebrow: #18376F;          /* 40% --brand + 60% --text-primary */
+
+  --accent: var(--brand);
+  --accent-hover: var(--brand-hover);
+  --accent-fg: var(--brand-ink);
 
   --shadow-sm: 0 1px 2px rgba(12, 21, 48, 0.08);
   --shadow-md: 0 6px 20px rgba(12, 21, 48, 0.10);
@@ -135,13 +205,20 @@
   --success: #17794a;
   --success-bg: rgba(23, 121, 74, 0.10);
   --success-border: rgba(23, 121, 74, 0.24);
+  --success-ink: #0F5A37;
   --warning: #8a5a00;
   --warning-bg: rgba(138, 90, 0, 0.10);
   --warning-border: rgba(138, 90, 0, 0.24);
+  --warning-ink: #6B4600;
   --danger: #c0392b;
   --danger-bg: rgba(192, 57, 43, 0.09);
   --danger-border: rgba(192, 57, 43, 0.24);
+  --danger-ink: #96271C;
   --danger-fg: #ffffff;
+  --neutral: #525B63;
+  --neutral-bg: rgba(82, 91, 99, 0.10);
+  --neutral-border: rgba(82, 91, 99, 0.24);
+  --neutral-ink: #3C454D;
 }
 
 /* ---- Breakpoint convention (CSS vars can't be used in @media) ------------
