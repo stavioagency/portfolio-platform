@@ -30,6 +30,48 @@ export default function Document() {
         />
       </Head>
       <body>
+        {/* THEME, BEFORE FIRST PAINT.
+
+            Five pages read `admin_theme` out of localStorage and set
+            `data-admin-theme` on <html> — but they do it in an effect, which
+            runs after hydration. Until then the page paints with :root, which
+            is the DARK palette, so every light-theme user saw a dark page flash
+            to light on every single load. It is visible in a screenshot taken
+            right after navigation: the dark theme's brand blue (#598CD9) sits
+            on the button before the light one (#2A6BCE) replaces it.
+
+            `body { background: var(--bg-primary) }`, so setting the attribute
+            here is the whole fix — no inline background styles needed, and
+            nothing to keep in step with the token layer.
+
+            SCOPED TO THE PAGES THAT OPT IN, and that is the load-bearing part.
+            The public portfolio (`/` and `/{slug}`) and the legal pages are
+            deliberately dark-only: they never set this attribute. Applying it
+            globally would hand a visitor's saved *admin* preference to a
+            customer's public site and paint it white. `/signup/verify` is
+            listed explicitly because it IS themed while sitting under
+            `/signup` — a prefix match would have been wrong in the other
+            direction had it not been.
+
+            Client-side navigation does not re-run this, and does not need to:
+            the effects still set and clear the attribute exactly as before.
+            This only fixes the first paint, which is the only thing that was
+            broken. Behaviour, storage key and 'dark' default are unchanged.
+
+            In <body> rather than <Head>: Next.js reorders and dedupes head
+            children, and this must run in document order, before the body
+            paints. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              '(function(){try{' +
+                'var p=location.pathname.replace(/\\/+$/,"")||"/";' +
+                'if(p==="/admin"||p==="/signup"||p==="/signup/verify"||p==="/subscribe"||p==="/reset-password"){' +
+                  'document.documentElement.setAttribute("data-admin-theme",localStorage.getItem("admin_theme")||"dark");' +
+                '}' +
+              '}catch(e){}})();',
+          }}
+        />
         <Main />
         <NextScript />
       </body>
