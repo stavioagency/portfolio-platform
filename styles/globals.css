@@ -114,6 +114,7 @@
   --t-ui: 0.22s;      /* hover, colour, opacity              */
   --t-enter: 0.30s;   /* panels, modals, toasts, entrances   */
   --t-stag: 0.06s;    /* per-item stagger step               */
+  --t-spin: 0.8s;     /* one rotation of a loading spinner   */
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);        /* default — decisive settle */
   --ease-pop: cubic-bezier(0.2, 1.06, 0.32, 1);  /* appears — 6% overshoot    */
@@ -368,14 +369,35 @@ html[dir='rtl'] body { line-height: var(--leading-arabic); }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
 /* ---- Canonical animations ------------------------------------------------
-   The app currently defines 20 @keyframes blocks across 9 files, several of
-   them the same animation under different names — there are four separate
-   spinners, which can and do rotate at four different speeds. These five are
-   the canonical set for NEW code. The existing local copies are deliberately
-   left in place for now: styled-jsx scopes keyframe names, so removing them is
-   a behavioural change across the public site and the admin, and it belongs in
-   its own commit where a regression is attributable. Tracked as motion
-   de-duplication in the Phase 0 checklist. */
+   The canonical set. Nine local duplicates of `fade` and `spin` have been
+   removed from six files and now reference these.
+
+   A NOTE ON SCOPING, because the previous version of this comment had it
+   backwards. styled-jsx scopes SELECTORS, not @keyframes names: every keyframe
+   in this app — local or global — is emitted verbatim into one global
+   namespace, verified by reading document.styleSheets in the running app,
+   where not a single keyframe name carried a jsx hash. So a local
+   `@keyframes fadeIn` was never scoped to its component; `fadeIn` was defined
+   three times across two files, in one namespace, last definition winning.
+
+   That makes consolidation safer than it looked, and it makes duplication more
+   dangerous than it looked: two components can silently share, and overwrite,
+   one another's animation.
+
+   What is deliberately NOT consolidated, because it is genuinely different:
+
+     slideUp      travels 20px; `rise` travels 6px
+     aboutIn      travels -4px — it descends, and nothing else does
+     cpIn         translateX(var(--cp-from)) — direction is set per-instance
+                  so the panel enters from the correct side under RTL
+     ui-pop       translateY(8px) + scale(.98); `pop` is scale-only
+     ui-toast-in  has a matching -out half; the set has no exit primitive
+     skelSweep    travels 120%, as does ui-skel-sweep. The two agree with each
+     ui-skel-sweep other and disagree with `sweep` at 200% — the GLOBAL is the
+                  outlier here. Left alone: the shimmer is exempt from reduced
+                  motion, so it is the one animation that always runs, and
+                  retuning its travel is a visual change, not a cleanup.
+     tickerScroll a marquee, unique by nature                              */
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes pop  { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }

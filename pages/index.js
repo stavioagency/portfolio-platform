@@ -1335,7 +1335,7 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
           display: flex; align-items: flex-start; justify-content: center;
           padding: 40px 20px;
           overflow-y: auto;
-          animation: fadeIn 0.2s ease;
+          animation: fade 0.2s ease;
         }
         .modal {
           width: 100%; max-width: 880px;
@@ -1346,7 +1346,6 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
           box-shadow: 0 30px 80px rgba(0,0,0,0.5);
           animation: slideUp 0.3s ease;
         }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         .modal-head {
           display: flex; justify-content: space-between; align-items: center;
@@ -1383,7 +1382,7 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
           display: flex; flex-direction: column; align-items: center; justify-content: center;
           gap: 14px;
           padding: max(20px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom));
-          cursor: zoom-out; overscroll-behavior: contain; animation: fadeIn 0.2s ease;
+          cursor: zoom-out; overscroll-behavior: contain; animation: fade 0.2s ease;
         }
         .lb-stage { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
         .lb-stage img {
@@ -1396,9 +1395,8 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
         .lb-spinner {
           position: absolute; inset: 0; margin: auto; width: 34px; height: 34px; border-radius: 50%;
           border: 3px solid rgba(255,255,255,0.18); border-top-color: rgba(255,255,255,0.85);
-          animation: spin 0.8s linear infinite;
+          animation: spin var(--t-spin) linear infinite;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
         .lb-close {
           position: fixed; top: max(14px, env(safe-area-inset-top)); right: 14px;
           width: 44px; height: 44px; border-radius: 50%;
@@ -1497,7 +1495,7 @@ function LegalModal({ content, lang, onClose }) {
           -webkit-backdrop-filter: blur(8px);
           display: flex; align-items: center; justify-content: center;
           padding: 24px 16px;
-          animation: fadeIn 0.2s ease;
+          animation: fade 0.2s ease;
         }
         .legal-modal {
           width: 100%; max-width: 640px; max-height: 85vh;
@@ -1539,7 +1537,6 @@ function LegalModal({ content, lang, onClose }) {
         .legal-modal-body h3 { font-size: var(--text-lg); font-weight: 600; color: var(--text-primary); margin-bottom: var(--space-1); }
         .legal-modal-body section p { font-size: var(--text-md); line-height: 1.7; color: var(--text-secondary); }
         .lm-note { margin-top: var(--space-6); padding-top: var(--space-5); border-top: 1px solid var(--border); font-size: var(--text-sm); color: var(--text-muted); font-style: italic; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         @media (max-width: 480px) {
           .legal-modal-top { padding: var(--space-4); }

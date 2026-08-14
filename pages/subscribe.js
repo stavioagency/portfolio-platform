@@ -387,9 +387,8 @@ export default function Subscribe() {
         .co-spinner {
           width: 22px; height: 22px; border-radius: 50%;
           border: 2px solid var(--border-strong); border-top-color: var(--accent);
-          animation: co-spin 0.8s linear infinite;
+          animation: spin var(--t-spin) linear infinite;
         }
-        @keyframes co-spin { to { transform: rotate(360deg); } }
         @media (prefers-reduced-motion: reduce) { .co-spinner { animation: none; } }
 
         .co-foot { display: flex; align-items: center; justify-content: center; gap: var(--space-2);

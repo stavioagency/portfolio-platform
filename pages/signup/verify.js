@@ -213,8 +213,7 @@ export default function VerifySignup() {
         .vf-link:hover { text-decoration: underline; }
         .vf-spinner { width: 22px; height: 22px; border-radius: 50%;
           border: 2px solid var(--border-strong); border-top-color: var(--accent);
-          animation: vf-spin 0.8s linear infinite; }
-        @keyframes vf-spin { to { transform: rotate(360deg); } }
+          animation: spin var(--t-spin) linear infinite; }
         @media (prefers-reduced-motion: reduce) { .vf-spinner { animation: none; } }
       `}</style>
       <style jsx global>{`

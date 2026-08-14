@@ -95,9 +95,8 @@ export default function Button({
           border: 2px solid currentColor;
           border-top-color: transparent;
           border-radius: 50%;
-          animation: ui-spin 0.7s linear infinite;
+          animation: spin var(--t-spin) linear infinite;
         }
-        @keyframes ui-spin { to { transform: rotate(360deg); } }
       `}</style>
     </button>
   );

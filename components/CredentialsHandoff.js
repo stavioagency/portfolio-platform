@@ -416,8 +416,7 @@ export default function CredentialsHandoff({ creds, lang = 'en', title, intro, o
         .ch-bg { position: fixed; inset: 0; z-index: var(--z-modal);
           background: rgba(0,0,0,0.72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
           display: flex; align-items: center; justify-content: center; padding: var(--space-4);
-          animation: chIn 0.18s ease; }
-        @keyframes chIn { from { opacity: 0; } to { opacity: 1; } }
+          animation: fade 0.18s ease; }
         .ch-modal { width: 100%; max-width: 620px; max-height: 92vh; display: flex; flex-direction: column;
           background: var(--bg-secondary); border: 1px solid var(--border-strong);
           border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; }

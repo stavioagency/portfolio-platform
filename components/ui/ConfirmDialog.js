@@ -141,7 +141,7 @@ export function ConfirmProvider({ children }) {
               padding: var(--space-4);
               background: rgba(4, 4, 8, 0.66);
               backdrop-filter: blur(3px);
-              animation: ui-fade 0.16s ease;
+              animation: fade 0.16s ease;
             }
             .dialog {
               inline-size: min(440px, 100%);
@@ -218,7 +218,6 @@ export function ConfirmProvider({ children }) {
             .danger .ok { background: var(--danger); color: var(--danger-fg); }
             .danger .ok:hover:not(:disabled) { background: #ff9a9a; }
 
-            @keyframes ui-fade { from { opacity: 0; } to { opacity: 1; } }
             @keyframes ui-pop {
               from { opacity: 0; transform: translateY(8px) scale(0.98); }
               to { opacity: 1; transform: none; }

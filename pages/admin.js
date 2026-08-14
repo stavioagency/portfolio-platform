@@ -2524,9 +2524,8 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
         </div>
       </div>
       <style jsx>{`
-        .picker-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; animation: fadeIn 0.15s ease; }
+        .picker-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; animation: fade 0.15s ease; }
         .picker { width: 100%; max-width: 520px; max-height: 80vh; background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         .picker-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
         .picker-head h3 { font-size: 15px; font-weight: 600; color: var(--text-primary); }
         .picker-close { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-secondary); font-size: 18px; cursor: pointer; }
@@ -4365,8 +4364,7 @@ function ClientPanel({ row, tenantRow, lang, onClose, onOpenEditor, actions }) {
       <style jsx>{`
         .cp-bg { position: fixed; inset: 0; z-index: var(--z-modal);
           background: rgba(0,0,0,0.55); display: flex; justify-content: flex-end;
-          animation: cpFade 0.18s ease; }
-        @keyframes cpFade { from { opacity: 0; } to { opacity: 1; } }
+          animation: fade 0.18s ease; }
         .cp { width: min(560px, 100%); height: 100%; overflow-y: auto;
           background: var(--bg-secondary); border-inline-start: 1px solid var(--border-strong);
           box-shadow: var(--shadow-lg); animation: cpIn 0.22s cubic-bezier(0.4,0,0.2,1); }
