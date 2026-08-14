@@ -110,9 +110,14 @@ Ordered. Each is independently revertible. Full spec in execution plan §4.2.
       `--t-stag: .06s` + three easing curves *(`--ease`, `--ease-pop` at 1.06
       overshoot, `--ease-exit`)*
 - [x] Keep `--transition` / `--transition-slow` as aliases
-- [ ] **T10** Consolidate **20 `@keyframes` blocks → 5 global** (`fade`, `rise`,
-      `pop`, `spin`, `sweep`); delete the local copies across 6 files
-      *(currently four separate spinners can rotate at four different speeds)*
+- [x] **T10** Consolidate `@keyframes` — **`5eb8761`, 20 local → 10.** Nine
+      duplicates removed: four identical spinners → `spin` (plus `--t-spin`,
+      since they ran at 0.8/0.8/0.8/**0.7**s and the odd one out was the shared
+      `Button`), six identical opacity fades → `fade`. The premise that blocked
+      this was wrong: styled-jsx scopes SELECTORS, not keyframe names — verified
+      by reading `document.styleSheets` in the running app, where no keyframe
+      name carried a jsx hash. The remaining 10 are genuinely different and each
+      is documented beside the canonical set in `globals.css`
 - [x] **T11** Replace the 4 hardcoded durations in `admin.js`
       (`0.25s ×3, 0.2s ×2, 0.4s, .3s`)
 - [x] **T12** Targeted `prefers-reduced-motion` — **the skeleton sweep survives**
@@ -181,15 +186,16 @@ Ordered. Each is independently revertible. Full spec in execution plan §4.2.
       uppercase, and Latin numerals in the Arabic copy. No console errors
 - [ ] ⚠️ Confirm `/{slug}` public sites still resolve — **still not verified.**
       `/` and `/{slug}` need a host that maps to a real tenant; the checked
-      surfaces were the auth and checkout pages
-- [ ] ⚠️ **NEW — theme flash on every load.** The admin theme is stored in
-      `localStorage.admin_theme` and applied by React after hydration, and
-      there is no blocking inline script in `pages/_document.js` to set it
-      before first paint. Every load therefore paints the DARK tokens first and
-      flips to light after hydration — reproduced on `/signup`, where the
-      dark-theme brand `#598CD9` is visible on the button mid-flash. Affects
-      every light-theme user on every page. Not a Phase 0 regression (it
-      predates the token work) but the token work made it obvious
+      surfaces were the auth and checkout pages. `/privacy` was checked and
+      correctly stays dark with a light preference stored, which covers the
+      theme-scoping risk but not tenant resolution
+- [x] **Theme flash — FIXED.** An inline script in `_document.js`'s `<body>`,
+      before `<Main />`, sets `data-admin-theme` ahead of first paint. Scoped
+      to the five pages that opt in, so the public portfolio stays dark-only.
+      Re-verified with the method that reproduced it: reload `/signup` in light
+      and screenshot immediately — light from the first frame. Guarded by
+      `tests/theme-init.test.mjs`, which derives the route list from the pages
+      themselves and fails on drift in either direction
 - [x] `git status` clean
 
 ---
