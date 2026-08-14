@@ -267,6 +267,64 @@ test('figures are tabular so columns align in both locales', () => {
   assert.match(numeric[1], /tabular-nums/);
 });
 
+// ----------------------------------------------------------------- motion ---
+
+test('press is faster than hover, and hover is faster than entrance', () => {
+  const ms = (v) => (String(v).endsWith('ms') ? Number(v.replace('ms', '')) : Number(v.replace('s', '')) * 1000);
+  const press = ms(DARK['--t-press']);
+  const ui = ms(DARK['--t-ui']);
+  const enter = ms(DARK['--t-enter']);
+  assert.ok(press < ui, 'press must be faster than hover');
+  assert.ok(ui < enter, 'hover must be faster than entrance');
+  // A press outside ~150ms stops feeling like a direct response to the finger.
+  assert.ok(press <= 150, `--t-press is ${press}ms, needs <= 150ms to feel instant`);
+});
+
+test('motion is restrained: overshoot stays small', () => {
+  // Lumetra's springs run to 1.56. The mark is geometric and chiselled; a
+  // bouncy Designakum would contradict its own logo. 6% reads as physical
+  // without reading as playful.
+  // cubic-bezier(x1, y1, x2, y2) — a curve overshoots when either OUTPUT
+  // control point (y1, y2) exceeds 1. Reading x2 instead of y1 is an easy way
+  // to assert nothing at all, so both are checked.
+  const [, y1, , y2] = DARK['--ease-pop'].match(/cubic-bezier\(([^)]*)\)/)[1].split(',').map(Number);
+  const overshoot = Math.max(y1, y2);
+  assert.ok(overshoot > 1, '--ease-pop should overshoot at all');
+  assert.ok(overshoot <= 1.1, `--ease-pop overshoots to ${overshoot}, cap is 1.1`);
+  // --ease and --ease-exit must NOT overshoot: a colour change that springs
+  // reads as a glitch.
+  for (const token of ['--ease', '--ease-exit']) {
+    const [, a, , b] = DARK[token].match(/cubic-bezier\(([^)]*)\)/)[1].split(',').map(Number);
+    assert.ok(Math.max(a, b) <= 1, `${token} must not overshoot`);
+  }
+});
+
+test('the legacy transition tokens still resolve', () => {
+  assert.match(DARK['--transition'], /var\(--t-ui\)/);
+  assert.match(DARK['--transition-slow'], /var\(--t-enter\)/);
+});
+
+test('no surface re-declares the accent and shadows the brand', () => {
+  // pages/admin.js used to set `--accent: #4f6ef2` on both .dashboard and
+  // .signin-wrap. That shadowed the token layer, so setting the brand in
+  // globals.css had no effect on the two largest surfaces in the product.
+  const roots = ['pages', 'components'];
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!/\.(js|mjs)$/.test(entry.name)) continue;
+      const body = readFileSync(full, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      // A literal colour assigned to --accent* is a shadow; var(--brand*) is fine.
+      const m = body.match(/--accent[a-z-]*:\s*(?!var\()[^;]+;/g);
+      if (m) offenders.push(`${full}: ${m.join(' ')}`);
+    }
+  };
+  for (const r of roots) walk(join(HERE, '..', r));
+  assert.deepEqual(offenders, [], `accent is re-declared locally in: ${offenders.join(' | ')}`);
+});
+
 // ----------------------------------------------------------------- layout ---
 
 test('the layout and line-height tokens exist', () => {

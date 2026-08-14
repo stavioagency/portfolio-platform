@@ -94,8 +94,29 @@
   --font-heading: 'Manrope', 'Cairo', 'IBM Plex Sans Arabic', system-ui, sans-serif;
   --font-body: 'Manrope', 'IBM Plex Sans Arabic', system-ui, sans-serif;
 
-  --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  /* ---- Motion -----------------------------------------------------------
+     PRESS IS NOT ENTRANCE. Using one duration for both is why interfaces feel
+     laggy and abrupt at the same time: the button responds too slowly and the
+     panel arrives too fast. A press must land inside the ~100-150ms window
+     where input still feels instant; an entrance can take its time.
+
+     Three curves, not eleven. --ease-pop overshoots by 6% so things that
+     APPEAR feel physical — but only 6%. The mark is geometric and chiselled,
+     and a bouncy Designakum would contradict its own logo. Overshoot is for
+     things that arrive, never for a colour change. */
+  --t-press: 0.11s;   /* press feedback — must feel instant  */
+  --t-ui: 0.22s;      /* hover, colour, opacity              */
+  --t-enter: 0.30s;   /* panels, modals, toasts, entrances   */
+  --t-stag: 0.06s;    /* per-item stagger step               */
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);        /* default — decisive settle */
+  --ease-pop: cubic-bezier(0.2, 1.06, 0.32, 1);  /* appears — 6% overshoot    */
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);       /* leaves — accelerate away  */
+
+  /* Kept as aliases: these two are referenced throughout the app, and renaming
+     them in a design pass would have produced an unreviewable diff. */
+  --transition: var(--t-ui) var(--ease);
+  --transition-slow: var(--t-enter) var(--ease);
 
   /* density multiplier — admin Appearance editor overrides this */
   --density: 1;
@@ -340,10 +361,41 @@ html[dir='rtl'] body { line-height: var(--leading-arabic); }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
-/* Reduce motion preference */
+/* ---- Canonical animations ------------------------------------------------
+   The app currently defines 20 @keyframes blocks across 9 files, several of
+   them the same animation under different names — there are four separate
+   spinners, which can and do rotate at four different speeds. These five are
+   the canonical set for NEW code. The existing local copies are deliberately
+   left in place for now: styled-jsx scopes keyframe names, so removing them is
+   a behavioural change across the public site and the admin, and it belongs in
+   its own commit where a regression is attributable. Tracked as motion
+   de-duplication in the Phase 0 checklist. */
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes pop  { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes sweep { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* ---- Press ---------------------------------------------------------------
+   One rule, every interactive element: on press the transition drops to
+   --t-press while hover keeps --t-ui. This is the cheapest single improvement
+   to perceived quality in the system, and doing it here rather than per
+   component means every future component inherits it for free. */
+button:active, a:active, [role='button']:active, summary:active {
+  transition-duration: var(--t-press);
+}
+
+/* ---- Reduced motion ------------------------------------------------------
+   Less movement, NOT no feedback. The blanket rule below is kept, but the
+   skeleton shimmer is exempted: a skeleton that stops moving reads as broken
+   rather than as calm, and it is the one animation whose whole job is to say
+   "this is still loading". */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+  [data-motion='loading'], [data-motion='loading']::before, [data-motion='loading']::after {
+    animation-duration: 1.6s !important;
   }
 }

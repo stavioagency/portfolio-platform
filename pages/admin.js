@@ -661,7 +661,13 @@ function AuthShell({ theme, lang, toggleLang, toggleTheme, title, onSubmit, chil
 function AuthStyles() {
   return (
     <style jsx global>{`
-      .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --accent-fg: #ffffff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
+      /* The local --accent/--accent-hover/--accent-fg overrides that used to sit
+         here pinned this surface to #4f6ef2, which is neither the brand nor the
+         theme's own accent. They shadowed the token layer, so setting the brand
+         in globals.css had no effect on the two surfaces that matter most.
+         Removed: the accent now inherits from the theme. --border/--border-strong
+         stay, because those are a genuine local derivation from --on-bg. */
+      .signin-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--text-primary); --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color var(--t-ui); }
       /* Same four-step ramp as .dashboard.dark — see the note there. This is the
          first screen anyone sees, so a flat-white hint sitting at the same weight
          as the heading is the platform's whole first impression. */
@@ -1114,7 +1120,9 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
       </main>
 
       <style jsx>{`
-        .dashboard { display: flex; min-height: 100vh; color: var(--text-primary); --accent: #4f6ef2; --accent-hover: #6d86ff; --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color 0.2s; }
+        /* Same as .signin-wrap above: the local --accent overrides shadowed the
+           token layer and are removed so the brand actually reaches the admin. */
+        .dashboard { display: flex; min-height: 100vh; color: var(--text-primary); --border: rgba(var(--on-bg),0.1); --border-strong: rgba(var(--on-bg),0.2); transition: background-color var(--t-ui); }
         /* Four DISTINCT text steps, mirroring the light ramp in globals.css
            (1 / .72 / .5 / .36). These four tokens were previously all #ffffff,
            which collapsed every hierarchy the components express through them:
