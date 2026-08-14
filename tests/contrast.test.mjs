@@ -90,3 +90,184 @@ test('contrast ratios match the known WCAG reference pairs', () => {
   assert.equal(contrastRatio('#595959', '#ffffff').toFixed(2), '7.00');
   assert.equal(contrastRatio('#767676', '#ffffff').toFixed(2), '4.54');
 });
+
+// ---------------------------------------------------------------------------
+// THE TOKEN RAMP — every pair the interface actually paints, in both themes.
+//
+// Everything above tests the maths on a colour the CLIENT picks. This block
+// tests the colours WE pick, which nothing was checking: the token layer was
+// hand-derived, its comments quote ratios ("white on the fill: 5.13:1", "white
+// would be 3.4:1"), and until now nothing re-computed them. A comment claiming
+// a ratio is not a measurement — it is a claim that was true when it was
+// typed.
+//
+// This is what makes "premium" a build failure rather than a matter of taste.
+// It is also why the token layer is written as literal hex instead of
+// color-mix(): lib/contrast.js reads hex and rgb(), and a token nothing can
+// parse is a token nothing can check.
+import { readFileSync } from 'node:fs';
+
+const CSS = readFileSync(new URL('../styles/globals.css', import.meta.url), 'utf8');
+
+// Pull one theme block's custom properties. `:root` is the dark theme,
+// [data-admin-theme='light'] is the light one — the two the product ships.
+function tokensIn(selector) {
+  const start = CSS.indexOf(selector + ' {');
+  assert.ok(start >= 0, `no ${selector} block in globals.css`);
+  const body = CSS.slice(start, CSS.indexOf('\n}', start));
+  const out = {};
+  for (const m of body.matchAll(/^\s*(--[a-z0-9-]+):\s*([^;]+);/gim)) out[m[1]] = m[2].trim();
+  return out;
+}
+
+const DARK = tokensIn(':root');
+const LIGHT = tokensIn("[data-admin-theme='light']");
+
+// A token may be a plain colour or an alias (`var(--brand)`); resolve one hop.
+function value(tokens, name) {
+  const raw = tokens[name];
+  assert.ok(raw, `missing token ${name}`);
+  const alias = raw.match(/^var\((--[a-z0-9-]+)\)$/);
+  return alias ? value(tokens, alias[1]) : raw;
+}
+
+// Text tokens are rgba over the page, so the ratio has to be measured against
+// what the eye receives, not against the un-composited colour. Ignoring the
+// alpha would score --text-muted as pure white — a full pass on a token that
+// is, in fact, the one most likely to fail.
+function flatten(fg, bgHex) {
+  const a = fg.match(/^rgba\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)\s*\)$/);
+  if (!a) return fg;
+  const alpha = Number(a[4]);
+  const bg = parseColor(bgHex);
+  assert.ok(bg, `background ${bgHex} is not a flat colour`);
+  const mix = (c, b) => Math.round(Number(c) * alpha + b * (1 - alpha));
+  return `rgb(${mix(a[1], bg.r)}, ${mix(a[2], bg.g)}, ${mix(a[3], bg.b)})`;
+}
+
+const AA_TEXT = 4.5;   // body text
+const AA_UI = 3;       // large text and interface fills
+
+function ratio(tokens, fgName, bgName) {
+  const bg = value(tokens, bgName);
+  return contrastRatio(flatten(value(tokens, fgName), bg), bg);
+}
+
+for (const [theme, tokens] of [['dark', DARK], ['light', LIGHT]]) {
+  test(`${theme}: the four text steps stay readable on every surface`, () => {
+    // Four steps exist to express hierarchy. A step that is decorative-only is
+    // a step the interface will use for a hint the user has to read anyway.
+    for (const surface of ['--bg-primary', '--bg-secondary', '--bg-elevated', '--bg-hover']) {
+      for (const step of ['--text-primary', '--text-secondary']) {
+        const r = ratio(tokens, step, surface);
+        assert.ok(r >= AA_TEXT, `${theme}: ${step} on ${surface} is ${r.toFixed(2)}:1`);
+      }
+      // The bottom two steps are asserted only where they hold. The dark theme
+      // clears both — --text-tertiary carries hints the user has to read, so it
+      // is held to full AA there, and --text-muted is the disabled/placeholder
+      // tier at the UI threshold. The light theme clears neither, which is a
+      // KNOWN GAP pinned in its own test below rather than relaxed away here.
+      if (theme === 'dark') {
+        const tertiary = ratio(tokens, '--text-tertiary', surface);
+        assert.ok(tertiary >= AA_TEXT, `dark: --text-tertiary on ${surface} is ${tertiary.toFixed(2)}:1`);
+        const muted = ratio(tokens, '--text-muted', surface);
+        assert.ok(muted >= AA_UI, `dark: --text-muted on ${surface} is ${muted.toFixed(2)}:1`);
+      }
+    }
+  });
+
+  test(`${theme}: the four text steps are actually four distinct steps`, () => {
+    // Both themes have shipped a block that set all four to one colour. That
+    // is not a contrast failure — every step passes — so only this catches it.
+    const seen = ['--text-primary', '--text-secondary', '--text-tertiary', '--text-muted']
+      .map((s) => flatten(value(tokens, s), value(tokens, '--bg-primary')));
+    assert.equal(new Set(seen).size, 4, `${theme}: the text ramp collapsed: ${seen.join(' ')}`);
+  });
+
+  test(`${theme}: brand ink clears AA on the brand fill`, () => {
+    // The primary button. Its ink flips per theme — white on the light fill,
+    // navy on the lightened dark one — because white on the dark theme's
+    // --brand measures 3.4:1, which is why the flip exists at all.
+    const r = ratio(tokens, '--brand-ink', '--brand');
+    assert.ok(r >= AA_TEXT, `${theme}: --brand-ink on --brand is ${r.toFixed(2)}:1`);
+  });
+
+  test(`${theme}: the accent aliases still resolve to the brand`, () => {
+    // --accent is what pages/admin.js paints with. If the alias breaks, the
+    // product silently stops being brand-coloured while every test still
+    // passes — which is exactly what a local --accent override once did.
+    assert.equal(value(tokens, '--accent'), value(tokens, '--brand'));
+    assert.equal(value(tokens, '--accent-fg'), value(tokens, '--brand-ink'));
+  });
+
+  test(`${theme}: every status ink is readable on its own chip`, () => {
+    for (const state of ['success', 'warning', 'danger', 'neutral']) {
+      const bg = value(tokens, '--bg-primary');
+      // The chip's own tint sits on the page, so the ink is measured against
+      // the composite, not against the tint in isolation.
+      const chip = flatten(value(tokens, `--${state}-bg`), bg);
+      const ink = value(tokens, `--${state}-ink`);
+      const r = contrastRatio(ink, chip);
+      assert.ok(r >= AA_TEXT, `${theme}: --${state}-ink on --${state}-bg is ${r.toFixed(2)}:1`);
+    }
+  });
+
+  test(`${theme}: the status inks correct AWAY from the page, not toward it`, () => {
+    // The ink is a correction on the fill, and the correction runs in opposite
+    // directions per theme — lighter than the fill on dark, darker on light.
+    // Getting the direction wrong still passes a contrast check against the
+    // chip while making the label harder to read, not easier.
+    const pageIsDark = relativeLuminance(parseColor(value(tokens, '--bg-primary'))) < 0.5;
+    for (const state of ['success', 'warning', 'danger', 'neutral']) {
+      const fill = relativeLuminance(parseColor(value(tokens, `--${state}`)));
+      const ink = relativeLuminance(parseColor(value(tokens, `--${state}-ink`)));
+      assert.equal(ink > fill, pageIsDark,
+        `${theme}: --${state}-ink runs the wrong way against --${state}`);
+    }
+  });
+}
+
+test('the brand constant is the measured logo blue, in both themes', () => {
+  // #2C6FE0 was the documented value and the logo disagreed; the asset is what
+  // ships. This fails if the old value returns anywhere in the token layer.
+  assert.equal(value(DARK, '--brand-base'), '#2A6BCE');
+  assert.equal(value(LIGHT, '--brand'), '#2A6BCE', 'the light theme renders the constant directly');
+  // Scan declarations, not prose: the comment beside --brand-base is what
+  // forbids #2C6FE0, so it necessarily contains it.
+  const declarations = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.equal(/#2C6FE0/i.test(declarations), false, '#2C6FE0 is back in the token layer');
+});
+
+// KNOWN GAP — the light theme's lower ramp.
+//
+// The dark theme clears every step. The light theme's bottom two do not, on
+// any surface:
+//
+//              --bg-primary   --bg-hover (worst)
+//   tertiary   3.44:1         3.23:1     needs 4.5, reached at alpha .62
+//   muted      2.30:1         2.23:1     needs 3.0
+//
+// This is not a typo in a token, which is why it is not simply corrected here.
+// The ramp is 1 / .72 / .50 / .36 in every theme; lifting light tertiary to
+// .62 puts it within .10 of --text-secondary and collapses the very hierarchy
+// the four steps exist to express, so fixing it means re-spacing the light
+// ramp — a design decision that belongs to the redesign, not to the token
+// foundation.
+//
+// Pinned here so it is a number in the suite rather than a sentence in a
+// document, and so nobody makes it worse by accident.
+for (const [step, floor] of [['--text-tertiary', 3.20], ['--text-muted', 2.20]]) {
+  test(`KNOWN GAP: light ${step} misses AA, and may not drift further`, () => {
+    for (const surface of ['--bg-primary', '--bg-secondary', '--bg-elevated', '--bg-hover']) {
+      const r = ratio(LIGHT, step, surface);
+      assert.ok(r >= floor, `light ${step} on ${surface} got worse: ${r.toFixed(2)}:1`);
+    }
+    const target = step === '--text-tertiary' ? AA_TEXT : AA_UI;
+    assert.ok(ratio(LIGHT, step, '--bg-hover') < target,
+      `light ${step} now clears its threshold — delete this pin and assert it above`);
+  });
+}
+
+test('white on the brand constant is the 5.13:1 the comment claims', () => {
+  assert.equal(contrastRatio('#ffffff', '#2A6BCE').toFixed(2), '5.13');
+});

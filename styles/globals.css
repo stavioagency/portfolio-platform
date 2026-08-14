@@ -29,10 +29,16 @@
   --border: rgba(255, 255, 255, 0.06);
   --border-strong: rgba(255, 255, 255, 0.12);
 
+  /* The ramp is 1 / .72 / .50 / .36, and these three were .7 / .45 / .3 — the
+     one theme block that never got the canonical steps, while the light theme
+     and both admin blocks already carried them. It was not cosmetic: at .45 on
+     --bg-primary, --text-tertiary measured 4.48:1 and missed AA by 0.02, and
+     4.29:1 on --bg-hover. At .50 it is 5.37 and 5.02. Asserted below in
+     tests/contrast.test.mjs, per theme and per surface. */
   --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.7);
-  --text-tertiary: rgba(255, 255, 255, 0.45);
-  --text-muted: rgba(255, 255, 255, 0.3);
+  --text-secondary: rgba(255, 255, 255, 0.72);
+  --text-tertiary: rgba(255, 255, 255, 0.50);
+  --text-muted: rgba(255, 255, 255, 0.36);
 
   /* ---- Brand ------------------------------------------------------------
      --brand-base is the BRAND CONSTANT and is identical in every theme. It is
