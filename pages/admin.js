@@ -6859,6 +6859,12 @@ function AdminStyles() {
       .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
       .toggle-row:last-child { border-bottom: none; }
       .switch { width: 36px; height: 20px; background: var(--bg-elevated); border-radius: 20px; position: relative; cursor: pointer; border: 1px solid var(--border); flex-shrink: 0; padding: 0; transition: var(--transition); }
+      /* §6.3/§5.4: minimum 44px target in the client portal. The CONTROL stays
+         36x20 — a switch that size is correct and inflating it would look wrong
+         — so the target is extended past the paint instead. ::after is already
+         the knob; ::before is free. -12px on a 20px control gives 44px. */
+      [data-portal="studio"] .switch::before { content: ""; position: absolute; inset: -12px; }
+      .switch:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 3px; }
       .switch::after { content: ""; width: 14px; height: 14px; background: var(--text-tertiary); border-radius: 50%; position: absolute; top: 2px; inset-inline-start: 2px; transition: var(--transition); }
       .switch.on { background: var(--accent); border-color: var(--accent); }
       .switch.on::after { background: var(--bg-primary); inset-inline-start: 18px; }
