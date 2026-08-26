@@ -178,7 +178,7 @@ export function ConfirmProvider({ children }) {
             }
             .req-input {
               inline-size: 100%;
-              min-block-size: 44px;
+              min-block-size: var(--tap-min);
               padding: var(--space-3);
               background: var(--bg-primary);
               color: var(--text-primary);
@@ -195,7 +195,7 @@ export function ConfirmProvider({ children }) {
               margin-block-start: var(--space-5);
             }
             .btn {
-              min-block-size: 44px;
+              min-block-size: var(--tap-min);
               padding: 0 var(--space-4);
               border: 1px solid transparent;
               border-radius: var(--radius-sm);
@@ -216,7 +216,14 @@ export function ConfirmProvider({ children }) {
             .ok { background: var(--brand); color: var(--brand-ink); }
             .ok:hover:not(:disabled) { background: var(--brand-hover); }
             .danger .ok { background: var(--danger); color: var(--danger-fg); }
-            .danger .ok:hover:not(:disabled) { background: #ff9a9a; }
+            /* --danger-ink, not a hardcoded pink. #ff9a9a was one value used in
+               BOTH themes: correct on dark (hover lightens) and broken on light,
+               where it put white text on pale pink at 2.03:1 — on the hover state
+               of the most destructive control in the product. --danger-ink is
+               defined as correcting AWAY from the page, so it lightens on dark
+               (#FF9E9E, 9.43:1) and darkens on light (#96271C, 8.07:1): the right
+               direction in both, and already contrast-tested. */
+            .danger .ok:hover:not(:disabled) { background: var(--danger-ink); }
 
             @keyframes ui-pop {
               from { opacity: 0; transform: translateY(8px) scale(0.98); }

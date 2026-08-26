@@ -82,7 +82,14 @@ preview. Payment unlocks publishing and the live URL. Cancellation runs to the
 end of the paid period. Comps are a separate internal entitlement path.
 
 **Preview.** Option A — inside the authenticated Studio only. No public preview
-links. It is a **live draft renderer**, not a saved version and not a link.
+links, and never a shareable URL. It is the **real portfolio renderer running
+on draft data** (§8.2, §8.5): not a thumbnail, not a screenshot, not a mock
+card. Typography, spacing, responsive behaviour, RTL and first-paint entrances
+are all the real page's. The draft it renders **is persisted** — superseding
+the original "not a saved version", which assumed save-is-live.
+
+**Publishing.** Draft and published are separate states:
+**edit → draft → preview → publish**. See §8.5.
 
 **Brand.** `#2A6BCE`. Flat. No gradients, no glow, no fake depth. Premium
 through spacing, typography, hierarchy and restraint. Existing wordmark and
@@ -135,6 +142,8 @@ status, entitlement, RLS, row, sandbox, `published_at`, comped, `past_due`.
 | `status='canceled'`, in period | "Live until 1 September" |
 | `tenants.status='disabled'` | "Paused — contact us" |
 | `comped` | "Your account is active" — never "you are a comp" |
+| `projects` (the table) | **"work"** collectively, **"piece"** singly. "Projects" is a schema word and stays in the schema |
+| draft ahead of published | "Your latest changes aren't live yet" — never "unpublished revisions" |
 
 The Console may use the real words. It is an operator tool and precision beats
 gentleness there.
@@ -150,7 +159,7 @@ The product-facing summary:
   create account ........ free
   dashboard ............. free
   edit profile .......... free
-  upload projects ....... free
+  upload your work ...... free
   private preview ....... free
   ──────────────────────────────  the line
   public URL ............ paid
@@ -287,10 +296,11 @@ the Studio returns to normal with a small persistent "Live" marker.
 **Goal** keep it current · **Emotion** low-stakes maintenance
 **UI** the same Studio, with a persistent live marker and the address in the
 header.
-**Confusion** **"when do my edits appear on the real site?"** — the sharpest
-open question in the product.
-**Solution** see §8.5. Whichever model is approved, the answer must be one
-sentence in the interface.
+**Confusion** **"when do my edits appear on the real site?"**
+**Solution** settled by §8.5: **when you publish.** Editing changes the draft
+only; visitors see the published state until the client promotes it. The
+interface says so in one sentence — *"Your latest changes aren't live yet"* —
+and the Studio home carries the unpublished item until it is cleared.
 
 ### 14 · Cancellation
 **Goal** stop paying · **Emotion** either "too expensive" or "done with it"
@@ -330,7 +340,7 @@ Derived from `lib/shell-nav.js`, which derives from `lib/admin-nav.js`. One IA.
     Overview
     Profile
     Home Page
-    Projects
+    Work
     Links
     Appearance
 
@@ -343,7 +353,9 @@ Derived from `lib/shell-nav.js`, which derives from `lib/admin-nav.js`. One IA.
     Account
 ```
 
-Two renames from the current admin, both applying law 5 and the vocabulary rule:
+Three renames from the current admin, all applying law 5 and the vocabulary
+rule: **Projects → Work** (see §3.2 — "projects" is a schema word, and the
+client's output is a shoot, a collection, a case study or a piece),
 **Analytics → Visitors** (a noun the client cares about), **Workspace →
 Address** (what it actually is). *Subscription → Plan.*
 
@@ -355,8 +367,9 @@ Answers one question: **what should I do next?**
 |---|---|
 | Empty | The three-step first run. Nothing else on the page |
 | Building | "Your portfolio so far" — the preview, plus the two or three things that would most improve it, each a link to the field |
-| Ready, unpublished | **The activation moment.** "Your portfolio is ready" + Publish |
-| Live | The address, a copy button, recent visitors as one sentence, and "what to add next" |
+| Ready, unpublished | **The activation moment.** "Ready when you are." + Publish |
+| Live, up to date | The address, a copy button, recent visitors as one sentence, and "what to add next" |
+| Live, changes not yet live | *"Your latest changes aren't live yet"* + Publish. The queue carries the same item until it is cleared — this is what stops a client editing for a week and never publishing |
 | Offline | The calm reactivation banner, then normal Overview beneath it |
 
 Law 3: every item here is the link to the thing it names. Nothing reports a
@@ -373,7 +386,7 @@ Sections, in visitor-reading order:
 |---|---|
 | Profile | name, title, bio, photo — the fields with structural consequence |
 | Home Page | the card a visitor lands on: banner, tagline, stats, call-to-action |
-| Projects | the work. Cover, title, description, link, order |
+| Work | the pieces themselves. Cover, name, description, link, order |
 | Links | social and contact, as brand glyphs |
 | Appearance | the small, safe set: accent, banner treatment, display font, density |
 
@@ -381,15 +394,31 @@ Sections, in visitor-reading order:
 either honoured or lost. Every option must be one we would defend in an agency
 presentation.
 
-### 6.4 Save, and the one thing that must never be ambiguous
+### 6.4 Save and publish — two states, never conflated
 
-Three states, always visible, never inferred:
+Since §8.5 separated draft from published, **"Saved" no longer implies "live"**,
+which removes the ambiguity this section was originally written to fight.
+
+Saving concerns the client's work being kept:
 
 ```
   ● Unsaved changes      brand dot, live count      "3 changes"
   ✓ Saved                quiet, for 3 seconds then persists as a timestamp
   ! Could not save       what failed, what to do, and the work still in the box
 ```
+
+Publishing concerns what visitors can see, and is a **separate, adjacent**
+indicator — never merged with the one above:
+
+```
+  Only you can see this.              never published
+  ● Your latest changes aren't live yet   draft is ahead of published
+  ✓ up to date                        draft and published agree; no Publish button
+```
+
+**A count is not shown at rest.** "3 changes" answers a question nobody asked
+while they are working. The count belongs to the publish confirmation, where it
+is about to mean something — see §8.5.
 
 An RLS-filtered write reports success having changed zero rows. Every save path
 must inspect affected rows or a blocked save says "Saved" and discards the work.
@@ -399,7 +428,7 @@ This has happened.
 
 | Screen | Says |
 |---|---|
-| No projects | "Your work goes here. Three to six projects is a portfolio." + Add |
+| No work | "Your work goes here. Three to six pieces is a portfolio." + Add |
 | No visitors yet | "Nobody has visited yet. Share your address to change that." + copy address |
 | Not published | "Only you can see this." + Publish |
 | No links | "Add the places people can find you." |
@@ -482,10 +511,47 @@ requirement wins.
 ### 8.2 What must survive the change
 
 The valuable half of the current design is not the reload mechanism — it is
-**one renderer**. The preview is the real public page, so it cannot drift from
-production, cannot lie about type, spacing, RTL or responsive behaviour, and
-costs nothing to keep in sync. Any design that introduces a second renderer is
-rejected on that ground alone.
+**one renderer**. When the preview and the public page render from one
+component, the preview cannot drift from production, cannot lie about type,
+spacing, RTL or responsive behaviour, and costs nothing to keep in sync. Any
+design that introduces a second *permanent* renderer is rejected on that ground
+alone.
+
+#### 8.2a When the two converge — decided 2026-08-20
+
+> **One renderer means one final shipped renderer, not premature extraction of
+> a legacy implementation.**
+
+The audit that produced this decision found that `components/portfolio/PortfolioRenderer.js`
+and today's `pages/index.js` are **not two versions of the same portfolio** —
+they are two different products. The public page renders a ticker, a banner
+slider, stats, CTA buttons, an About block with custom fields, social glyphs and
+two modals, from `profile` + `projects` rows. The renderer renders a name, a
+role, an introduction, links and a work grid, from a different data shape
+entirely.
+
+Forcing them together now would mean one of two bad trades: either the public
+site changes (forbidden — the redesign of the customer's output is explicitly
+out of scope, §6.1), or the Studio previews today's design instead of the one
+being built.
+
+**So the sequence is:**
+
+1. `pages/index.js` stays **untouched**. It remains the public renderer, and it
+   serves every client site through `pages/[slug].js`.
+2. `PortfolioRenderer` continues to evolve as the **intended future** public
+   renderer, previewed in the Studio.
+3. Its contract stays compatible with **both** inputs — draft data from the
+   Studio and published data from the public pages — so the migration is a
+   change of caller, never a rewrite. Enforced by
+   `tests/portfolio-renderer-contract.test.mjs`.
+4. The migration happens **only** once `PortfolioRenderer` is feature-complete
+   and approved as the new public portfolio. It is a shipping decision, not a
+   refactor.
+
+Until step 4, "one renderer" is a rule about where this is going, not a
+description of today. Anything that claims the preview *is* the public page is
+describing the destination.
 
 ### 8.3 The design — a draft channel into the same-origin iframe
 
@@ -504,9 +570,12 @@ rejected on that ground alone.
 
 **Mechanism**
 
-1. **`DraftContext`** in the Studio holds the working copy, seeded from saved
-   data. Editors write to the draft, not to the database. Draft ≠ saved is
-   already what "unsaved changes" means, so `DirtyContext` collapses into this.
+1. **`DraftContext`** in the Studio holds the in-memory working copy, seeded
+   from the **persisted draft** (§8.5) rather than from published content.
+   Editors write to it; saving persists it; publishing promotes it. Note the
+   change from the original design: the working copy is in memory, but the
+   draft beneath it **is persisted** — a client must be able to close the
+   laptop mid-edit and come back to unpublished work.
 2. **Handshake.** The iframe posts `designakum:preview-ready` on mount; the
    Studio replies with the full draft. This removes the race where a message
    arrives before the page can receive it, and covers any reload.
@@ -540,33 +609,78 @@ it renders. On save, the file uploads and the blob URL is swapped for the
 storage URL. **`revokeObjectURL` on discard or replace**, or a long editing
 session leaks every image the client tried.
 
-### 8.5 The open question: what "publish" means for a live site
+### 8.5 What "publish" means — decided
 
-The public page reads the same rows the editor writes. So for an
-already-published portfolio, **saving is publishing** — there is no staging.
+**Decided: draft and published are separate states.** Editing writes to the
+draft; visitors see the published state; publishing promotes one to the other.
+The client can always see changes before visitors do.
 
-| | A — Save is live *(recommended)* | B — Staged changes |
-|---|---|---|
-| Model | Publish is a one-time activation. After that, save = live | Every change is drafted; "Publish changes" promotes them |
-| Cost | none — this is the current architecture | a second copy of all content, a merge problem, and a diff UI |
-| Client says | "My changes are live when I save" | "I can work on it without breaking the live one" |
-| Risk | a typo is public immediately | a client edits for a week and forgets to publish |
+This **supersedes** the earlier recommendation of save-is-live. Publishing is
+repeatable, not a one-time activation. The flow is
+**edit → draft → preview → publish**.
 
-**Recommendation: A**, with the interface saying so plainly — the header of a
-live portfolio reads *"Changes go live when you save."* B is a real feature and
-a reasonable future want, but it is a content-versioning system, and building
-one now would be the largest and least certain thing in the redesign.
+**One renderer, two inputs.** One component renders both (§8.2, and the
+sequencing decision below).
+Preview feeds it the draft over the §8.3 channel; the public page reads the
+published state. Two inputs, never two renderers. **A second renderer is
+rejected however convenient it looks** — including at component level: the
+Studio home preview and the editor preview are one component at two sizes.
 
-**This needs your approval.** It changes what stages 10 and 13 say.
+**No preview mode.** The Studio shows the draft continuously, so "see it before
+visitors do" is already satisfied. A preview *mode* would add a surface for
+nothing.
+
+**Storage.** The editor keeps writing to `profile` and `projects` — those rows
+*are* the draft. Publishing serialises the current state into a published
+snapshot per tenant, which the public page reads. One column and one function;
+no existing write path is rewritten. Rejected: per-field draft columns (doubles
+every write path) and a full version-history table (that is a versioning
+system, and nothing here needs one).
+
+**Media.** Never delete a storage object still referenced by the published
+snapshot. Cleanup runs at publish, over objects referenced by neither the draft
+nor the new snapshot. Deleting an image in the draft must not take the live
+site's image dark.
+
+**Entitlement.** Expiry gates whether the snapshot is **served**, never whether
+it exists. Clearing published state on expiry would destroy the client's
+published work. `keepPeriodEnd()` behaviour is unaffected.
+
+**The forgotten-publish risk** — a client edits for a week and never publishes
+— is answered by the Studio home being an attention queue (§6.2), which carries
+the unpublished item persistently until it is cleared.
+
+**Build order, decided 2026-08-20.** Everything built so far is frontend
+against mock data; this is the first backend work, and it has one viable
+sequence:
+
+| # | Step |
+|---|---|
+| 1 | Define the published snapshot model |
+| 2 | Implement promotion from draft to snapshot |
+| 3 | Move the public renderer to snapshot reads |
+| 4 | Generate share images ([../design/share-image.md](../design/share-image.md)) |
+
+Share images come **last** and depend on all three: there is nothing to
+generate from until a snapshot is real. Step 3 is also the point at which
+"published" stops being a design and becomes a state.
+
+**The count belongs to the confirmation, not the chrome.** At rest the header
+says *"Your latest changes aren't live yet."* The publish confirmation names
+what will change in plain language — *"your bio, and 2 pieces"* — plus any AI
+suggestions the client has not looked at. It is not a diff view; a diff is a
+builder pattern.
 
 ### 8.6 Rejected alternatives
 
 - **Render the public page inside the Studio's React tree.** No second renderer
   in principle, but the public page's globals and behaviour would run inside the
   Studio, and the device frame would stop being a real viewport. Rejected.
-- **Persist a draft row per tenant.** A second copy of content in the database,
-  a reconciliation problem with publishing, and it is not needed: a draft is
-  what unsaved work already is.
+- ~~**Persist a draft row per tenant.**~~ **This rejection is void.** It was
+  argued from save-is-live, where a draft was merely unsaved work. §8.5 now
+  separates draft from published, so a persisted draft is required — and the
+  adopted design inverts the original objection: the existing rows are the
+  draft, and it is the *published* copy that is serialised.
 - **Keep save-then-refresh.** Fails the requirement.
 
 ---

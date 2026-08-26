@@ -14,7 +14,7 @@ export default function EmptyState({ icon, title, description, action, compact =
           align-items: center;
           text-align: center;
           padding: var(--space-8) var(--space-4);
-          background: var(--bg-secondary);
+          background: var(--surface-card);
           border: 1px dashed var(--border-strong);
           border-radius: var(--radius-md);
         }

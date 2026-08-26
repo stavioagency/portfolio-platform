@@ -370,12 +370,14 @@ save**. That is incompatible with the requirement and is deliberately reversed.
 What survives is the half that mattered: one renderer, so the preview cannot
 drift from production.
 
-### 6.4 The question this leaves
+### 6.4 The question this leaves — answered
 
-For an already-published portfolio, the public page reads the rows the editor
-writes — so **saving is publishing**. Either we accept that and say so
-(*"Changes go live when you save"*), or we build staged changes, which is a
-content-versioning system. Recommendation and trade-offs in D1, §9.
+**Answered: staged changes.** Draft and published are separate states; the flow
+is **edit → draft → preview → publish**. The client can always see changes
+before visitors do. The earlier recommendation here — saving is publishing —
+was overturned by the owner. The design, including the storage model and the
+media and entitlement traps, is in
+[designakum-blueprint.md](designakum-blueprint.md) §8.5, which is authoritative.
 
 ---
 
@@ -476,7 +478,7 @@ be judged rather than described.
 
 | # | Decision | Blocks | Recommendation |
 |---|---|---|---|
-| **D1** | **Save-is-live, or staged changes?** For a published portfolio, saving currently publishes | The whole editor | **Save is live**, said plainly in the header. Staged changes is a versioning system and the largest uncertain thing in the plan |
+| **D1** | ~~Save-is-live, or staged changes?~~ **DECIDED: staged changes.** | — | **Resolved by the owner.** Draft and published are separate states: edit → draft → preview → publish. The recommendation in this row (save-is-live) was **not** taken. Authority: [designakum-blueprint.md](designakum-blueprint.md) §8.5 |
 | **D2** | Storage limit for accounts that have not published | Opening building-before-paying | A stated cap. The only item with a direct cost |
 | **D3** | Does an unpaid account hold its address forever? (§0.3) | Signup copy | Release after 90 days without publishing or edits, warned by email |
 | **D4** | `comp_grants` migration — approve §4.3? | Complimentary portfolios | Yes, additive-first. Step 3 is the one to watch |

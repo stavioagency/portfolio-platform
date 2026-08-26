@@ -2439,8 +2439,8 @@ function LinksEditor({ t, lang }) {
             <button type="button" className="brand" onClick={() => setPickerForId(l.id)} title={t('pick_icon')} aria-label={t('pick_icon')}>
               <BrandGlyph icon={l.icon} size={17} />
             </button>
-            <input className="input-sm" placeholder={icon.label} value={pick(l.label, lang)} onChange={(e) => update(l.id, { label: setLangValue(l.label, lang, e.target.value) })} style={{ width: 160 }} />
-            <input className="input-sm" type="text" dir="ltr" placeholder="https://..." value={l.href || ''} onChange={(e) => update(l.id, { href: e.target.value })} style={{ flex: 1 }} />
+            <input className="input-sm" aria-label={t('link_label')} placeholder={icon.label} value={pick(l.label, lang)} onChange={(e) => update(l.id, { label: setLangValue(l.label, lang, e.target.value) })} style={{ width: 160 }} />
+            <input className="input-sm" type="text" dir="ltr" aria-label={t('link_url')} placeholder="https://..." value={l.href || ''} onChange={(e) => update(l.id, { href: e.target.value })} style={{ flex: 1 }} />
             <button type="button" className="x-small" aria-label={t('remove')} onClick={() => remove(l.id)}>×</button>
           </div>
         );
@@ -2476,13 +2476,47 @@ function LinksEditor({ t, lang }) {
   );
 }
 
+// Byte-identical to ConfirmDialog's FOCUSABLE; a guard asserts the two never drift.
+// Copied rather than imported so admin.js takes no dependency on a dialog component,
+// and defined once here for the two contained surfaces below. The :not([disabled])
+// parts are load-bearing: the workspace Suspend/Delete buttons inside ClientPanel go
+// disabled while busy, and .focus() on a disabled node is a no-op that would swallow
+// the wrap.
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [href], select, textarea, [tabindex]:not([tabindex="-1"])';
+
 function IconPickerModal({ selected, onPick, onClose, t }) {
   const [q, setQ] = useState('');
+  const pickerRef = useRef(null);
+  // Captured during render, not in an effect. The search field below carries
+  // autoFocus, and React applies that in commitMount — before passive effects run —
+  // so an effect would read the search field back as the "opener" and restoration
+  // would quietly never work. This keeps ConfirmDialog's meaning: whatever held
+  // focus before the dialog took it.
+  const openerRef = useRef(null);
+  if (openerRef.current === null && typeof document !== 'undefined') {
+    openerRef.current = document.activeElement;
+  }
+  useEffect(() => () => {
+    const opener = openerRef.current;
+    if (opener && opener.isConnected && typeof opener.focus === 'function') {
+      setTimeout(() => opener.focus(), 0);
+    }
+  }, []);
   const filtered = BRAND_KEYS.filter(k => BRAND_ICONS[k].label.toLowerCase().includes(q.toLowerCase()) || k.includes(q.toLowerCase()));
   useEffect(() => { document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = ''; }; }, []);
   // Escape must close the picker — it was mouse-only before.
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+      if (e.key !== 'Tab') return;
+      const items = Array.from(pickerRef.current?.querySelectorAll(FOCUSABLE) || [])
+        .filter((el) => el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -2490,6 +2524,7 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
     <div className="picker-bg" onClick={onClose}>
       <div
         className="picker"
+        ref={pickerRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -2499,7 +2534,7 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
           <h3>{t('icon_picker_title')}</h3>
           <button onClick={onClose} className="picker-close" type="button" aria-label={t('close')}>×</button>
         </div>
-        <input autoFocus placeholder={t('icon_picker_search')} value={q} onChange={(e) => setQ(e.target.value)} className="picker-search" />
+        <input autoFocus aria-label={t('icon_picker_search')} placeholder={t('icon_picker_search')} value={q} onChange={(e) => setQ(e.target.value)} className="picker-search" />
         <div className="picker-grid">
           {filtered.map(k => {
             // Both surface variants are handed to CSS rather than resolved here,
@@ -2613,8 +2648,11 @@ function AppearanceEditor({ t, lang }) {
       <div className="color-grid">
         {[['bg', 'color_background'], ['surface', 'color_surface'], ['accent', 'color_accent'], ['text', 'color_text'], ['text_muted', 'color_text_muted'], ['border', 'color_border']].map(([k, lbl]) => (
           <div key={k} className="color-item">
-            <input type="color" value={normalizeColor(appearance.tokens[k])} onChange={(e) => patchTokens({ [k]: e.target.value })} />
-            <label>{t(lbl)}</label>
+            {/* The label is a sibling rather than a wrapper here, so the association
+                has to be explicit — same id/htmlFor pairing Field uses everywhere else
+                in this file. Without it the swatch announces only its value. */}
+            <input id={`color-${k}`} type="color" value={normalizeColor(appearance.tokens[k])} onChange={(e) => patchTokens({ [k]: e.target.value })} />
+            <label htmlFor={`color-${k}`}>{t(lbl)}</label>
           </div>
         ))}
       </div>
@@ -3182,7 +3220,7 @@ function DomainManager({ lang, isOwner }) {
       )}
 
       <form onSubmit={addDomain} className="dm-add">
-        <input type="text" dir="ltr" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} placeholder="example.com" />
+        <input type="text" dir="ltr" aria-label={ar ? 'النطاق' : 'Domain'} value={newDomain} onChange={(e) => setNewDomain(e.target.value)} placeholder="example.com" />
         <Button type="submit" loading={busy}>{ar ? 'ربط نطاق' : 'Connect domain'}</Button>
       </form>
       {err && <div className="ts-err">{err}</div>}
@@ -4215,7 +4253,7 @@ function clientStage(row) {
   if (!m) return { id: 'nologin', tone: 'danger', label: (ar) => (ar ? 'بلا حساب' : 'No login') };
   if (row.pendingHandoff) return { id: 'invited', tone: 'warning', label: (ar) => (ar ? 'بانتظار التسليم' : 'Pending handover') };
   if (!m.last_sign_in_at) return { id: 'never', tone: 'warning', label: (ar) => (ar ? 'لم يدخل بعد' : 'Never signed in') };
-  if (!row.live) return { id: 'building', tone: 'default', label: (ar) => (ar ? 'قيد الإعداد' : 'Building') };
+  if (!row.live) return { id: 'building', tone: 'neutral', label: (ar) => (ar ? 'قيد الإعداد' : 'Building') };
   return { id: 'live', tone: 'success', label: (ar) => (ar ? 'منشور' : 'Live') };
 }
 
@@ -4246,12 +4284,41 @@ function ClientPanel({ row, tenantRow, lang, onClose, onOpenEditor, actions }) {
   const panelRef = useRef(null);
 
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    function onKey(e) {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key !== 'Tab') return;
+      // Scoped to the panel, so the credentials overlay stacked above keeps its own
+      // cycle: it is a sibling in the tree, not a descendant of panelRef.
+      const items = Array.from(panelRef.current?.querySelectorAll(FOCUSABLE) || [])
+        .filter((el) => el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
     document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    panelRef.current?.focus();
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prevOverflow; };
   }, [onClose]);
+
+  // Focus is mount-scoped on purpose. onClose arrives as an inline arrow, so the
+  // effect above re-runs on every parent render; focusing there yanked focus back
+  // to the panel shell each time — including the render that opens the credentials
+  // overlay, which it would then race for focus. ConfirmDialog captures the opener
+  // the same way.
+  useEffect(() => {
+    const opener = typeof document !== 'undefined' ? document.activeElement : null;
+    panelRef.current?.focus();
+    return () => {
+      // Hand focus back only if the opener is still in the document. Closing into
+      // the editor unmounts this whole list, and there is no node to return to.
+      if (opener && opener.isConnected && typeof opener.focus === 'function') {
+        setTimeout(() => opener.focus(), 0);
+      }
+    };
+  }, []);
 
   const m = row.member;
   const stage = clientStage(row);
@@ -4798,19 +4865,6 @@ function OwnerClientsOverview({ lang, onOpen }) {
       )}
       {resetErr && <div className="ts-err" style={{ maxWidth: 720 }}>{resetErr}</div>}
 
-      {resetCreds && (
-        <CredentialsHandoff
-          creds={resetCreds}
-          lang={lang}
-          title={ar ? 'كلمة مرور جديدة' : 'New password'}
-          intro={ar
-            ? 'كلمتهم القديمة توقّفت الآن. سلّم هذه البيانات، وسيُطلب منهم تغييرها عند الدخول.'
-            : 'Their old password has stopped working. Hand these over — they will be asked to change it on sign-in.'}
-          onUpdateEmail={makeEmailUpdater(resetCreds, setResetCreds, ar)}
-          onClose={() => setResetCreds(null)}
-        />
-      )}
-
       {loading ? (
         <div className="list-skel" aria-busy="true">
           <Skeleton width="100%" height={56} radius="var(--radius-md)" />
@@ -4985,6 +5039,23 @@ function OwnerClientsOverview({ lang, onOpen }) {
           />
         );
       })()}
+
+      {/* Rendered after ClientPanel on purpose. Both backdrops sit at
+          z-index: var(--z-modal) in the same stacking context, so paint order is
+          decided by DOM order alone. ClientPanel opens this overlay without
+          clearing openId, so the credentials must come last to land on top. */}
+      {resetCreds && (
+        <CredentialsHandoff
+          creds={resetCreds}
+          lang={lang}
+          title={ar ? 'كلمة مرور جديدة' : 'New password'}
+          intro={ar
+            ? 'كلمتهم القديمة توقّفت الآن. سلّم هذه البيانات، وسيُطلب منهم تغييرها عند الدخول.'
+            : 'Their old password has stopped working. Hand these over — they will be asked to change it on sign-in.'}
+          onUpdateEmail={makeEmailUpdater(resetCreds, setResetCreds, ar)}
+          onClose={() => setResetCreds(null)}
+        />
+      )}
 
       <AdminStyles />
       <style jsx>{`
@@ -5907,7 +5978,13 @@ function SubscribersOverview({ lang, onOpen }) {
               : `Send this to ${linkFor.name}. It works without signing in, survives being opened more than once, and expires after 14 days.`}</p>
             <textarea readOnly rows={3} value={linkFor.url} dir="ltr" onFocus={(e) => e.target.select()} />
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <Button size="sm" onClick={() => { navigator.clipboard?.writeText(linkFor.url); toast.success(ar ? 'نُسخ' : 'Copied'); }}>
+              <Button size="sm" onClick={async () => {
+                // Confirm only after the write actually lands, the way CredentialsHandoff's
+                // copy() does: a denied clipboard would otherwise report a copy that never
+                // happened. Failure is silent — the link is on screen and selectable.
+                try { await navigator.clipboard.writeText(linkFor.url); } catch (_) { return; }
+                toast.success(ar ? 'نُسخ' : 'Copied');
+              }}>
                 {ar ? 'نسخ الرابط' : 'Copy link'}
               </Button>
               <a
@@ -6354,6 +6431,30 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
   const [crop, setCrop] = useState(null);
   const [completedCrop, setCompletedCrop] = useState(null);
   const imgRef = useRef(null);
+  const cmRef = useRef(null);
+  const cancelRef = useRef(null);
+  // Captured during render, before React commits and before this dialog moves focus
+  // to Cancel. Reading activeElement from an effect would report Cancel back as the
+  // "opener" and restoration would quietly never work — the same trap IconPickerModal
+  // documents for autoFocus.
+  const openerRef = useRef(null);
+  if (openerRef.current === null && typeof document !== 'undefined') {
+    openerRef.current = document.activeElement;
+  }
+
+  // Cancel takes focus, not Confirm: ConfirmDialog focuses the required input when
+  // there is one and otherwise the safe control, never the committing one. The crop
+  // here is not required — onImageLoad sets a centred crop and react-image-crop fires
+  // onComplete on the unset->set transition, so Confirm is live immediately.
+  useEffect(() => {
+    cancelRef.current?.focus();
+    return () => {
+      const opener = openerRef.current;
+      if (opener && opener.isConnected && typeof opener.focus === 'function') {
+        setTimeout(() => opener.focus(), 0);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const url = URL.createObjectURL(file);
@@ -6363,7 +6464,21 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
 
   // Escape cancels the crop — it was mouse-only before.
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); onCancel(); } }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.stopPropagation(); onCancel(); return; }
+      if (e.key !== 'Tab') return;
+      // The canonical selector is used unnarrowed on purpose. Its
+      // [tabindex]:not([tabindex="-1"]) clause is what keeps react-image-crop's crop
+      // area and its eight drag handles in the cycle, so the crop stays adjustable
+      // from the keyboard. Their number varies with crop state, hence the fresh query.
+      const items = Array.from(cmRef.current?.querySelectorAll(FOCUSABLE) || [])
+        .filter((el) => el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onCancel]);
@@ -6398,10 +6513,28 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
     canvas.toBlob((blob) => { if (blob) onDone(blob); }, mime, 0.92);
   }
 
+  // ReactCrop ships English aria-labels by default, and DS-23 deliberately kept its
+  // nine keyboard controls in the tab cycle — so without this an Arabic operator tabs
+  // into the crop and hears English. Rebuilt each render: ReactCrop is a PureComponent,
+  // but `crop` changes on every render that matters here, so a stable identity for this
+  // object would buy nothing.
+  const cropAriaLabels = {
+    cropArea: t('crop_aria_area'),
+    nwDragHandle: t('crop_aria_nw'),
+    nDragHandle: t('crop_aria_n'),
+    neDragHandle: t('crop_aria_ne'),
+    eDragHandle: t('crop_aria_e'),
+    seDragHandle: t('crop_aria_se'),
+    sDragHandle: t('crop_aria_s'),
+    swDragHandle: t('crop_aria_sw'),
+    wDragHandle: t('crop_aria_w'),
+  };
+
   return (
     <div className="cm-bg" onClick={onCancel}>
       <div
         className="cm"
+        ref={cmRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -6413,13 +6546,13 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
         </div>
         <div className="cm-body">
           {src && (
-            <ReactCrop crop={crop} onChange={(c) => setCrop(c)} onComplete={(c) => setCompletedCrop(c)} aspect={aspect} keepSelection>
+            <ReactCrop crop={crop} onChange={(c) => setCrop(c)} onComplete={(c) => setCompletedCrop(c)} aspect={aspect} keepSelection ariaLabels={cropAriaLabels}>
               <img ref={imgRef} src={src} onLoad={onImageLoad} alt="" style={{ maxHeight: '60vh', maxWidth: '100%' }} />
             </ReactCrop>
           )}
         </div>
         <div className="cm-foot">
-          <button onClick={onCancel} className="cm-cancel" type="button">{t('crop_cancel')}</button>
+          <button onClick={onCancel} ref={cancelRef} className="cm-cancel" type="button">{t('crop_cancel')}</button>
           <button onClick={confirmCrop} className="cm-confirm" type="button">{t('crop_confirm')}</button>
         </div>
       </div>

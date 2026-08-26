@@ -1,6 +1,6 @@
 -- ############################################################################
 -- SCHEMA.sql — THE AUTHORITATIVE PICTURE OF THE LIVE DATABASE
--- Project gphrzvjlstznhypcfgre (ap-northeast-1) · verified 2026-07-27
+-- Project gphrzvjlstznhypcfgre (ap-northeast-1) · verified 2026-08-21
 -- ############################################################################
 --
 -- READ THIS FIRST
@@ -17,6 +17,15 @@
 -- four different overlapping states of the same database, and no way to tell which
 -- was true. This is the one that is true.
 --
+-- ----------------------------------------------------------------------------
+-- REFRESHED 2026-08-21 (phase P0.1 of the renderer migration). The previous
+-- verification was 2026-07-27 and had drifted badly: it was missing SEVEN tables,
+-- EIGHT edge functions and three functions, and — the part that mattered — it
+-- described the write rule as is_tenant_admin() when the live policies had used
+-- can_edit_tenant() since Section K. Anyone designing against it would have got
+-- the paywall boundary wrong. See DRIFT FOUND at the bottom for the full list.
+-- ----------------------------------------------------------------------------
+
 -- ============================================================================
 -- THE MODEL IN ONE PARAGRAPH
 -- ============================================================================
@@ -24,136 +33,244 @@
 -- tenant_domains, analytics_events) carries tenant_id and cascades when the tenant
 -- is deleted. Who may edit a tenant is tenant_admins. Who runs the whole platform
 -- is platform_owners — currently the two Designakum accounts. Public reads are
--- wide open by design (a portfolio is public); every WRITE goes through
--- is_tenant_admin(), which is true for a tenant's own admins AND for any platform
--- owner. Login accepts a username, resolved to an email by get_email_for_username.
+-- wide open (a portfolio is public) — see THE READ GAP below, because that is no
+-- longer a neutral statement. Every WRITE to content goes through
+-- can_edit_tenant(), which is platform owner OR (tenant admin AND entitled).
+-- Login accepts a username, resolved to an email by get_email_for_username.
 
+-- MIGRATIONS APPLIED: 23. Latest 20260813215844 section_o_sandbox_entitlement.
+-- Sections A–O, then G (handoff), H (billing), I (signup), K/L (entitlement),
+-- M (convertible comps), N (subscription environment), O (sandbox entitlement).
 
--- EDGE FUNCTIONS — three, all ACTIVE with verify_jwt on:
---   invite-client          creates a workspace + account + password, emails it
---   reset-client-password  rotates a client's password, returns it to the owner
---   client-recovery        (v1, deployed 2026-08-02) onboarding recovery —
---                          update_email rewrites the address on the EXISTING
---                          auth user, send_welcome re-sends the onboarding mail
---                          and necessarily issues a fresh password because the
---                          original is only ever a hash. Never creates a user,
---                          a workspace or a membership.
---   All three are owner-gated by re-checking is_platform_owner() against the
---   caller's own JWT, and refuse to act on a platform owner.
---
+-- EDGE FUNCTIONS — ELEVEN, all ACTIVE. verify_jwt is NOT uniform:
+--   VERIFY_JWT ON (owner-gated; each re-checks is_platform_owner() against the
+--   caller's own JWT and refuses to act on a platform owner):
+--     invite-client          creates a workspace + account + password, emails it
+--     reset-client-password  rotates a client's password, returns it to the owner
+--     client-recovery        onboarding recovery — update_email rewrites the
+--                            address on the EXISTING auth user; send_welcome
+--                            re-sends the onboarding mail and necessarily issues a
+--                            fresh password, because the original is only ever a
+--                            hash. Never creates a user, workspace or membership.
+--     billing-plans-sync     writes provider_plans from the provider
+--     billing-subscription   subscription actions for a signed-in admin
+--   VERIFY_JWT OFF (public entry points — each does its own authorisation):
+--     billing-webhook        provider webhooks; signature-verified, idempotent on
+--                            (provider, provider_event_id)
+--     billing-checkout       starts checkout
+--     signup-start           /signup, before any account exists
+--     signup-verify          email verification, before any session exists
+--     request-password-reset issues a reset token by email
+--     complete-password-reset claims a token and sets the password
+--   The OFF set is correct — none of them can require a session, because in every
+--   case the caller does not have one yet. It is recorded explicitly so nobody
+--   "fixes" it.
+
 -- ============================================================================
--- TABLES
+-- TABLES — 14 in public, RLS enabled on every one
 -- ============================================================================
 
--- tenants — one row per client website.
+-- tenants — one row per client website.  15 rows (11 active)
 --   id uuid PK · slug text UNIQUE NOT NULL · name text · default_lang text
 --   status text ('active' | 'disabled'; 'disabled' makes the public site 404)
 --   created_at timestamptz
---   TRIGGER trg_enroll_platform_owners AFTER INSERT -> enroll_platform_owners()
 --   handed_over_at timestamptz NULL — operator state: NULL means the workspace
 --     was created but the admin has not confirmed the client received their
 --     credentials, which is what puts it in the admin's Pending handover queue.
---     Does NOT affect public site resolution. Applied 2026-08-02 via
---     supabase/sections/section-g-handoff.sql; all 7 tenants existing at that
---     point were backfilled to their created_at.
---     INDEX tenants_pending_handoff_idx (created_at desc) WHERE handed_over_at IS NULL
+--     Does NOT affect public site resolution.
+--   created_via text NOT NULL DEFAULT 'owner' CHECK ('owner' | 'self_signup')
+--     How the workspace came to exist. 'owner' = invite-client; 'self_signup' =
+--     registered at /signup and verified their own email.
+--   TRIGGER trg_enroll_platform_owners AFTER INSERT -> enroll_platform_owners()
 
--- tenant_domains — custom domains pointing at a tenant.
+-- tenant_domains — custom domains pointing at a tenant.  2 rows
 --   id uuid PK · tenant_id uuid NOT NULL -> tenants ON DELETE CASCADE
 --   domain text UNIQUE NOT NULL · is_primary boolean · status text · created_at
---   UNIQUE (tenant_id) WHERE is_primary  -- at most one primary domain per tenant
---   NOTE: `status` is set by hand and drifts. f9designer.site reads 'error' while
---   the site is verifiably up. It only drives a coloured dot in the Clients list.
 
--- tenant_admins — who may edit which tenant. PK (tenant_id, user_id).
---   role text ('client' | 'owner') — DESCRIPTIVE ONLY. No policy or function reads
---   it; both values grant identical access to that one tenant. Administering EVERY
---   tenant comes from platform_owners, not from this column.
+-- profile — one row per tenant (UNIQUE tenant_id).  15 rows
+--   id integer PK (identity) — a single-tenant leftover; the old CHECK (id = 1) is
+--     GONE and tenant_id is the real key.
+--   Bilingual jsonb {ar, en}: name, tagline, bio
+--   jsonb structures: banners, stats, cta_buttons, custom_links, custom_fields,
+--     sections, top_ticker, footer, seo, appearance
+--   text: profile_image, brand_logo, favicon_url, default_lang
+--   updated_at timestamptz · tenant_id uuid UNIQUE NOT NULL
+--   LEGACY: `links` jsonb predates custom_links, is written but never rendered,
+--     and one row still holds data.
+--   NOTE for the renderer migration: banners, stats, cta_buttons, custom_fields,
+--     sections and top_ticker are all REMOVED by the feature decisions. They are
+--     still live columns and still rendered by pages/index.js. Do not drop them
+--     before phase P6 — see docs/architecture/renderer-migration.md.
 
--- platform_owners — the Designakum accounts. id uuid PK, user_id uuid UNIQUE.
-
--- admin_usernames — username -> auth user. PK (username).
---   Powers username login via get_email_for_username.
-
--- profile — one row per tenant (UNIQUE tenant_id). All content is jsonb of the
---   shape {ar, en}: name, tagline, bio, banners, stats, cta_buttons, custom_links,
---   custom_fields, sections, top_ticker, footer, seo, appearance.
---   LEGACY: `links` jsonb predates custom_links and is written but never rendered;
---   one row still holds data. `id` integer PK is a single-tenant leftover — the old
---   CHECK (id = 1) constraint is GONE, tenant_id is the real key.
-
--- projects — portfolio items. tenant_id NOT NULL, display_order drives ordering.
---   LEGACY: `full_description` is populated on 8 rows; the public page renders
---   `description`.
+-- projects — portfolio items.  9 rows across 2 tenants
+--   id bigint PK DEFAULT nextval('projects_id_seq') — ONE sequence shared by every
+--     tenant. Stable (which is what a URL needs) and enumerable (which is why a
+--     piece must be resolved inside a tenant's document, never globally).
+--   title, description, full_description jsonb {ar, en}
+--   cover_image text · images jsonb DEFAULT '[]' · external_url text
+--   display_order integer DEFAULT 0 · created_at · tenant_id uuid NOT NULL
+--   LEGACY: full_description is populated on 8 rows; the public page renders
+--     `description`. client, year, role are text columns that nothing writes and
+--     nothing renders — empty on every row.
+--   MEDIA IS STORED AS A FULL PUBLIC URL, not a storage path: pages/admin.js
+--     uploads then stores getPublicUrl(...).publicUrl. The published snapshot
+--     specifies `path`, so promotion must normalise. Same for profile_image,
+--     brand_logo, favicon_url and seo.og_image.
 
 -- analytics_events — page_view | project_view | link_click (CHECK constrained).
---   tenant_id NOT NULL. `country` exists but is never populated.
---   Unbounded: AnalyticsEditor selects every row in range with no limit.
+--   2,061 rows. tenant_id NOT NULL. `country` exists but is never populated.
+--   Unbounded: the admin's analytics view selects every row in range, no limit.
+
+-- admin_usernames — username -> auth user.  18 rows
+--   username text PK · user_id uuid -> auth.users · created_at
+
+-- platform_owners — who runs the platform.  2 rows
+--   id uuid PK · user_id uuid UNIQUE -> auth.users · created_at
+
+-- tenant_admins — who may edit which workspace.  42 rows
+--   PK (tenant_id, user_id) · role text DEFAULT 'owner' · created_at
+--   self_signup boolean NOT NULL DEFAULT false — true only for the membership
+--     created by /signup for the person who registered. Distinct from `role`,
+--     which is descriptive and is held by platform owners on every tenant.
+--   UNIQUE (user_id) WHERE self_signup — one self-signup workspace per person.
+
+-- ---- BILLING (Section H, and undocumented until this refresh) --------------
+
+-- provider_plans — our plan codes -> provider plan ids, per environment.  6 rows
+--   provider text DEFAULT 'paypal' · environment CHECK ('sandbox' | 'live')
+--   plan_code · provider_plan_id · provider_product_id · amount int CHECK (> 0)
+--   currency · active boolean · created_at
+--   UNIQUE (provider, environment, plan_code) WHERE active
+--   UNIQUE (provider, environment, provider_plan_id)
+--   Written by billing-plans-sync, never by the browser.
+--   ALL SIX ROWS ARE SANDBOX. There are no live provider_plans; going live is a
+--   data migration, not a toggle.
+
+-- billing_customers — who the tenant is at the provider.  2 rows
+--   tenant_id -> tenants · provider · provider_customer_id · email
+--   UNIQUE (tenant_id, provider) · TRIGGER trg_billing_customers_touch
+--   Holds NO payment instrument — PayPal keeps the funding source.
+
+-- subscriptions — one row per tenant.  11 rows
+--   tenant_id uuid UNIQUE · provider · provider_subscription_id · plan_code
+--   status CHECK (pending|trialing|active|past_due|canceled|expired|comped)
+--   amount · currency · current_period_start/end · cancel_at_period_end
+--   grace_ends_at · trial_ends_at · canceled_at · created_at · updated_at
+--   comp_kind CHECK (NULL | 'grandfather' | 'convertible') — METADATA ONLY.
+--     tenant_has_active_subscription() does not read it and must never read it.
+--   environment CHECK (NULL | 'sandbox' | 'live') — descriptive only. NULL for
+--     comped and never-subscribed rows, which have no provider subscription.
+--   TRIGGER trg_subscriptions_touch
+
+-- payments  — 2 rows. status CHECK (pending|paid|failed|refunded|voided),
+--   method CHECK ('provider' | 'manual'), UNIQUE (provider, provider_payment_id)
+-- invoices  — 2 rows. number text UNIQUE (from next_invoice_number()),
+--   status CHECK (open|paid|void|uncollectible)
+-- billing_events — 31 rows. Raw provider webhooks; UNIQUE
+--   (provider, provider_event_id) is what makes redelivery a no-op.
+
+-- password_reset_tokens — single-use tokens for the Resend-based reset flow.
+--   3 rows. Holds the SHA-256 hash only; the raw token exists solely in the
+--   emailed URL. used_at is set by the atomic claim, and also on older tokens
+--   when a new one is issued, so only the newest link works.
+--   RLS is ON with NO POLICIES, deliberately: service_role only.
 
 
 -- ============================================================================
 -- FOREIGN KEYS — every one is ON DELETE CASCADE except where noted
 -- ============================================================================
--- admin_usernames.user_id   -> auth.users(id)  CASCADE
--- platform_owners.user_id   -> auth.users(id)  CASCADE
--- tenant_admins.user_id     -> auth.users(id)  CASCADE
--- tenant_admins.tenant_id   -> tenants(id)     CASCADE
--- profile.tenant_id         -> tenants(id)     CASCADE
--- projects.tenant_id        -> tenants(id)     CASCADE
--- tenant_domains.tenant_id  -> tenants(id)     CASCADE
--- analytics_events.tenant_id-> tenants(id)     CASCADE
--- analytics_events.project_id -> projects(id)  SET NULL
+-- admin_usernames.user_id      -> auth.users(id)   CASCADE
+-- platform_owners.user_id      -> auth.users(id)   CASCADE
+-- tenant_admins.user_id        -> auth.users(id)   CASCADE
+-- tenant_admins.tenant_id      -> tenants(id)      CASCADE
+-- profile.tenant_id            -> tenants(id)      CASCADE
+-- projects.tenant_id           -> tenants(id)      CASCADE
+-- tenant_domains.tenant_id     -> tenants(id)      CASCADE
+-- analytics_events.tenant_id   -> tenants(id)      CASCADE
+-- analytics_events.project_id  -> projects(id)     SET NULL
+-- billing_customers.tenant_id  -> tenants(id)      CASCADE
+-- subscriptions.tenant_id      -> tenants(id)      CASCADE
+-- payments.tenant_id           -> tenants(id)      CASCADE
+-- payments.subscription_id     -> subscriptions(id)
+-- invoices.tenant_id           -> tenants(id)      CASCADE
+-- invoices.subscription_id     -> subscriptions(id)
+-- invoices.payment_id          -> payments(id)
+-- password_reset_tokens.user_id-> auth.users(id)   CASCADE
 --
 -- CONSEQUENCE, relied on by the admin: deleting a tenant removes its profile,
--- projects, domains, analytics and access rows in one statement. Deleting an auth
--- user removes their username and every access row.
+-- projects, domains, analytics, billing and access rows in one statement.
+-- Deleting an auth user removes their username, memberships and reset tokens.
 
 
 -- ============================================================================
--- FUNCTIONS  (all SECURITY DEFINER)
+-- FUNCTIONS  (all SECURITY DEFINER except touch_updated_at)
 -- ============================================================================
--- is_platform_owner()            -> bool   authenticated only
+-- is_platform_owner()            -> bool   STABLE, authenticated only
 --     EXISTS in platform_owners for auth.uid().
 --
--- is_tenant_admin(tid uuid)      -> bool   authenticated only
---     is_platform_owner() OR a tenant_admins row. Gates EVERY write policy.
+-- is_tenant_admin(tid uuid)      -> bool   STABLE, authenticated only
+--     is_platform_owner() OR a tenant_admins row. MEMBERSHIP ONLY.
 --
--- can_write_media(object_name)   -> bool   authenticated only
---     Rejects any name containing '..', then is_platform_owner() OR the first path
---     segment equals 't-<tenant_id>' for a tenant the caller administers.
+-- tenant_has_active_subscription(tid uuid) -> bool   STABLE, anon-callable
+--     ENTITLEMENT. True when a subscriptions row is comped, or active/trialing
+--     within its period, or past_due inside its grace window, or canceled but not
+--     yet expired. Rows with environment = 'sandbox' are excluded, NULL-safely:
+--     `environment is distinct from 'sandbox'`, because comps carry NULL and
+--     `= 'live'` would revoke all of them.
+--     Anon-callable on purpose — the public site gates on it.
+--     Mirrored in lib/billing-status.js; the DATABASE is authoritative.
+--
+-- can_edit_tenant(tid uuid)      -> bool   STABLE, authenticated only
+--     is_platform_owner() OR (is_tenant_admin(tid) AND
+--     tenant_has_active_subscription(tid)). THIS is what gates every content
+--     write — not is_tenant_admin(), which this file previously claimed.
+--     It is also where the paywall currently sits: the locked model puts the
+--     paywall at PUBLISHING, and this puts it at WRITING. See
+--     docs/architecture/publishing-boundary.md.
+--
+-- can_write_media(object_name)   -> bool   STABLE, authenticated only
+--     Rejects any name containing '..', then is_platform_owner() OR (the first
+--     path segment equals 't-<tenant_id>' for a tenant the caller administers
+--     AND that tenant is entitled).
 --
 -- get_email_for_username(p_username) -> text   ANON + authenticated
---     The ONLY function anon may execute, because the sign-in screen resolves a
---     username before anyone is authenticated. This is the known email-enumeration
---     issue in HANDOFF section 8 — a grant change would break login; it needs an
---     auth-flow change.
+--     The ONLY function anon may execute besides tenant_has_active_subscription,
+--     because the sign-in screen resolves a username before anyone is
+--     authenticated. This is the known email-enumeration issue; a grant change
+--     would break login, so it needs an auth-flow change.
 --
--- assign_tenant_admin(tenant, username, role default 'client') -> void
---     Owner-gated (raises otherwise). ON CONFLICT DO UPDATE, so re-granting fixes a
---     mis-recorded role instead of doing nothing.
+-- assign_tenant_admin(tenant, username, role) -> void
+--     Owner-gated (raises otherwise). ON CONFLICT DO UPDATE, so re-granting fixes
+--     a mis-recorded role instead of doing nothing.
 --
--- list_workspace_members()       -> table   authenticated only
---     For owners: which email/username belongs to which workspace, so a client who
---     loses their password can be recovered instead of rebuilt. Returns an EMPTY
---     SET for anyone who is not a platform owner, and never lists owners.
+-- list_workspace_members()       -> table   STABLE, authenticated only
+--     For owners: which email/username belongs to which workspace, so a client
+--     who loses their password can be recovered instead of rebuilt. Returns an
+--     EMPTY SET for anyone who is not a platform owner, and never lists owners.
 --
--- enroll_platform_owners()       -> trigger   NO grants (fires as the table owner)
+-- next_invoice_number()          -> text
+--     'INV-<year>-<6 digits>' from invoice_number_seq.
+--
+-- enroll_platform_owners()       -> trigger   NO grants (fires as table owner)
 --     On tenant INSERT, enrols every platform owner. The browser cannot do this:
 --     platform_owners is readable only for your own row.
 --
--- REMOVED 2026-07-27: is_admin() — "is this user an admin at all", meaningless once
--- access became per-tenant. Nothing referenced it.
+-- touch_updated_at()             -> trigger   NOT security definer
+--     BEFORE UPDATE on billing_customers and subscriptions.
+--
+-- REMOVED 2026-07-27: is_admin() — "is this user an admin at all", meaningless
+-- once access became per-tenant. Nothing referenced it.
 
 
 -- ============================================================================
--- ROW LEVEL SECURITY — enabled on every public table
+-- ROW LEVEL SECURITY — enabled on all 14 public tables
 -- ============================================================================
--- READ (public/anon, deliberately wide — a portfolio is public):
+-- READ (role `public`, i.e. anon included):
 --   profile, projects, tenants, tenant_domains .......... USING (true)
 --   storage.objects bucket 'media' ...................... USING (bucket_id='media')
 --
 -- WRITE (authenticated):
---   profile, projects, tenant_domains ... ALL    is_tenant_admin(tenant_id)
+--   profile, projects, tenant_domains ... ALL  can_edit_tenant(tenant_id)
 --   tenants ............................. INSERT/UPDATE/DELETE  is_platform_owner()
 --   tenant_admins ....................... INSERT/UPDATE/DELETE  is_platform_owner()
 --   storage.objects ..................... INSERT/UPDATE/DELETE  can_write_media(name)
@@ -164,27 +281,109 @@
 --   tenant_admins ....... SELECT  user_id = auth.uid()
 --     ^ this is why list_workspace_members() has to exist.
 --
+-- TENANT-SCOPED READ (authenticated):
+--   analytics_events, billing_customers, subscriptions, payments, invoices
+--     ................. SELECT  is_tenant_admin(tenant_id)
+--   billing_events ..... SELECT  is_platform_owner()
+--   provider_plans ..... SELECT  active
+--
+-- NO POLICIES AT ALL (service_role only, deliberately):
+--   password_reset_tokens
+--   Billing tables have no INSERT/UPDATE policy either: every write is a function
+--   or an edge function. This is the pattern published_snapshots will follow.
+--
 -- analytics_events: INSERT WITH CHECK (true) for anon+authenticated so anonymous
 --   visits can be recorded; SELECT is is_tenant_admin(tenant_id). The permissive
 --   INSERT is flagged by the advisor and is intentional — the trade is that anyone
 --   can post fake events.
+--
+-- ---- THE READ GAP, stated plainly ----------------------------------------
+-- `profile` and `projects` are readable by anon with USING (true), so an
+-- UNPUBLISHED tenant's content is world-readable through PostgREST. lib/tenant.js
+-- gates RENDERING, not data: the page 404s while the row is still fetchable.
+-- That is UI standing in for a security boundary. Closing it is phase P6 of
+-- docs/architecture/renderer-migration.md, and it cannot land before the public
+-- pages stop reading these tables.
 
 
 -- ============================================================================
 -- INDEXES beyond the primary keys
 -- ============================================================================
--- analytics_events: (tenant_id), (created_at DESC), (event_type), (project_id)
--- projects (tenant_id) · tenant_admins (user_id) · tenant_domains (tenant_id)
--- tenant_domains: UNIQUE (tenant_id) WHERE is_primary
+-- profile:            UNIQUE (tenant_id)
+-- projects:           (tenant_id)
+-- analytics_events:   (tenant_id), (created_at DESC), (event_type), (project_id)
+-- tenants:            UNIQUE (slug)
+--                     (created_at DESC) WHERE handed_over_at IS NULL
+--                     (created_at DESC) WHERE created_via = 'self_signup'
+-- tenant_admins:      (user_id) · UNIQUE (user_id) WHERE self_signup
+-- tenant_domains:     UNIQUE (domain) · (tenant_id)
+--                     UNIQUE (tenant_id) WHERE is_primary
+-- subscriptions:      UNIQUE (tenant_id) · UNIQUE (provider, provider_subscription_id)
+--                     (status) · (current_period_end)
+-- provider_plans:     UNIQUE (provider, environment, plan_code) WHERE active
+--                     UNIQUE (provider, environment, provider_plan_id)
+-- billing_customers:  UNIQUE (tenant_id, provider)
+-- billing_events:     UNIQUE (provider, provider_event_id)
+--                     (event_type, received_at DESC)
+--                     (received_at) WHERE processed_at IS NULL
+-- payments:           UNIQUE (provider, provider_payment_id) · (status)
+--                     (tenant_id, created_at DESC)
+-- invoices:           UNIQUE (number) · (tenant_id, issued_at DESC)
+-- password_reset_tokens: UNIQUE (token_hash) · (user_id, created_at DESC)
 
 
 -- ============================================================================
--- KNOWN GAPS — see HANDOFF.md sections 7 and 8
+-- STORAGE — bucket 'media'
+-- ============================================================================
+-- 157 objects, 2026-05-13 .. 2026-07-29.
+--   22 under a t-<tenant_id>/ prefix   (everything uploaded since Section F)
+--  135 at FLAT legacy paths            (unattributable to any tenant)
+-- Anon may read every object in the bucket. Writes are can_write_media().
+
+
+-- ============================================================================
+-- KNOWN GAPS
 -- ============================================================================
 -- 1. get_email_for_username is anon-callable and confirms which usernames exist.
--- 2. All 135 objects in the media bucket use legacy FLAT paths, so tenant storage
---    isolation governs only future uploads and clients cannot manage existing media.
--- 3. analytics_events has no retention policy and its admin query is unbounded.
--- 4. tenant_domains.status is set by hand and drifts from reality.
--- 5. Leaked-password protection is a Pro-plan feature; mitigated in
---    lib/pwned-password.js instead.
+-- 2. 135 of 157 media objects use legacy FLAT paths, so tenant storage isolation
+--    governs only future uploads and clients cannot manage existing media. These
+--    objects must be permanently excluded from any cleanup sweep — a sweep cannot
+--    attribute them, and deleting one is unrecoverable.
+-- 3. Unpublished draft content is world-readable. See THE READ GAP above.
+-- 4. Draft MEDIA is world-readable too, and the snapshot model does not fix it:
+--    an image uploaded to a draft is fetchable by anyone holding the URL, whether
+--    or not it was ever published. Needs the media pipeline, not a policy tweak.
+-- 5. analytics_events has no retention policy and its admin query is unbounded.
+-- 6. tenant_domains.status is set by hand and drifts from reality.
+-- 7. Leaked-password protection is a Pro-plan feature and is still OFF;
+--    mitigated in lib/pwned-password.js instead.
+-- 8. provider_plans holds sandbox rows only — there is no live plan to subscribe
+--    to. Going live is a data migration.
+
+
+-- ============================================================================
+-- DRIFT FOUND AT THE 2026-08-21 REFRESH
+-- ============================================================================
+-- What the 2026-07-27 version of this file got wrong, recorded so the size of the
+-- gap is visible rather than quietly corrected:
+--
+-- WRONG (not merely missing):
+--   * "every WRITE goes through is_tenant_admin()" — it goes through
+--     can_edit_tenant(), which additionally requires entitlement. The documented
+--     rule omitted the paywall.
+--   * can_write_media described without its entitlement check.
+--   * "EDGE FUNCTIONS — three, all ACTIVE with verify_jwt on" — there are eleven,
+--     and six have verify_jwt OFF.
+--
+-- MISSING TABLES (7): provider_plans, billing_customers, subscriptions, payments,
+--   invoices, billing_events, password_reset_tokens.
+-- MISSING COLUMNS: tenants.created_via · tenant_admins.self_signup ·
+--   projects.client, .year, .role · profile.brand_logo, .favicon_url,
+--   .profile_image, .default_lang, .updated_at (never enumerated).
+-- MISSING FUNCTIONS (3): tenant_has_active_subscription, can_edit_tenant,
+--   next_invoice_number, touch_updated_at.
+-- MISSING TRIGGERS (2): trg_billing_customers_touch, trg_subscriptions_touch.
+-- MISSING INDEXES: every billing index, plus tenants_self_signup_idx and
+--   tenant_admins_one_self_signup_per_user_idx.
+--
+-- Nothing in the live database was changed by this refresh. It is a read.

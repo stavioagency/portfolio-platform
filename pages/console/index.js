@@ -90,6 +90,10 @@ function Placeholder({ id, groups, ar }) {
       <style jsx>{`
         .ph { display: grid; gap: var(--space-3); justify-items: start; }
         h1 { margin: 0; font-size: var(--text-2xl); font-weight: 700; letter-spacing: var(--track-tight); }
+        /* Arabic is cursive, so letter-spacing severs the joins between letterforms.
+           --track-tight is Latin-only; RTL resets it. Same override FocusPanel and
+           OwnerBar already carry on their headings. */
+        :global([dir='rtl']) h1 { letter-spacing: 0; }
         p { margin: 0; color: var(--text-secondary); max-inline-size: var(--measure); line-height: var(--leading-normal); }
       `}</style>
     </div>

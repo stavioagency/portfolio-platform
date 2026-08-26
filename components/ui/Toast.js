@@ -93,7 +93,7 @@ export function ToastProvider({ children }) {
           inline-size: min(380px, calc(100vw - var(--space-5) * 2));
           padding: var(--space-3) var(--space-4);
           text-align: start;
-          background: var(--bg-elevated);
+          background: var(--surface-elevated);
           color: var(--text-primary);
           border: 1px solid var(--border-strong);
           border-radius: var(--radius-md);
@@ -120,10 +120,25 @@ export function ToastProvider({ children }) {
         }
         .msg { flex: 1; min-inline-size: 0; overflow-wrap: anywhere; }
 
-        .success { border-color: var(--success-border); }
-        .success .mark { background: var(--success-bg); color: var(--success); }
-        .error { border-color: var(--danger-border); }
-        .error .mark { background: var(--danger-bg); color: var(--danger); }
+        /* DS-3 moved the tints and borders onto the semantic --status-* aliases.
+           The mark COLOURS stay on the fill tokens, on the same closed decision
+           as Badge's labels — see Badge.js.
+
+           .info keeps the retired #9FA7FF, and DS-4 CLOSED that too. The mark
+           already sits below AA on its own surface (3.91 dark / 4.03 light), and
+           every already-declared replacement makes light worse: --brand-soft
+           4.21/3.75, --brand-line 3.15/3.06, --brand-focus 2.08/2.06. There is no
+           substitution here, only a new-token decision that has not been taken.
+
+           Worth knowing before anyone "retires the old accent": 14 of this
+           colour's 16 occurrences are appearance-system DEFAULTS in pages/index.js
+           and pages/admin.js — the default client accent, the ticker default, the
+           midnight preset. Changing these two would not remove #9FA7FF from the
+           product; it would only remove it from the chrome. */
+        .success { border-color: var(--status-success-border); }
+        .success .mark { background: var(--status-success-bg); color: var(--success); }
+        .error { border-color: var(--status-danger-border); }
+        .error .mark { background: var(--status-danger-bg); color: var(--danger); }
         .info .mark { background: rgba(159, 167, 255, 0.14); color: var(--accent); }
 
         @keyframes ui-toast-in {

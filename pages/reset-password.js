@@ -230,7 +230,7 @@ export default function ResetPassword() {
         .rp-form label { font-size: var(--text-sm); color: var(--text-secondary); margin-top: var(--space-2); }
         .rp-form input { width: 100%; padding: 10px 12px; border-radius: var(--radius-sm);
           border: 1px solid var(--border); background: var(--bg-elevated);
-          color: var(--text-primary); font-size: var(--text-base); font-family: var(--font-sans); }
+          color: var(--text-primary); font-size: var(--text-md); font-family: var(--font-sans); }
         .rp-form input:disabled { opacity: 0.6; }
         .rp-center { display: flex; flex-direction: column; align-items: center; text-align: center;
           gap: var(--space-3); padding: var(--space-5) 0; }
@@ -243,7 +243,7 @@ export default function ResetPassword() {
         .rp-mark.ok { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
         .rp-mark.warn { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning-border); }
         .rp-btn { display: inline-block; margin-top: var(--space-2); padding: 10px 20px;
-          border-radius: var(--radius-sm); background: var(--accent); color: #fff;
+          border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-fg);
           text-decoration: none; font-size: var(--text-sm); font-weight: 600; }
       `}</style>
     </>

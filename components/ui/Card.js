@@ -20,8 +20,8 @@ export default function Card({
       {children}
       <style jsx>{`
         .ui-card {
-          background: var(--bg-secondary);
-          border: 1px solid var(--border);
+          background: var(--surface-card);
+          border: 1px solid var(--border-default);
           border-radius: var(--radius-md);
           transition: border-color var(--transition), background var(--transition);
         }
@@ -29,10 +29,10 @@ export default function Card({
         .pad-sm { padding: var(--space-3); }
         .pad-md { padding: var(--space-4); }
         .pad-lg { padding: var(--space-5); }
-        .elev { background: var(--bg-elevated); box-shadow: var(--shadow-sm); }
+        .elev { background: var(--surface-elevated); box-shadow: var(--shadow-sm); }
         .act { cursor: pointer; }
-        .act:hover { border-color: var(--border-strong); background: var(--bg-hover); }
-        .act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .act:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+        .act:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
         /* when rendered as a button, drop the UA chrome the reset does not cover */
         button.ui-card { inline-size: 100%; text-align: start; font-family: inherit; color: inherit; }
       `}</style>

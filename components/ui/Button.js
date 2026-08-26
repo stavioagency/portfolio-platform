@@ -41,7 +41,7 @@ export default function Button({
                       color var(--transition), opacity var(--transition);
         }
         .ui-btn:focus-visible {
-          outline: 2px solid var(--accent);
+          outline: 2px solid var(--border-focus);
           outline-offset: 2px;
         }
         /* 0.5 dropped an already-secondary label under the 4.5:1 line and made
@@ -56,9 +56,9 @@ export default function Button({
         /* sizes — md meets the 44px mobile tap target everywhere; sm is compact on
            desktop and grows to 44px on phones, matching the admin's existing rule */
         .sm { min-height: 34px; padding: 0 var(--space-3); font-size: 13px; }
-        .md { min-height: 44px; padding: 0 var(--space-4); font-size: var(--text-md); }
+        .md { min-height: var(--tap-min); padding: 0 var(--space-4); font-size: var(--text-md); }
         @media (max-width: 640px) {
-          .sm { min-height: 44px; padding: 0 var(--space-4); font-size: var(--text-md); }
+          .sm { min-height: var(--tap-min); padding: 0 var(--space-4); font-size: var(--text-md); }
         }
 
         /* FLAT, and deliberately so. The logo is a single solid colour with no
@@ -67,27 +67,27 @@ export default function Button({
            A gradient is also underivable from one token: every future accent
            change would mean re-authoring two stops and a coloured shadow. */
         .primary {
-          background: var(--brand);
-          color: var(--brand-ink);
+          background: var(--action-primary-bg);
+          color: var(--action-primary-fg);
         }
-        .primary:hover:not(:disabled) { background: var(--brand-hover); }
+        .primary:hover:not(:disabled) { background: var(--action-primary-bg-hover); }
 
         .secondary {
-          background: var(--bg-elevated);
-          color: var(--text-primary);
-          border-color: var(--border-strong);
+          background: var(--action-secondary-bg);
+          color: var(--action-secondary-fg);
+          border-color: var(--action-secondary-border);
         }
-        .secondary:hover:not(:disabled) { background: var(--bg-hover); }
+        .secondary:hover:not(:disabled) { background: var(--action-secondary-bg-hover); }
 
-        .ghost { background: transparent; color: var(--text-secondary); }
-        .ghost:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+        .ghost { background: transparent; color: var(--action-ghost-fg); }
+        .ghost:hover:not(:disabled) { background: var(--action-ghost-bg-hover); color: var(--action-ghost-fg-hover); }
 
         .danger {
-          background: var(--danger-bg);
-          color: var(--danger);
-          border-color: var(--danger-border);
+          background: var(--action-danger-bg);
+          color: var(--action-danger-fg);
+          border-color: var(--action-danger-border);
         }
-        .danger:hover:not(:disabled) { background: var(--danger); color: var(--danger-fg); }
+        .danger:hover:not(:disabled) { background: var(--action-danger-bg-hover); color: var(--action-danger-fg-hover); }
 
         .spin {
           width: 13px;

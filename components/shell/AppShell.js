@@ -184,7 +184,7 @@ export default function AppShell({
           transition: border-color var(--t-ui) var(--ease), background-color var(--t-ui) var(--ease);
         }
         .chip:hover { border-color: var(--border-strong); }
-        .chip:focus-visible { outline: 2px solid var(--brand-focus); outline-offset: 2px; }
+        .chip:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
         .nav-toggle {
           display: none;
@@ -223,7 +223,7 @@ export default function AppShell({
           transition: background-color var(--t-ui) var(--ease), color var(--t-ui) var(--ease);
         }
         .nav-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
-        .nav-item:focus-visible { outline: 2px solid var(--brand-focus); outline-offset: -2px; }
+        .nav-item:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
         /* Active is a flat brand tint with a brand rule on the leading edge.
            No gradient, no glow, no raised shadow — the mark is flat, and an
            "active" state that looks pressed is depth this system does not use. */

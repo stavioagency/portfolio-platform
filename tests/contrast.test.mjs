@@ -123,12 +123,35 @@ function tokensIn(selector) {
 const DARK = tokensIn(':root');
 const LIGHT = tokensIn("[data-admin-theme='light']");
 
-// A token may be a plain colour or an alias (`var(--brand)`); resolve one hop.
-function value(tokens, name) {
+// A token may be a plain colour or an alias (`var(--brand)`); follow the chain
+// to the literal at the end of it.
+//
+// The recursion was already unbounded, which was fine while every alias was
+// one hop deep and pointed somewhere real. A semantic alias layer makes both
+// assumptions worth checking: `--a: var(--b); --b: var(--a);` is a stack
+// overflow rather than a test failure, and neither the depth cap nor the cycle
+// guard below relaxes anything — a chain that resolved before still resolves,
+// to the same value.
+//
+// Lookup stays scoped to the ONE theme block, deliberately. Falling back to
+// the dark block would let a light token silently inherit a dark value and
+// still pass, which is the failure this file exists to catch.
+const MAX_HOPS = 16;
+function value(tokens, name, seen = []) {
   const raw = tokens[name];
   assert.ok(raw, `missing token ${name}`);
   const alias = raw.match(/^var\((--[a-z0-9-]+)\)$/);
-  return alias ? value(tokens, alias[1]) : raw;
+  if (!alias) return raw;
+  assert.equal(
+    seen.includes(name),
+    false,
+    `var() cycle in the token layer: ${[...seen, name].join(' -> ')}`,
+  );
+  assert.ok(
+    seen.length < MAX_HOPS,
+    `var() chain deeper than ${MAX_HOPS} hops: ${[...seen, name].join(' -> ')}`,
+  );
+  return value(tokens, alias[1], [...seen, name]);
 }
 
 // Text tokens are rgba over the page, so the ratio has to be measured against

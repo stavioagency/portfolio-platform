@@ -15,6 +15,7 @@ import { AppShell, ShellGate } from '../../components/shell';
 import { studioNav, navItemIds, defaultItemId } from '../../lib/shell-nav';
 import { getTranslator } from '../../lib/translations';
 import { readLang, applyLang, readTheme, applyTheme } from '../../lib/shell-prefs';
+import StudioHome from '../../components/studio/StudioHome';
 
 export default function StudioPage() {
   const [lang, setLang] = useState('ar');
@@ -66,7 +67,12 @@ export default function StudioPage() {
             title={ar ? 'الاستوديو' : 'Studio'}
             subtitle={ar ? 'موقعك الشخصي' : 'Your portfolio'}
           >
-            <Placeholder id={activeId} groups={groups} ar={ar} />
+            {/* `home` is the Studio's home screen — the attention queue and
+                the live preview. Every other item is still a placeholder and
+                still moves here from /admin in its own section. */}
+            {activeId === 'home'
+              ? <StudioHome lang={lang} />
+              : <Placeholder id={activeId} groups={groups} ar={ar} />}
           </AppShell>
         )}
       </ShellGate>
@@ -82,12 +88,16 @@ function Placeholder({ id, groups, ar }) {
       <h1>{item ? item.label : (ar ? 'الاستوديو' : 'Studio')}</h1>
       <p>
         {ar
-          ? 'هذه الشاشة ستنتقل إلى هنا من لوحة التحكم الحالية. حتى ذلك الحين، استخدم /admin — لم يتغيّر فيها شيء.'
+          ? 'هذه الشاشة ستنتقل إلى هنا من لوحة التحكم الحالية. حتى ذلك الحين، /admin ما زالت تعمل كما هي.'
           : 'This screen will move here from the current dashboard. Until then use /admin, which is unchanged.'}
       </p>
       <style jsx>{`
         .ph { display: grid; gap: var(--space-3); justify-items: start; }
         h1 { margin: 0; font-size: var(--text-2xl); font-weight: 700; letter-spacing: var(--track-tight); }
+        /* Arabic is cursive, so letter-spacing severs the joins between letterforms.
+           --track-tight is Latin-only; RTL resets it. Same override FocusPanel and
+           OwnerBar already carry on their headings. */
+        :global([dir='rtl']) h1 { letter-spacing: 0; }
         p { margin: 0; color: var(--text-secondary); max-inline-size: var(--measure); line-height: var(--leading-normal); }
       `}</style>
     </div>

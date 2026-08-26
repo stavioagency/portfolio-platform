@@ -68,6 +68,11 @@ Details: [environments/platform.md](environments/platform.md) ·
 | Login, signup, verification, password reset, `must_set_password` | [architecture/auth.md](architecture/auth.md) |
 | An email did not arrive, or arrived in the wrong language | [architecture/emails.md](architecture/emails.md) |
 | Tables, RLS, entitlement, "who can write this row" | [architecture/database.md](architecture/database.md) + `supabase/SCHEMA.sql` |
+| What "published" is — snapshots, promotion, rollback | [architecture/published-snapshot.md](architecture/published-snapshot.md) |
+| Changing `pages/index.js`, `PortfolioRenderer`, or the piece pages | [architecture/renderer-migration.md](architecture/renderer-migration.md) — public renderer migration plan: adapter boundary, snapshot transition, tenant cutover sequence |
+| Writing the adapter, a shared portfolio component, or anything reading a snapshot | [architecture/renderer-contracts.md](architecture/renderer-contracts.md) — FROZEN contracts: document shape, media rules, component boundary, prop sets |
+| Changing an RLS policy, or "who can read this row" after the migration | [architecture/rls-target-policies.md](architecture/rls-target-policies.md) — proposed target policies, not applied; each names the phase it lands in |
+| Cutting a client over to the new renderer, or telling them what changes | [workflows/tenant-migration-comms.md](workflows/tenant-migration-comms.md) — who loses what, the operator workflow, and the cutover checklist |
 | Routing, the tenant resolver, the admin's structure, styling | [architecture/overview.md](architecture/overview.md) |
 | "Is this already built?" | [features/completed.md](features/completed.md) |
 | "What should I work on?" | [features/planned.md](features/planned.md) |
@@ -77,6 +82,7 @@ Details: [environments/platform.md](environments/platform.md) ·
 | Something is broken and you are starting cold | [workflows/debugging.md](workflows/debugging.md) |
 | "Has anyone looked at this before?" | [engineering-log.md](engineering-log.md) |
 | Launching: manual tasks, the live checkout test, health checks | [workflows/launch-readiness.md](workflows/launch-readiness.md) |
+| Building or redesigning any screen, flow or component | [design/design.md](design/design.md) — the design constitution, then the `.claude/skills/frontend-design` process |
 | Anything about the UX redesign — start here, before designing | [ux/designakum-ux-context.md](ux/designakum-ux-context.md) |
 | Colour, type, motion, icons — before adding a token or a hex value | [ux/designakum-design-system-final.md](ux/designakum-design-system-final.md) + `styles/globals.css` |
 | What Phase 0 locked, and what is still blocked on the designer | [ux/designakum-phase-0-checklist.md](ux/designakum-phase-0-checklist.md) |

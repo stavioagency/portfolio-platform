@@ -90,6 +90,10 @@
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
+  /* The one half-step in the scale. Toast and table padding land between 12
+     and 16, and snapping them either way is visible. DECLARED, NOT YET
+     CONSUMED: wiring it into a component is DS-3, not this change. */
+  --space-3-5: 14px;
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
@@ -125,7 +129,13 @@
   --transition: var(--t-ui) var(--ease);
   --transition-slow: var(--t-enter) var(--ease);
 
-  /* density multiplier — admin Appearance editor overrides this */
+  /* Density multiplier. NOTHING READS OR WRITES IT: --density appears exactly
+     once in this codebase, on the line below. Reserved, not active.
+
+     The comment this replaces said the admin Appearance editor overrides it.
+     That editor does have a density select, but it writes an appearance value
+     onto the profile as content; nothing maps that onto this custom property.
+     The two share a name and nothing else. */
   --density: 1;
 
   /* ---- Typography scale -------------------------------------------------
@@ -204,6 +214,12 @@
   --gutter: 28px;          /* page margin; 16px below 720px     */
   --content-max: 1280px;
 
+  /* Minimum touch target. components/ui/Button.js already enforces 44px by
+     hand in three places; this names the number so DS-3 can replace those
+     literals with a token. DECLARED, NOT YET CONSUMED — DS-1 changes no
+     component. */
+  --tap-min: 44px;
+
   /* ---- Line height -------------------------------------------------------
      Arabic is NOT set at the Latin line height. Ascenders, descenders and
      diacritics collide, and the text reads cramped. This is the most common
@@ -216,7 +232,123 @@
   /* ---- Layering --------------------------------------------------------- */
   --z-modal: 400;
   --z-toast: 500;
+
+  /* ==== SEMANTIC ALIAS LAYER ============================================ @ds2-semantic-begin
+     DS-2. Designakum's semantic VOCABULARY over this platform's existing
+     VALUES. Nothing below introduces a colour, a size or a theme: every one
+     is a pure var() reference to a token already declared above.
+
+     Why by reference, and declared once:
+       * A literal here could leak a dark value into the light theme. A
+         reference cannot — it resolves against whichever --bg-primary won on
+         <html>, and the light block sets that on the same element. One
+         declaration therefore follows both themes, correctly, for free.
+       * Two copies drift. The collision record below this block exists
+         because two systems disagreed about one name; duplicating 32 aliases
+         into the light block would rebuild that problem inside one file.
+       * The chain stays two deep: semantic -> platform token -> literal.
+     Both properties are asserted in tests/design-tokens.test.mjs.
+
+     NOTHING CONSUMES THESE YET. Components keep using the existing tokens
+     until DS-3. Adding an alias here changes no pixel; that is the point.
+
+     Five names are ABSENT because the platform already ships them under
+     Designakum's own name: --text-primary, --text-secondary, --text-tertiary,
+     --text-muted and --border-strong are already the semantic layer. Aliasing
+     a name to itself is how a vocabulary starts lying. */
+
+  /* Surfaces */
+  --surface-page: var(--bg-primary);
+  --surface-card: var(--bg-secondary);
+  --surface-elevated: var(--bg-elevated);
+  --surface-hover: var(--bg-hover);
+  --surface-input: var(--bg-primary);
+
+  /* Actions — one alias per declaration that exists today in
+     components/ui/Button.js. The four variants are covered completely on
+     purpose: a vocabulary that names primary and secondary but not ghost and
+     danger forces DS-3 to invent the missing half mid-migration. */
+  --action-primary-bg: var(--brand);
+  --action-primary-bg-hover: var(--brand-hover);
+  --action-primary-fg: var(--brand-ink);
+  --action-secondary-bg: var(--bg-elevated);
+  --action-secondary-bg-hover: var(--bg-hover);
+  --action-secondary-fg: var(--text-primary);
+  --action-secondary-border: var(--border-strong);
+  --action-ghost-bg-hover: var(--bg-hover);
+  --action-ghost-fg: var(--text-secondary);
+  --action-ghost-fg-hover: var(--text-primary);
+  --action-danger-bg: var(--danger-bg);
+  --action-danger-bg-hover: var(--danger);
+  --action-danger-fg: var(--danger);
+  --action-danger-fg-hover: var(--danger-fg);
+  --action-danger-border: var(--danger-border);
+
+  /* Text — only the one role the platform does not already name. */
+  --text-link: var(--accent);
+
+  /* Borders. --border-focus is the OUTLINE COLOUR, not a ring: the focus
+     mechanism stays `outline: 2px solid` + 2px offset, per DS-0. It points at
+     --accent because 30 of the 32 focus outlines in the product already do;
+     the two using --brand-focus are the outliers, not the rule. There is
+     deliberately no --focus-ring shadow token. */
+  --border-default: var(--border);
+  --border-focus: var(--accent);
+
+  /* Status. --status-*-fg maps to --*-ink, which is the token documented and
+     contrast-tested as the readable text on the matching tint — NOT to --*,
+     which is the fill. components/ui/Badge.js currently paints the fill as
+     its label colour, so DS-3 converting it is a deliberate contrast
+     correction rather than a like-for-like swap. Flagged here so that arrives
+     as a decision instead of a surprise. */
+  --status-success-bg: var(--success-bg);
+  --status-success-fg: var(--success-ink);
+  --status-success-border: var(--success-border);
+  --status-warning-bg: var(--warning-bg);
+  --status-warning-fg: var(--warning-ink);
+  --status-warning-border: var(--warning-border);
+  --status-danger-bg: var(--danger-bg);
+  --status-danger-fg: var(--danger-ink);
+  --status-danger-border: var(--danger-border);
+  /* ==== end semantic alias layer ======================================== @ds2-semantic-end */
 }
+
+/* ==== SEMANTIC ALIASES DELIBERATELY NOT ADDED (DS-2) ======================
+   Recorded so the gaps read as decisions rather than as oversights, and so
+   nobody completes the taxonomy for its own sake.
+
+   --text-heading, --text-body
+       The platform already declares --text-primary / --text-secondary /
+       --text-tertiary / --text-muted, which ARE Designakum's names for these
+       roles. A second heading/body vocabulary would be two names for one
+       value with no consumer.
+
+   --text-disabled
+       No existing value to map to. Disabled is expressed as OPACITY in
+       components/ui/Button.js (0.65) and Input.js (0.55), not as a colour.
+       Turning that into a colour token is a design decision, not an alias.
+
+   --status-info-*
+       Designakum's info tone is royal blue. This interface's informational
+       state is deliberately GREY — blue is spent on the primary action, and
+       tests/design-tokens.test.mjs asserts it. Adding a blue info tone would
+       reintroduce the second blue that DS-0 declined, through the back door.
+
+   --status-neutral-*
+       The platform has TWO competing implementations of this tone and neither
+       is obviously right: a declared --neutral / --neutral-bg / --neutral-ink
+       / --neutral-border set that NOTHING consumes, and components/ui/Badge.js
+       painting its neutral chip from --bg-elevated / --text-tertiary /
+       --border instead. Choosing between them changes how a chip looks, so it
+       belongs to DS-3, not to a vocabulary step that must change no pixel.
+
+   --focus-ring
+       DS-0 kept the outline mechanism. --border-focus above carries the
+       colour; a box-shadow ring token is not adopted.
+
+   --royal-*, --ink-*, --glow-*
+       DS-0. The glow is refused permanently; the rest are deferred.
+   ======================================================================= */
 
 /* ---- Admin light theme ---------------------------------------------------
    Set on <html> by pages/admin.js. It lives at the root (not on .dashboard) so
@@ -278,6 +410,72 @@
   --neutral-border: rgba(82, 91, 99, 0.24);
   --neutral-ink: #3C454D;
 }
+
+/* ==== DESIGNAKUM <-> PLATFORM TOKEN COLLISION RECORD ======================
+   DS-1. DOCUMENTATION ONLY: nothing in this block is declared, aliased or
+   changed here. It exists so the next person to open this file cannot make
+   the mistake it describes.
+
+   The Designakum design system uses the SAME custom-property names as this
+   file for DIFFERENT values. Importing its token files, or "aligning" any one
+   name below, would silently resize the admin, the Studio and every public
+   portfolio at once -- with no build error, because a custom property has no
+   type and no schema. The failure would be discovered by a customer.
+
+   These values are FROZEN. Not stale, not an oversight, not a TODO. The
+   platform value is the shipped value and stays the shipped value until the
+   phase named in the last column. Do not rename, repoint, delete, alias or
+   harmonise any of them before then.
+
+   token             platform     designakum   reconcile at
+   ----------------  -----------  -----------  ---------------------------
+   --radius-md       12px         10px         DS-7
+   --radius-lg       20px         12px         DS-7
+   --radius-xl       28px         16px         DS-7
+   --space-5         24px         20px         DS-7
+   --space-6         32px         24px         DS-7
+   --space-8         48px         32px         DS-7
+   --space-10        64px         40px         DS-7
+   --text-xs         11px         12px         DS-7
+   --text-sm         12px         13px         DS-7
+   --text-md         14px         16px         DS-7
+   --text-lg         16px         18px         DS-7
+   --text-2xl        26px         24px         DS-7
+   --text-3xl        34px         30px         DS-7
+   --text-4xl        44px         38px         DS-7
+   --shadow-sm       dark-tuned   light-tuned  DS-7
+   --shadow-md       dark-tuned   light-tuned  DS-7
+   --shadow-lg       dark-tuned   light-tuned  DS-7
+   --text-primary    white ramp   ink ramp     P6, then DS-7   <-- hazard
+   --text-secondary  white ramp   ink ramp     P6, then DS-7   <-- hazard
+   --text-tertiary   white ramp   ink ramp     P6, then DS-7   <-- hazard
+   --border-strong   white 12%    ink-500      P6, then DS-7   <-- hazard
+
+   THE FOUR MARKED ROWS CARRY A LIVE-SITE HAZARD ON TOP OF THE COLLISION.
+   pages/index.js writes client-supplied colours onto the shared token names
+   (--accent, --bg-primary, --bg-secondary, --text-primary, --text-tertiary,
+   --border, --font-body) at runtime, on paying tenants' public pages.
+   Renaming or repointing one of those names is a visitor-facing defect on
+   every live site at once. That write path is deleted in P6 of the renderer
+   migration; see docs/architecture/renderer-migration.md. Nothing here moves
+   before it does.
+
+   Related and equally load-bearing: --on-bg is persisted INTO THE DATABASE as
+   literal rgba(var(--on-bg),0.3) strings in profile.footer.color, and read
+   back on the public page. It is not in the table above because it does not
+   collide -- it is listed because deleting it would be worse than any row
+   that does.
+
+   TWO NAMES ALREADY AGREE, recorded so nobody "fixes" them:
+   --radius-sm 8px and --text-xl 20px are identical in both systems.
+
+   ALSO DELIBERATELY NOT ADOPTED, per the DS-0 decision record:
+   the second interactive blue (--royal-*), IBM Plex as the UI face, the
+   box-shadow focus ring, the translateY(1px) press, and the primary-button
+   glow. The GLOW IS REFUSED PERMANENTLY, not deferred: primary actions do not
+   require a coloured glow, and this file already retired one. The other four
+   are deferred, not rejected.
+   ======================================================================= */
 
 /* ---- Breakpoint convention (CSS vars can't be used in @media) ------------
    Use these four widths consistently:

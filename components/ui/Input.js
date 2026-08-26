@@ -17,9 +17,9 @@ export default function Input({
         .ui-input {
           display: block;
           inline-size: 100%;
-          min-block-size: 44px;
+          min-block-size: var(--tap-min);
           padding: var(--space-3);
-          background: var(--bg-primary);
+          background: var(--surface-input);
           color: var(--text-primary);
           border: 1px solid var(--border-strong);
           border-radius: var(--radius-sm);
@@ -32,8 +32,10 @@ export default function Input({
         .ui-input:hover:not(:disabled) { border-color: var(--text-muted); }
         .ui-input:focus {
           outline: none;
-          border-color: var(--accent);
+          border-color: var(--border-focus);
         }
+        /* The disabled surface stays on --bg-secondary: DS-2 declined to create a
+           --field-bg-disabled alias, so there is no semantic name to move it to. */
         .ui-input:disabled {
           opacity: 0.55;
           cursor: not-allowed;

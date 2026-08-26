@@ -1,5 +1,31 @@
 # The publishing model — architecture recommendation
 
+> ## ⚠ PARTIALLY SUPERSEDED — read this first
+>
+> This document was written when **saving was publishing**: publish flipped
+> `tenants.published_at`, and the public page then served the live rows the
+> editor writes. The owner has since decided the opposite —
+> **draft and published are separate states, and the flow is
+> edit → draft → preview → publish**.
+>
+> **The authority on what publishing *does* is
+> [designakum-blueprint.md](../product/designakum-blueprint.md) §8.5, and the
+> snapshot model that replaces §5 here is
+> [published-snapshot.md](published-snapshot.md).**
+>
+> What survives here, unchanged and still correct: §0 (cancellation already runs
+> to period end), §2 (RLS split, `can_write_media`), §3 (resolver gates and fail
+> direction), §4 (preview stays private through the session, no shareable token),
+> §7 (billing must never write `published_at`).
+>
+> What is superseded: the idea that publishing is a **one-time flag** and that
+> visitors read live rows. `published_at` still records *whether* a portfolio has
+> ever been published, but publishing now also promotes the draft into a
+> published snapshot, and the public page reads that snapshot. §5.2's
+> `publish_tenant` therefore does more than set a timestamp.
+>
+> Do not implement §5 as written without reading blueprint §8.5 first.
+
 **Recommendation only. Nothing here is built.** Written 2026-08-14 against the
 locked decisions: free creation, paid publishing, preview only inside the
 authenticated Studio, cancellation runs to period end, comps stay a separate

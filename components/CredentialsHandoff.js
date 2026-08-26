@@ -32,6 +32,13 @@ import { buildCredentialsPdf } from '../lib/credentials-pdf';
 // Clipboard writes reject on an insecure origin or without a user gesture. The
 // values are all on screen and selectable, so a failure degrades to "select it
 // by hand" rather than to a lost password.
+// Kept byte-identical to ConfirmDialog's FOCUSABLE; a guard asserts the two never
+// drift. Copied rather than imported so this overlay does not depend on a dialog
+// component it otherwise has nothing to do with. The :not([disabled]) parts matter
+// here: the email Save button goes disabled while the write is in flight, and a
+// disabled node in the cycle would swallow the wrap — .focus() on it does nothing.
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [href], select, textarea, [tabindex]:not([tabindex="-1"])';
+
 async function copy(text) {
   try {
     await navigator.clipboard.writeText(text);
@@ -218,15 +225,43 @@ export default function CredentialsHandoff({ creds, lang = 'en', title, intro, o
   const modalRef = useRef(null);
 
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') e.preventDefault(); } // no accidental dismissal
-    document.addEventListener('keydown', onKey);
+    // No accidental dismissal. Captured on the way down and stopped there, the way
+    // SetPasswordGate holds the page: this overlay can open on top of ClientPanel,
+    // whose own Escape handler is a bubble-phase listener on the same document, so
+    // preventDefault alone would still let the panel underneath close.
+    // Tab is held here too. This is the last leg of the contract the rest of the
+    // component already states: the backdrop does not dismiss, Escape does not
+    // dismiss, and even the close button routes through requestClose. Same handler
+    // shape as SetPasswordGate, which locks its page the same way.
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); return; }
+      if (e.key !== 'Tab') return;
+      const items = Array.from(modalRef.current?.querySelectorAll(FOCUSABLE) || [])
+        .filter((el) => el.offsetParent !== null);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    document.addEventListener('keydown', onKey, true);
+    // Restore what was there rather than '', so unmounting this overlay does not
+    // unlock the page out from under a ClientPanel that is still open beneath it.
+    const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     // Focus the dialog itself rather than a control — Button is a plain function
     // component, so a ref on it would neither work nor be silent.
+    // Capture the opener before taking focus, so closing hands it back to whatever
+    // launched the handoff — the row, or the panel's own "view credentials" control
+    // when this overlay is stacked on ClientPanel. Same shape as ConfirmDialog.
+    const opener = typeof document !== 'undefined' ? document.activeElement : null;
     modalRef.current?.focus();
     return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      document.removeEventListener('keydown', onKey, true);
+      document.body.style.overflow = prevOverflow;
+      if (opener && opener.isConnected && typeof opener.focus === 'function') {
+        setTimeout(() => opener.focus(), 0);
+      }
     };
   }, []);
 

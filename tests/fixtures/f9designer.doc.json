@@ -1,0 +1,324 @@
+{
+  "v": 1,
+  "lang": "ar",
+  "name": {
+    "ar": "فيصل ",
+    "en": "𝗙𝗔𝗜𝗦𝗔𝗟"
+  },
+  "title": {
+    "ar": "مصمم جرافيك",
+    "en": "𝗗𝗘𝗦𝗜𝗚𝗡𝗘𝗥"
+  },
+  "bio": {
+    "ar": "مصمم جرافيك",
+    "en": "Graphic Designer"
+  },
+  "shortLine": {
+    "ar": "",
+    "en": ""
+  },
+  "mark": {
+    "path": "brand-logo-1779738849364.png"
+  },
+  "appearance": {
+    "accent": "UNMAPPED",
+    "font": "UNMAPPED",
+    "density": "UNMAPPED"
+  },
+  "action": {
+    "destination": "UNDECIDED"
+  },
+  "links": [
+    {
+      "id": "instagram",
+      "label": "",
+      "url": "https://www.instagram.com/g40x/"
+    },
+    {
+      "id": "whatsapp",
+      "label": "",
+      "url": "https://api.whatsapp.com/send/?phone=%2B966505796218&text&type=phone_number&app_absent=0"
+    },
+    {
+      "id": "telegram",
+      "label": "",
+      "url": "https://t.me/mt_4u"
+    },
+    {
+      "id": "x",
+      "label": "",
+      "url": "https://x.com/f9designer"
+    }
+  ],
+  "pieces": [
+    {
+      "id": 3,
+      "name": {
+        "ar": "الشعارات",
+        "en": "New Project"
+      },
+      "description": {
+        "ar": "الشعارات المصممة",
+        "en": ""
+      },
+      "link": "",
+      "media": [
+        {
+          "path": "project-3-cover-1779730910054.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-3-1779730779583.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": {
+        "ar": "الهويات البصرية ",
+        "en": "New Project"
+      },
+      "description": {
+        "ar": "الهويات البصرية ",
+        "en": ""
+      },
+      "link": "",
+      "media": [
+        {
+          "path": "project-6-cover-1779730923315.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-6-1779730756808.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": {
+        "ar": "سوشل ميديا",
+        "en": "New Project"
+      },
+      "description": {
+        "ar": "تصاميم سوشل ميديا",
+        "en": ""
+      },
+      "link": "",
+      "media": [
+        {
+          "path": "project-7-cover-1779730733111.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-7-1779730719110.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": {
+        "ar": "المتاجر الالكترونية ",
+        "en": "New Project"
+      },
+      "description": {
+        "ar": "تصاميم المتاجر الالكترونية ",
+        "en": ""
+      },
+      "link": "",
+      "media": [
+        {
+          "path": "project-8-cover-1779730968865.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-8-1779730689022.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-8-1779730694911.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-8-1779730699744.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-8-1779730704448.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": {
+        "ar": "البكج و التغليف ",
+        "en": "New Project"
+      },
+      "description": {
+        "ar": "تصاميم البكج و التغليف ",
+        "en": ""
+      },
+      "link": "",
+      "media": [
+        {
+          "path": "project-9-cover-1779730642742.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-9-1779730654672.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": {
+        "ar": "العاب ورقية",
+        "en": "New Project"
+      },
+      "description": {
+        "ar": "تصاميم العاب ورقية",
+        "en": ""
+      },
+      "link": "",
+      "media": [
+        {
+          "path": "project-10-cover-1779730617749.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-10-1779730626490.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": {
+        "ar": "يوتيوب",
+        "en": "New Project"
+      },
+      "description": {
+        "ar": "تصاميم اليوتيوب",
+        "en": ""
+      },
+      "link": "",
+      "media": [
+        {
+          "path": "project-11-cover-1779730545555.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-11-1779730593326.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-11-1779730597735.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": {
+        "ar": "مطبوعات",
+        "en": "New Project"
+      },
+      "description": {
+        "ar": "تصاميم المطبوعات",
+        "en": ""
+      },
+      "link": "",
+      "media": [
+        {
+          "path": "project-12-cover-1779730943578.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        },
+        {
+          "path": "project-12-1779730534648.png",
+          "caption": {
+            "ar": "",
+            "en": ""
+          }
+        }
+      ]
+    }
+  ],
+  "seo": {
+    "title": {
+      "ar": "فيصل مصمم جرافيك",
+      "en": ""
+    },
+    "description": {
+      "ar": "موقع فيصل مصمم جرافيك",
+      "en": ""
+    }
+  },
+  "favicon": {
+    "path": "favicon-1779739404487.png"
+  },
+  "footer": {
+    "ar": "© 𝗙𝗔𝗜𝗦𝗔𝗟 2026",
+    "en": ""
+  }
+}

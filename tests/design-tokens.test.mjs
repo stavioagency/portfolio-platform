@@ -55,10 +55,52 @@ function block(selector) {
 const DARK = block(':root');
 const LIGHT = block("[data-admin-theme='light']");
 
-// Resolves one `var(--x)` hop, which is all the aliases need.
+// Resolves a `var(--x)` alias chain to the literal at the end of it.
+//
+// This used to resolve exactly ONE hop, which was all the current aliases
+// need: --accent -> var(--brand) -> #2A6BCE is two levels, and the second was
+// only ever reached because ratio() happened to call deref() on an already
+// dereferenced value. A semantic alias layer is three deep by construction — a
+// component token points at a semantic alias, which points at a theme
+// rendering, which points at a primitive — and one hop resolves such a chain
+// to the STRING `var(--the-next-link)`, which parseColor() reads as null.
+//
+// Measured, not assumed: making --brand-ink three deep fails EIGHT tests in
+// this file under the single-hop parser and none under this one. Those eight
+// are FALSE failures — the chain is valid CSS that a browser resolves without
+// complaint — so the shallow parser was never a safety net here. It was a
+// blocker on the alias layer, and it would have been paid off by whoever
+// landed DS-2 loosening an assertion to get past it. That is the drift this
+// file exists to prevent, so the parser is fixed instead.
+//
+// Three properties the single-hop version did not have:
+//   * it follows the chain to the end
+//   * a cycle throws with the path, rather than recursing until the stack dies
+//   * a chain ending at an undeclared token throws AT THE BREAK, rather than
+//     returning undefined and letting the caller blame the wrong end
+//
+// A value that merely CONTAINS var() — `var(--t-ui) var(--ease)` — is not an
+// alias and is returned untouched. Reference integrity for those is asserted
+// separately below.
+const MAX_HOPS = 16;
 function deref(tokens, value) {
-  const m = value && value.match(/^var\((--[a-z0-9-]+)\)$/i);
-  return m ? tokens[m[1]] : value;
+  let current = value;
+  const seen = [];
+  for (let hop = 0; hop <= MAX_HOPS; hop++) {
+    const m = typeof current === 'string' && current.match(/^var\((--[a-z0-9-]+)\)$/i);
+    if (!m) return current;
+    const name = m[1];
+    assert.equal(
+      seen.includes(name),
+      false,
+      `var() cycle in the token layer: ${[...seen, name].join(' -> ')}`,
+    );
+    seen.push(name);
+    const next = tokens[name];
+    assert.ok(next, `${name} is referenced but not declared — chain: ${seen.join(' -> ')}`);
+    current = next;
+  }
+  return assert.fail(`var() chain deeper than ${MAX_HOPS} hops: ${seen.join(' -> ')}`);
 }
 
 // Flattens a translucent colour onto an opaque one. The status backgrounds are
@@ -89,6 +131,186 @@ function ratio(tokens, fgName, bgName, { composite = false } = {}) {
 }
 
 const THEMES = [['dark', DARK], ['light', LIGHT]];
+
+// The cascade, for reference checking only: the light block OVERRIDES the dark
+// one, it does not replace it, so a light token may legitimately point at a
+// token declared only in :root. Contrast is still measured per theme block,
+// exactly as before — this scope is used by the two integrity tests below and
+// by nothing else.
+const SCOPE = { dark: DARK, light: { ...DARK, ...LIGHT } };
+
+// The semantic alias layer, read out of the CSS between its own sentinels
+// rather than from a hand-kept list here. A list would be the second copy that
+// drifts: an alias added to globals.css and forgotten here would be asserted
+// by nothing, which is the exact failure mode these tests exist to close.
+const SEMANTIC = (() => {
+  const begin = CSS.indexOf('@ds2-semantic-begin');
+  const end = CSS.indexOf('@ds2-semantic-end');
+  assert.ok(begin !== -1 && end > begin, 'the DS-2 semantic layer sentinels are missing');
+  const out = {};
+  for (const line of CSS.slice(begin, end).split('\n')) {
+    const m = line.match(/^\s*(--[a-z0-9-]+)\s*:\s*([^;]+);/);
+    if (m) out[m[1]] = m[2].trim();
+  }
+  assert.ok(Object.keys(out).length > 0, 'no semantic aliases found between the sentinels');
+  return out;
+})();
+
+// ---------------------------------------------------- semantic alias layer ---
+
+test('the semantic layer is references only — never a literal value', () => {
+  // THE INVARIANT THAT MAKES ONE DECLARATION SAFE FOR TWO THEMES.
+  //
+  // The aliases are declared once, in :root, and are correct in the light
+  // theme only because they hold no value of their own: `var(--bg-primary)`
+  // resolves against whichever --bg-primary won on <html>, and the light block
+  // sets that on the same element. The moment one of them is written as a
+  // literal — `--surface-page: #0a0a0c` — it stops following the theme and
+  // paints a dark surface onto the light admin, silently, with every existing
+  // test still green.
+  //
+  // So the rule is structural rather than a matter of care: a semantic alias
+  // is a var() reference or it is a bug.
+  for (const [token, value] of Object.entries(SEMANTIC)) {
+    assert.match(
+      value,
+      /^var\(--[a-z0-9-]+\)$/,
+      `${token} is "${value}" — a semantic alias must be a bare var() reference, `
+      + 'or it cannot follow the theme',
+    );
+  }
+});
+
+test('every semantic alias resolves to a real value in BOTH themes', () => {
+  // The aliases live in :root, so the light block does not declare them; they
+  // reach light values through their targets. Resolving each one under both
+  // scopes proves that path actually works, in the direction that matters:
+  // a light resolution is what the admin renders.
+  for (const theme of ['dark', 'light']) {
+    for (const token of Object.keys(SEMANTIC)) {
+      const resolved = deref(SCOPE[theme], `var(${token})`);
+      assert.ok(resolved, `${theme}: ${token} resolves to nothing`);
+      assert.equal(
+        /^var\(/.test(String(resolved)),
+        false,
+        `${theme}: ${token} does not bottom out — got ${resolved}`,
+      );
+    }
+  }
+});
+
+test('a semantic alias never aliases another semantic alias', () => {
+  // Keeps the layer two deep: semantic -> platform token -> literal. A
+  // semantic name pointing at another semantic name is how the chain grows
+  // until nobody can answer "what colour is this" without running the parser.
+  for (const [token, value] of Object.entries(SEMANTIC)) {
+    const target = value.match(/^var\((--[a-z0-9-]+)\)$/);
+    if (!target) continue;
+    assert.equal(
+      Object.hasOwn(SEMANTIC, target[1]),
+      false,
+      `${token} points at ${target[1]}, which is itself a semantic alias`,
+    );
+  }
+});
+
+test('the semantic layer introduces no new value', () => {
+  // DS-2 is a vocabulary, not a migration: every alias must resolve to a value
+  // the platform ALREADY renders. If one resolves to something no existing
+  // token holds, a value was invented and the "zero visual change" claim is
+  // no longer true.
+  for (const theme of ['dark', 'light']) {
+    const existing = new Set(
+      Object.entries(SCOPE[theme])
+        .filter(([name]) => !Object.hasOwn(SEMANTIC, name))
+        .map(([, v]) => deref(SCOPE[theme], v)),
+    );
+    for (const token of Object.keys(SEMANTIC)) {
+      const resolved = deref(SCOPE[theme], `var(${token})`);
+      assert.ok(
+        existing.has(resolved),
+        `${theme}: ${token} resolves to ${resolved}, which no existing token holds`,
+      );
+    }
+  }
+});
+
+test('the semantic layer follows the theme rather than pinning one', () => {
+  // The surfaces and the action fills must differ between the two themes. If
+  // one resolves identically in both, it has stopped tracking its target —
+  // which is precisely what a literal, or a reference to a token the light
+  // block does not redeclare, would look like.
+  for (const token of [
+    '--surface-page', '--surface-card', '--surface-elevated', '--surface-hover',
+    '--surface-input', '--action-primary-bg', '--action-primary-fg',
+    '--action-secondary-fg', '--border-default', '--border-focus', '--text-link',
+  ]) {
+    const dark = deref(SCOPE.dark, `var(${token})`);
+    const light = deref(SCOPE.light, `var(${token})`);
+    assert.notEqual(dark, light, `${token} resolves to ${dark} in both themes`);
+  }
+});
+
+test('the semantic action and status pairs are wired the right way round', () => {
+  // A mapping typo is silent: --action-primary-fg pointing at --brand instead
+  // of --brand-ink still resolves, still passes every structural test above,
+  // and renders an invisible button. Measuring the pair through the SEMANTIC
+  // names is what catches it — and it re-uses the same contrast machinery the
+  // underlying tokens are already held to.
+  for (const theme of ['dark', 'light']) {
+    const scope = SCOPE[theme];
+    const primary = ratio(scope, '--action-primary-fg', '--action-primary-bg');
+    assert.ok(
+      primary >= AA_TEXT,
+      `${theme}: --action-primary-fg on --action-primary-bg is ${primary.toFixed(2)}:1`,
+    );
+    for (const tone of ['success', 'warning', 'danger']) {
+      const r = ratio(scope, `--status-${tone}-fg`, `--status-${tone}-bg`, { composite: true });
+      assert.ok(
+        r >= AA_TEXT,
+        `${theme}: --status-${tone}-fg on --status-${tone}-bg is ${r.toFixed(2)}:1`,
+      );
+    }
+  }
+});
+
+// ------------------------------------------------------- token integrity ---
+
+test('every var() reference in the token layer points at a declared token', () => {
+  // An undeclared custom property is NOT a CSS error. The declaration using it
+  // is simply dropped, and the surface renders as whatever was underneath —
+  // which is exactly how rgba(var(--on-bg),0.3) once reached the public page
+  // as nothing at all. There is no browser warning and no build failure, so
+  // this is the only place a dangling reference can be caught.
+  //
+  // It is also the only place MOST tokens are checked at all: the contrast
+  // tests read the colours the interface measures, which leaves --brand-soft,
+  // --brand-line, --border, every --radius-* and every --font-* asserted by
+  // nothing. Verified by mutation — a dangling reference on --brand-soft
+  // fails this test and the cycle test, and no other test in the suite.
+  for (const [name, tokens] of THEMES) {
+    const scope = SCOPE[name];
+    for (const [token, value] of Object.entries(tokens)) {
+      for (const m of String(value).matchAll(/var\(\s*(--[a-z0-9-]+)/gi)) {
+        assert.ok(
+          scope[m[1]],
+          `${name}: ${token} references ${m[1]}, which is declared in neither block`,
+        );
+      }
+    }
+  }
+});
+
+test('no token resolves through a cycle, and every alias bottoms out', () => {
+  // Routes every declared token through the guarded resolver, so a chain that
+  // loops fails with its path instead of a stack overflow, and a chain that
+  // ends nowhere fails at the break rather than at the caller.
+  for (const [name, tokens] of THEMES) {
+    for (const token of Object.keys(tokens)) {
+      deref(SCOPE[name], `var(${token})`);
+    }
+  }
+});
 
 // ------------------------------------------------------------------ brand ---
 
