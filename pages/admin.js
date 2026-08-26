@@ -1082,7 +1082,18 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
       {/* Backdrop — only visible on mobile when drawer is open */}
       <div className={`backdrop ${sidebarOpen ? 'show' : ''}`} onClick={() => setSidebarOpen(false)} aria-hidden="true" />
 
-      <main className="content">
+      {/* Design system §5.4: two densities from one component set. An operator
+          scans many objects and wants them tight; a client visits for ten
+          minutes a month and wants air and large targets. --density exists in
+          globals.css but is inert (declared once, read nowhere), and wiring it
+          up is a bigger change than this — so the split hangs off one attribute
+          the CSS can select on, which is honest about being a scope marker
+          rather than pretending to be a multiplier.
+
+          While ownership is still resolving, isOwner is null: that renders as
+          the roomier client density, because guessing "operator" would flash
+          the tighter layout at a client and then reflow under them. */}
+      <main className="content" data-portal={isOwner === true ? 'console' : 'studio'}>
         {isOwner && <TenantSelector tenants={tenants} tenant={tenant} onChange={switchTenant} lang={lang} />}
 
         <div className={`work ${showPreview ? 'has-preview' : ''} ${previewOpen ? 'preview-open' : ''}`}>
@@ -1449,7 +1460,7 @@ function SidebarUser({ session, t, isOwner, ar }) {
       </div>
       <style jsx>{`
         .user-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        .avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #4f6ef2, #2d47a8); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; flex-shrink: 0; }
+        .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: var(--text-sm); font-weight: 700; color: var(--accent-fg); flex-shrink: 0; }
         .user-meta { min-width: 0; flex: 1; }
         .user-name { font-size: 12px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .user-status { font-size: 10px; color: var(--success); display: flex; align-items: center; gap: 4px; }
@@ -2242,7 +2253,7 @@ function ProjectsEditor({ t, lang }) {
         /* surface comes from Card; only the row layout is local */
         .prow-main { flex: 1; display: flex; align-items: center; gap: var(--space-4); }
         .prow-main img, .prow-cover-empty { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; }
-        .prow-cover-empty { background: linear-gradient(135deg, #3a3a52, #1a1a22); }
+        .prow-cover-empty { background: var(--bg-elevated); }
         .prow-meta { flex: 1; min-width: 0; }
         .prow-title { font-size: var(--text-md); font-weight: 600; }
         .prow-desc { font-size: var(--text-sm); color: var(--text-tertiary); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -6382,7 +6393,7 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
       <AdminStyles />
       <style jsx>{`
         .user-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); max-width: 500px; margin-bottom: var(--space-5); }
-        .avatar-lg { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #4f6ef2, #2d47a8); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #fff; }
+        .avatar-lg { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: var(--text-lg); font-weight: 700; color: var(--accent-fg); }
         .user-name { font-size: 14px; font-weight: 600; }
         .user-email { font-size: 12px; color: var(--text-tertiary); }
         .danger-card { padding: 16px; background: var(--danger-bg); border: 1px solid var(--danger-border); border-radius: var(--radius-md); max-width: 500px; }
@@ -6404,9 +6415,13 @@ function Field({ id, label, children }) {
       {label && <label htmlFor={id}>{label}</label>}
       {children}
       <style jsx>{`
-        .field { margin-bottom: var(--space-4); }
-        label { display: block; font-size: 12px; font-weight: 500; color: var(--text-tertiary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
-        :global(html[dir="rtl"]) label { text-transform: none; letter-spacing: normal; }
+        /* §6.7: "label above, 12px/600". It was 12px/500 uppercase in
+           --text-tertiary, which is the settings-panel device again — and it
+           needed an RTL guard to undo the case and tracking it should not have
+           had. Weight carries it now (§3.3), in sentence case, in a colour that
+           can actually be read. Nothing to undo in Arabic. */
+        .field { margin-bottom: var(--space-5); }
+        label { display: block; font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-2); }
       `}</style>
     </div>
   );
@@ -6639,7 +6654,7 @@ function CropperModal({ file, aspect, onDone, onCancel, t }) {
         }
         .cm-foot { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); justify-content: flex-end; }
         .cm-cancel { padding: 8px 14px; background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; font-size: 13px; font-family: inherit; }
-        .cm-confirm { padding: 8px 16px; background: linear-gradient(180deg, #6d86ff, #4f6ef2); color: #fff; border: none; border-radius: var(--radius-md); cursor: pointer; font-weight: 600; font-size: 13px; font-family: inherit; }
+        .cm-confirm { padding: var(--space-3) var(--space-4); min-height: 44px; background: var(--accent); color: var(--accent-fg); border: none; border-radius: var(--radius-md); cursor: pointer; font-weight: 600; font-size: var(--text-md); font-family: inherit; }
       `}</style>
     </div>
   );
@@ -6711,19 +6726,62 @@ function AdminStyles() {
       .editor h1 { font-family: var(--font-heading); font-size: var(--text-3xl); font-weight: 800; line-height: var(--leading-tight); letter-spacing: var(--track-tight); margin-bottom: var(--space-5); }
       /* §3.6 rule 1: never letter-spacing on Arabic. */
       html[dir="rtl"] .editor h1 { font-family: var(--font-display-ar); letter-spacing: 0; }
-      .start-here { position: relative; margin: 0 0 var(--space-6); padding: 16px 18px; background: linear-gradient(180deg, rgba(79,110,242,0.12), rgba(79,110,242,0.04)); border: 1px solid rgba(79,110,242,0.3); border-radius: var(--radius-md); max-width: 520px; }
-      .start-here strong { display: block; font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
-      .start-here ol { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 4px; }
-      .start-here li { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
-      .start-close { position: absolute; top: 10px; inset-inline-end: 10px; width: 26px; height: 26px; border-radius: 50%; background: rgba(var(--on-bg),0.06); border: 1px solid var(--border); color: var(--text-secondary); font-size: 18px; line-height: 1; cursor: pointer; font-family: inherit; }
-      .start-close:hover { color: var(--text-primary); background: rgba(var(--on-bg),0.12); }
+      /* The dismissible tip from §5.2. It used to be painted with a
+         linear-gradient over a hardcoded #4f6ef2 that no longer matched
+         --accent in either theme — two rules broken at once, since the
+         constitution retired the gradient tokens and forbids gradient as
+         ornament. It separates by surface now, which is §6.1's one panel
+         treatment: no gradient, no coloured border competing with the fill. */
+      .start-here { position: relative; margin: 0 0 var(--space-6); padding: var(--space-4) var(--space-5); background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); max-width: var(--measure); }
+      .start-here strong { display: block; font-size: var(--text-md); font-weight: 700; color: var(--text-primary); margin-bottom: var(--space-2); }
+      .start-here ol { margin: 0; padding-inline-start: var(--space-5); display: flex; flex-direction: column; gap: var(--space-1); }
+      .start-here li { font-size: var(--text-md); color: var(--text-secondary); line-height: var(--leading-normal); }
+      /* §6.3: minimum target 44px in the client portal — this was a 26px circle. */
+      .start-close { position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); width: 44px; height: 44px; border-radius: 50%; background: none; border: none; color: var(--text-tertiary); font-size: 18px; line-height: 1; cursor: pointer; font-family: inherit; transition: color var(--t-ui) var(--ease), background var(--t-ui) var(--ease); }
+      .start-close:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+      /* ---- Fields — §6.7 ------------------------------------------------
+         Default border, focus is --border-focus PLUS the 2px --brand-focus
+         ring (the ring the DS-0 note now records as adopted), and disabled
+         says so with a cursor rather than only a colour. */
       .editor input[type="text"], .editor input[type="email"], .editor input[type="password"], .editor input[type="url"], .editor input:not([type]), .editor textarea, .editor select {
-        width: 100%; max-width: 500px; padding: 10px 14px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; font-family: inherit; transition: var(--transition);
+        width: 100%; max-width: 500px; padding: var(--space-3) var(--space-4); background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--text-md); font-family: inherit; transition: border-color var(--t-ui) var(--ease), box-shadow var(--t-ui) var(--ease);
       }
-      .editor input:focus, .editor textarea:focus, .editor select:focus { outline: none; border-color: var(--accent); }
-      .editor textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
-      .editor input[type="color"] { width: 60px; height: 40px; padding: 4px; cursor: pointer; }
-      .editor .saved-indicator { font-size: 13px; color: var(--accent); margin-inline-start: 4px; }
+      .editor input:focus, .editor textarea:focus, .editor select:focus {
+        outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 2px var(--brand-focus);
+      }
+      .editor input:disabled, .editor textarea:disabled, .editor select:disabled {
+        color: var(--text-muted); cursor: not-allowed; background: var(--bg-primary);
+      }
+      .editor textarea { resize: vertical; min-height: 80px; line-height: var(--leading-normal); }
+      .editor input[type="color"] { width: 60px; height: 44px; padding: var(--space-1); cursor: pointer; }
+      .editor .saved-indicator { font-size: var(--text-sm); color: var(--accent); margin-inline-start: var(--space-1); }
+
+      /* ---- Client density — §5.4 ----------------------------------------
+         "Ten minutes a month." The client portal runs body at --text-lg with
+         more air and larger targets; the operator's screens stay tight,
+         because someone scanning many objects wants them close together.
+         This is the difference between a tool you administer and a place you
+         author something, and it is the change that is felt on every line
+         rather than only at the top of the page.
+
+         Scoped to [data-portal="studio"] so the owner's Sites and Subscribers
+         screens are untouched by it. */
+      [data-portal="studio"] .editor { font-size: var(--text-lg); }
+      [data-portal="studio"] .editor .hint { font-size: var(--text-lg); }
+      [data-portal="studio"] .editor input[type="text"],
+      [data-portal="studio"] .editor input[type="email"],
+      [data-portal="studio"] .editor input[type="password"],
+      [data-portal="studio"] .editor input[type="url"],
+      [data-portal="studio"] .editor input:not([type]),
+      [data-portal="studio"] .editor textarea,
+      [data-portal="studio"] .editor select {
+        font-size: var(--text-lg); padding: var(--space-3) var(--space-4); min-height: 44px;
+      }
+      [data-portal="studio"] .editor label { font-size: var(--text-md); }
+      [data-portal="studio"] .start-here li { font-size: var(--text-lg); }
+      /* §6.8: the client's rows are comfortable (48px+), the operator's compact. */
+      [data-portal="studio"] .toggle-row { padding: var(--space-4) 0; min-height: 48px; }
+      [data-portal="studio"] .card-row { padding: var(--space-5); }
       @media (max-width: 720px) {
         /* No font-size step here any more. It used to drop to 20px, which is
            off the scale AND a different mobile behaviour from PageHeader — the
@@ -6751,15 +6809,35 @@ function AdminStyles() {
       .editor h2 { margin-top: var(--space-8); font-size: var(--text-xl); font-weight: 700; color: var(--text-primary); line-height: var(--leading-snug); margin-bottom: var(--space-2); }
       .card-row { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-3); max-width: var(--measure); }
       .card-row .row-head { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-3); }
-      .card-row .row-tag { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; }
-      html[dir="rtl"] .card-row .row-tag { text-transform: none; letter-spacing: normal; }
+      /* Sentence case, carried by weight instead of caps and tracking (§3.3:
+         a 12px/600 label is assertive). One more RTL guard retired by not
+         needing one. */
+      .card-row .row-tag { font-size: var(--text-sm); font-weight: 600; color: var(--text-tertiary); }
       .card-row .row-tabs { direction: ltr; display: inline-flex; gap: 2px; background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 3px; }
       .card-row .row-tabs button { padding: 4px 12px; font-size: 12px; color: var(--text-tertiary); border: none; background: none; border-radius: 5px; cursor: pointer; font-family: inherit; }
       .card-row .row-tabs button.active { background: var(--bg-hover); color: var(--text-primary); }
       .card-row .row-actions { margin-inline-start: auto; display: flex; gap: 4px; }
-      .card-row .x-small, .x-small { width: 28px; height: 28px; border-radius: 6px; background: var(--bg-elevated); color: var(--text-tertiary); border: 1px solid var(--border); font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-family: inherit; }
-      .card-row .x-small:hover:not(:disabled), .x-small:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
+      .card-row .x-small, .x-small { width: 36px; height: 36px; border-radius: var(--radius-sm); background: var(--bg-elevated); color: var(--text-tertiary); border: 1px solid var(--border); font-size: var(--text-md); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-family: inherit; transition: color var(--t-ui) var(--ease), border-color var(--t-ui) var(--ease); }
       .card-row .x-small:disabled, .x-small:disabled { opacity: 0.3; cursor: not-allowed; }
+      /* §6.3: 44px minimum target in the client portal. */
+      [data-portal="studio"] .x-small { width: 44px; height: 44px; }
+      /* §4.4: hover is capability-gated. Before this the repo had exactly one
+         (hover: hover) query in the whole tree, on the marketing page — so on
+         a touch device every one of these hover states could stick after a tap,
+         leaving a control looking permanently focused. The audience skews
+         heavily mobile, which makes this closer to a correctness bug than a
+         polish item. Nothing is HIDDEN behind hover here: these rows show their
+         actions at all times, and gating the styling does not change that. */
+      @media (hover: hover) {
+        .card-row .x-small:hover:not(:disabled), .x-small:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
+        .start-close:hover { color: var(--text-primary); background: var(--bg-hover); }
+        .brand-mini:hover { background: rgba(var(--on-bg),0.08); }
+      }
+      /* §4.4: press is faster than hover, and it is a single shared rule so
+         every future control gets it for free. */
+      .editor .x-small:active:not(:disabled), .editor .row-tabs button:active, .start-close:active {
+        transition-duration: var(--t-press);
+      }
       /* keyboard focus rings — these small row controls had none */
       .editor .x-small:focus-visible, .editor .brand:focus-visible, .editor .brand-mini:focus-visible,
       .editor .row-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -6768,13 +6846,11 @@ function AdminStyles() {
       @media (max-width: 720px) {
         .row-grid-2 { grid-template-columns: 1fr; }
         .card-row { padding: var(--space-3); }
-        .card-row .x-small, .x-small { width: 36px; height: 36px; font-size: 14px; }
       }
       .banner-preview { margin-top: var(--space-3); border-radius: var(--radius-md); padding: 28px 20px; text-align: center; min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
       .banner-text { font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif; font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 4px; line-height: 1.2; }
       .banner-sub { font-size: 13px; color: rgba(var(--on-bg),0.85); }
       .brand-mini { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: rgba(var(--on-bg),0.92); background: rgba(var(--on-bg),0.05); border: 1px solid rgba(var(--on-bg),0.07); border-radius: 7px; cursor: pointer; font-family: inherit; }
-      .brand-mini:hover { background: rgba(var(--on-bg),0.08); }
       /* ---- Toggle rows + switches ---- */
       .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
       .toggle-row:last-child { border-bottom: none; }
