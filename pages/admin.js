@@ -421,8 +421,12 @@ export default function Admin() {
 function LangToggleButton({ lang, onClick }) {
   // Shows the TARGET language (clicking switches TO this language)
   const targetLabel = lang === 'ar' ? 'EN' : 'العربية';
+  // The visible glyph is "EN" / "ع", which does not say what the control DOES.
+  // The name is written in the language being switched TO, because that is the
+  // language the person choosing it reads.
+  const name = lang === 'ar' ? 'Switch to English' : 'التبديل إلى العربية';
   return (
-    <button type="button" onClick={onClick} className="lang-toggle-btn" title={targetLabel}>
+    <button type="button" onClick={onClick} className="lang-toggle-btn" title={targetLabel} aria-label={name}>
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
       <span>{lang === 'ar' ? 'EN' : 'ع'}</span>
       <style jsx>{`
@@ -447,10 +451,18 @@ function LangToggleButton({ lang, onClick }) {
   );
 }
 
-function ThemeToggleButton({ theme, onClick }) {
+function ThemeToggleButton({ theme, lang, onClick }) {
   const isDark = theme !== 'light';
+  // This button is icon-only, so `title` was its ONLY accessible name — and it
+  // was hardcoded English, announced verbatim to a screen reader in an Arabic
+  // UI. Both the name and the tooltip follow the interface language now, which
+  // is why this needs `lang` at all. It names the mode it switches TO, matching
+  // LangToggleButton beside it.
+  const label = lang === 'ar'
+    ? (isDark ? 'الوضع الفاتح' : 'الوضع الداكن')
+    : (isDark ? 'Light mode' : 'Dark mode');
   return (
-    <button type="button" onClick={onClick} className="theme-toggle-btn" title={isDark ? 'Light mode' : 'Dark mode'}>
+    <button type="button" onClick={onClick} className="theme-toggle-btn" title={label} aria-label={label}>
       {isDark ? (
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
       ) : (
@@ -647,7 +659,7 @@ function AuthShell({ theme, lang, toggleLang, toggleTheme, title, onSubmit, chil
       <form className="signin-card" onSubmit={onSubmit}>
         <div className="signin-top">
           <h1>{title}</h1>
-          <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
+          <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} lang={lang} onClick={toggleTheme} />
         </div>
         {children}
       </form>
@@ -1011,7 +1023,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
           </svg>
         </button>
         <span className="mobile-tab-label">{TAB_LABELS[activeTab] || t('sidebar_title')}</span>
-        <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
+        <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} lang={lang} onClick={toggleTheme} />
       </header>
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
@@ -1022,7 +1034,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         <div className="sidebar-header">
           <div className="sidebar-title">{t('sidebar_title')}</div>
           <div className="sidebar-header-right">
-            <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} onClick={toggleTheme} />
+            <LangToggleButton lang={lang} onClick={toggleLang} /><ThemeToggleButton theme={theme} lang={lang} onClick={toggleTheme} />
             <button type="button" className="drawer-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
               <Icon name="close" size={18} />
             </button>
