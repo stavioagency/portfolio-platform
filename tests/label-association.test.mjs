@@ -270,3 +270,84 @@ test('no placeholder-only input remains in admin.js', () => {
   }
   assert.deepEqual(orphans, [], 'these inputs have no accessible name at all');
 });
+
+
+// ---------------------------------------------------------------------------
+// DS-28: file-upload controls stay reachable from the keyboard.
+//
+// Both image uploaders hide their <input type="file"> behind a styled <label>.
+// The input was hidden with `display: none`, which removes it from the tab order
+// entirely — and a <label> is not focusable, so the control could only be operated
+// with a mouse. Clipping the input instead keeps it focusable while invisible, and
+// the ring goes on the label that visually stands in for it. This is the pattern
+// components/billing/PlanPicker.js already uses.
+//
+// Source/invariant guard: there is no DOM here, so this proves the CSS says the
+// right thing, not that a browser moves focus.
+// ---------------------------------------------------------------------------
+
+// Every <input type="file"> in shipped app code, with the styled-jsx block that
+// styles it. Scoped per component so one file's CSS cannot vouch for another's.
+function fileInputSurfaces() {
+  const out = [];
+  for (const file of sources()) {
+    const src = readFileSync(file, 'utf8');
+    let i = -1;
+    while ((i = src.indexOf('<input', i + 1)) !== -1) {
+      const { tag } = openingTag(src, i);
+      if (!/type="file"/.test(tag)) continue;
+      // the wrapper label's class, and the <style jsx> block that follows it
+      const before = src.slice(Math.max(0, i - 400), i);
+      const labelCls = (before.match(/<label[^>]*className="([a-z-]+)"[^>]*>\s*$/i)
+        || before.match(/className="([a-z-]+)"[^>]*>\s*$/i) || [])[1] || null;
+      const styleStart = src.indexOf('<style jsx>', i);
+      const styleEnd = styleStart === -1 ? -1 : src.indexOf('</style>', styleStart);
+      // Strip CSS comments before matching: several of them mention "input",
+      // and a comment must never satisfy a rule assertion.
+      const rawCss = styleStart === -1 ? '' : src.slice(styleStart, styleEnd);
+      out.push({
+        file,
+        line: src.slice(0, i).split('\n').length,
+        tag,
+        labelCls,
+        css: rawCss.replace(/\/\*[\s\S]*?\*\//g, ' '),
+      });
+    }
+  }
+  return out;
+}
+
+test('the scanner finds the file-upload controls it polices', () => {
+  const surfaces = fileInputSurfaces();
+  assert.ok(surfaces.length >= 2, `expected at least 2 file inputs, found ${surfaces.length}`);
+  assert.ok(surfaces.every((s) => s.css.length > 0), 'a file input has no styled-jsx block in scope');
+});
+
+test('no file input is removed from the tab order with display:none', () => {
+  for (const s of fileInputSurfaces()) {
+    // Match a rule whose selector mentions an input and whose body hides it.
+    const hidden = s.css.match(/(^|\})[^{}]*\binput\b[^{}]*\{[^}]*display:\s*none[^}]*\}/m);
+    assert.equal(hidden, null,
+      `${s.file}:${s.line} — the file input is hidden with display:none, which makes the control mouse-only: ${hidden && hidden[0].trim().slice(0, 80)}`);
+  }
+});
+
+test('each hidden file input is clipped instead — invisible but still focusable', () => {
+  for (const s of fileInputSurfaces()) {
+    const rule = s.css.match(/\binput\b[^{}]*\{[^}]*\}/);
+    assert.ok(rule, `${s.file}:${s.line} — no rule styles the file input at all`);
+    assert.match(rule[0], /clip:\s*rect\(0,\s*0,\s*0,\s*0\)/,
+      `${s.file}:${s.line} — the input is not clipped; it is either visible or unfocusable`);
+    assert.match(rule[0], /position:\s*absolute/,
+      `${s.file}:${s.line} — clipped input is not taken out of flow`);
+  }
+});
+
+test('the label standing in for each file input shows a focus ring', () => {
+  for (const s of fileInputSurfaces()) {
+    assert.ok(s.labelCls, `${s.file}:${s.line} — could not resolve the wrapping label's class`);
+    const ring = new RegExp('\\.' + s.labelCls + ':focus-within\\s*\\{[^}]*outline:[^}]*\\}');
+    assert.match(s.css, ring,
+      `${s.file}:${s.line} — .${s.labelCls} has no :focus-within outline, so keyboard focus would be invisible`);
+  }
+});

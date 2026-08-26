@@ -6420,7 +6420,16 @@ function ImageUpload({ value, onUpload, onClear, aspect, hint, t }) {
         .upload span { display: inline-flex; align-items: center; gap: 8px; }
         .upload { display: inline-flex; align-items: center; padding: 10px 16px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; cursor: pointer; transition: var(--transition); }
         .upload:hover { border-color: var(--border-strong); background: var(--bg-hover); }
-        .upload input { display: none; }
+        /* The ring follows the hidden input's focus, so keyboard users can see
+           where they are without a visible input. Same pattern PlanPicker uses. */
+        .upload:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+        /* display:none would take the input out of the tab order entirely, which
+           made this control mouse-only. Clipped instead: invisible, still focusable. */
+        .upload input {
+          position: absolute; width: 1px; height: 1px;
+          padding: 0; margin: -1px; overflow: hidden;
+          clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+        }
       `}</style>
     </div>
   );
@@ -6620,7 +6629,14 @@ function MultiImageUpload({ images, onUpload, onRemove, hint, t }) {
         .thumb button { position: absolute; top: 4px; inset-inline-end: 4px; width: 22px; height: 22px; background: rgba(0,0,0,0.7); color: white; border-radius: 50%; font-size: 14px; border: none; cursor: pointer; font-family: inherit; }
         .add { width: 90px; height: 90px; background: var(--bg-elevated); border: 1.5px dashed var(--border-strong); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--text-tertiary); cursor: pointer; transition: var(--transition); }
         .add:hover { border-color: var(--accent); color: var(--accent); }
-        input { display: none; }
+        /* Same reason as ImageUpload: keep the input focusable, show the ring on
+           the label that stands in for it. */
+        .add:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+        input {
+          position: absolute; width: 1px; height: 1px;
+          padding: 0; margin: -1px; overflow: hidden;
+          clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+        }
       `}</style>
     </div>
   );
