@@ -614,7 +614,7 @@ function SignIn({ lang, toggleLang, theme, toggleTheme, linkError, onPasswordSig
               <div className="error" style={{ marginBottom: 12 }}>
                 {isExpiredLinkError(linkError)
                   ? (ar
-                    ? 'انتهت صلاحية الرابط أو تم استخدامه من قبل. اطلب دعوة جديدة أو رابط إعادة تعيين.'
+                    ? 'انتهت صلاحية الرابط أو تم استخدامه من قبل. يلزم دعوة جديدة أو رابط إعادة تعيين.'
                     : 'That link has expired or was already used. Ask for a new invite or reset link.')
                   : (linkError.description || linkError.code)}
               </div>
@@ -775,13 +775,13 @@ function SetPasswordGate({ lang, onDone }) {
   return (
     <div className="gate-bg" role="dialog" aria-modal="true" aria-labelledby="gate-title">
       <div className="gate-panel" ref={panelRef} dir={ar ? 'rtl' : 'ltr'}>
-        <h2 id="gate-title">{ar ? 'اختر كلمة المرور' : 'Choose your password'}</h2>
+        <h2 id="gate-title">{ar ? 'كلمة المرور' : 'Choose your password'}</h2>
         {done ? (
           <p className="gate-hint">{t('password_updated')} ✓</p>
         ) : (
           <form onSubmit={handleSubmit}>
             <p className="gate-hint">{ar
-              ? 'حسابك جاهز. اختر كلمة مرور الآن لتتمكن من تسجيل الدخول لاحقًا — بدونها لن تستطيع الرجوع بعد تسجيل الخروج.'
+              ? 'حسابك جاهز. كلمة المرور الآن تتيح تسجيل الدخول لاحقًا — وبدونها لا رجوع بعد تسجيل الخروج.'
               : "Your account is ready. Set a password now so you can sign in later — without one you cannot get back in after signing out."}</p>
             <label htmlFor="gate-new">{t('new_password')}</label>
             <input
@@ -1505,7 +1505,7 @@ const NO_TENANT_ERROR = { message: 'No tenant selected' };
 // User-facing counterpart to NO_TENANT_ERROR, for the screens that refuse to act
 // until a workspace is chosen.
 function noWorkspaceMsg(lang) {
-  return lang === 'ar' ? 'اختر مساحة عمل أولًا' : 'Select a workspace first';
+  return lang === 'ar' ? 'يلزم اختيار مساحة عمل أولًا' : 'Select a workspace first';
 }
 
 function loadProfile(tenant, columns = '*') {
@@ -2218,7 +2218,7 @@ function ProjectsEditor({ t, lang }) {
         <EmptyState
           icon={<Icon name="folder" size={24} />}
           title={t('no_projects')}
-          description={lang === 'ar' ? 'أعمالك هي ما يقنع الزوار. أضِف أول مشروع لعرض ما تبرع فيه.' : 'Your projects are what convince visitors. Add your first one to show what you do best.'}
+          description={lang === 'ar' ? 'أعمالك هي ما يقنع الزوار. أول مشروع يعرض ما تبرع فيه.' : 'Your projects are what convince visitors. Add your first one to show what you do best.'}
           action={<Button size="sm" onClick={addProject}>+ {t('no_projects_yet_cta')}</Button>}
         />
       ) : (
@@ -2422,8 +2422,8 @@ function LinksEditor({ t, lang }) {
         <EmptyState
           icon={<Icon name="link" size={24} />}
           title={lang === 'ar' ? 'لا توجد روابط بعد' : 'No links yet'}
-          description={lang === 'ar' ? 'أضِف حساباتك (إنستغرام، بيهانس، لينكدإن…) ليتواصل معك الزوار.' : 'Add your socials (Instagram, Behance, LinkedIn…) so visitors can reach you.'}
-          action={<Button size="sm" onClick={add}>+ {lang === 'ar' ? 'أضف رابطًا' : 'Add a link'}</Button>}
+          description={lang === 'ar' ? 'حساباتك (إنستغرام، بيهانس، لينكدإن…) تتيح للزوار التواصل معك.' : 'Add your socials (Instagram, Behance, LinkedIn…) so visitors can reach you.'}
+          action={<Button size="sm" onClick={add}>+ {lang === 'ar' ? 'إضافة رابط' : 'Add a link'}</Button>}
         />
       )}
 
@@ -3067,19 +3067,19 @@ function DnsInstructions({ domain, ar, isOwner }) {
   const host = apex ? '@' : domain.split('.')[0];
   return (
     <div className="dns">
-      <div className="dns-title">{ar ? 'أضف هذا السجل عند مزوّد النطاق:' : 'Add this record at your domain provider:'}</div>
+      <div className="dns-title">{ar ? 'هذا السجل يُضاف عند مزوّد النطاق:' : 'Add this record at your domain provider:'}</div>
       <div className="dns-grid">
         <div><span>{ar ? 'النوع' : 'Type'}</span><strong dir="ltr">{apex ? 'A' : 'CNAME'}</strong></div>
         <div><span>{ar ? 'الاسم' : 'Host'}</span><strong dir="ltr">{host}</strong></div>
         <div><span>{ar ? 'القيمة' : 'Value'}</span><strong dir="ltr">{apex ? VERCEL_A_RECORD : VERCEL_CNAME}</strong></div>
       </div>
       <p className="hint" style={{ marginTop: 8 }}>
-        {ar ? 'أضِف السجل ثم ارجع واضغط «تحقّق». قد يستغرق انتشار DNS حتى 48 ساعة.'
+        {ar ? 'بعد إضافة السجل، يأتي دور «التحقّق». قد يستغرق انتشار DNS حتى 48 ساعة.'
             : 'Add the record, then come back and press Verify. DNS propagation can take up to 48 hours.'}
       </p>
       <p className="hint">
         {isOwner
-          ? (ar ? 'ملاحظة للمالك: أضِف النطاق أيضًا في مشروع Vercel.' : 'Owner note: also add this domain in the Vercel project.')
+          ? (ar ? 'ملاحظة للمالك: النطاق يُضاف أيضًا في مشروع Vercel.' : 'Owner note: also add this domain in the Vercel project.')
           : (ar ? 'سنكمل ربط النطاق من جهتنا بعد نجاح التحقق.' : 'We’ll finish connecting it on our side once verification passes.')}
       </p>
       <style jsx>{`
@@ -3119,10 +3119,10 @@ function DomainManager({ lang, isOwner }) {
 
   async function addDomain(e) {
     e.preventDefault(); setErr('');
-    if (!tenant) { setErr(ar ? 'اختر مساحة أولًا' : 'Select a workspace first'); return; }
+    if (!tenant) { setErr(ar ? 'يلزم اختيار مساحة أولًا' : 'Select a workspace first'); return; }
     const d = normalizeDomain(newDomain);
     if (!d || !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d)) {
-      setErr(ar ? 'أدخل نطاقًا صالحًا مثل example.com' : 'Enter a valid domain like example.com'); return;
+      setErr(ar ? 'يلزم نطاق صالح مثل example.com' : 'Enter a valid domain like example.com'); return;
     }
     if (domains.some((x) => x.domain === d)) { setErr(ar ? 'هذا النطاق مضاف بالفعل' : 'That domain is already added'); return; }
     setBusy(true);
@@ -3145,7 +3145,7 @@ function DomainManager({ lang, isOwner }) {
     if (!res.reachable) {
       // Couldn't reach the DNS checker — leave status untouched rather than lie.
       setVerifyMsg((m) => ({ ...m, [row.id]: ar
-        ? 'تعذّر التحقق الآن (تعذّر الوصول لخدمة DNS). لم يتغيّر الحالة — حاول مرة أخرى.'
+        ? 'تعذّر التحقق الآن (تعذّر الوصول لخدمة DNS). لم تتغيّر الحالة — يمكن المحاولة مرة أخرى.'
         : 'Could not run the check right now (DNS service unreachable). Status unchanged — please try again.' }));
       setVerifying(null);
       return;
@@ -3185,7 +3185,7 @@ function DomainManager({ lang, isOwner }) {
   }
 
   if (!tenant) {
-    return <div className="hint">{ar ? 'اختر مساحة من الأعلى لإدارة نطاقاتها.' : 'Select a workspace above to manage its domains.'}</div>;
+    return <div className="hint">{ar ? 'يلزم اختيار مساحة من الأعلى لإدارة نطاقاتها.' : 'Select a workspace above to manage its domains.'}</div>;
   }
 
   return (
@@ -3199,7 +3199,7 @@ function DomainManager({ lang, isOwner }) {
         <EmptyState
           icon={<Icon name="globe" size={24} />}
           title={ar ? 'لا يوجد نطاق مخصص بعد' : 'No custom domain yet'}
-          description={ar ? `موقعك متاح الآن على /${tenant.slug}. اربط نطاقك الخاص ليبدو احترافيًا أكثر.`
+          description={ar ? `موقعك متاح الآن على /${tenant.slug}. ربط نطاقك الخاص يجعله أكثر احترافية.`
                           : `Your site is live at /${tenant.slug}. Connect your own domain to make it feel truly yours.`}
         />
       ) : (
@@ -3213,7 +3213,7 @@ function DomainManager({ lang, isOwner }) {
               </div>
               <div className="dm-actions">
                 <Button variant="secondary" size="sm" onClick={() => verify(d)} loading={verifying === d.id}>
-                  {ar ? 'تحقّق' : 'Verify'}
+                  {ar ? 'التحقّق' : 'Verify'}
                 </Button>
                 <Button variant="secondary" size="sm" onClick={() => setOpenDns(openDns === d.domain ? null : d.domain)}>
                   {ar ? 'تعليمات DNS' : 'DNS instructions'}
@@ -3563,7 +3563,7 @@ function TenantAdminSection({ lang, part = 'settings' }) {
       requireText: tenant.slug,
       // Inlined rather than t('type_to_confirm'): this component takes `lang` and
       // builds its strings from `ar`, it has no translator in scope.
-      requireTextLabel: ar ? `اكتب «${tenant.slug}» للتأكيد` : `Type "${tenant.slug}" to confirm`,
+      requireTextLabel: ar ? `كتابة «${tenant.slug}» للتأكيد` : `Type "${tenant.slug}" to confirm`,
       confirmLabel: ar ? 'حذف نهائي' : 'Delete forever',
       cancelLabel: ar ? 'إلغاء' : 'Cancel',
       tone: 'danger',
@@ -3773,7 +3773,7 @@ function TenantAdminSection({ lang, part = 'settings' }) {
           eyebrow={t('eyebrow_domains')}
           title={ar ? 'موقعك والنطاق' : 'Your website & domain'}
           description={ar
-            ? `موقعك متاح دائمًا على /${tenant?.slug || 'slug'}. اربط نطاقك المخصص في ثلاث خطوات: أضِف النطاق، أضِف سجل DNS، ثم تحقّق.`
+            ? `موقعك متاح دائمًا على /${tenant?.slug || 'slug'}. ربط نطاقك المخصص في ثلاث خطوات: النطاق، ثم سجل DNS، ثم التحقّق.`
             : `Your site is always live at /${tenant?.slug || 'slug'}. Connect a custom domain in three steps: add it, add the DNS record, then verify.`}
         />
       )}
@@ -3781,7 +3781,7 @@ function TenantAdminSection({ lang, part = 'settings' }) {
       <>
       <h2>{ar ? 'موقعك والنطاق' : 'Your website & domain'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
-        ? `موقعك متاح دائمًا على /${tenant?.slug || 'slug'}. اربط نطاقك المخصص في ثلاث خطوات: أضِف النطاق، أضِف سجل DNS، ثم تحقّق.`
+        ? `موقعك متاح دائمًا على /${tenant?.slug || 'slug'}. ربط نطاقك المخصص في ثلاث خطوات: النطاق، ثم سجل DNS، ثم التحقّق.`
         : `Your site is always live at /${tenant?.slug || 'slug'}. Connect a custom domain in three steps: add it, add the DNS record, then verify.`}</p>
       </>
       )}
@@ -3869,7 +3869,7 @@ function WebsiteGuide({ doneMap, onNavigate, lang }) {
                 <Button size="sm" onClick={() => onNavigate(step.tab)}>
                   {done
                     ? (ar ? 'تعديل' : 'Edit this')
-                    : (ar ? 'ابدأ الآن' : 'Do this now')}
+                    : (ar ? 'الخطوة التالية' : 'Do this now')}
                 </Button>
               </div>
             )}
@@ -4006,7 +4006,7 @@ function ClientHome({ lang, onNavigate }) {
           <div className="ch-sub"><DomainStatusBadge status={primary.status} ar={ar} /></div>
         ) : (
           <button type="button" className="ch-link" onClick={() => onNavigate('account')}>
-            {ar ? 'اربط نطاقك المخصص ←' : 'Connect a custom domain →'}
+            {ar ? 'ربط نطاق مخصص ←' : 'Connect a custom domain →'}
           </button>
         )}
       </div>
@@ -4042,7 +4042,7 @@ function ClientHome({ lang, onNavigate }) {
             setup.done === setup.total
               ? (ar ? 'اكتمل كل شيء. موقعك جاهز تمامًا للمشاركة 🎉' : 'Everything is done. Your site is ready to share 🎉')
               : (ar
-                ? 'كل خطوة تشرح سبب أهميتها وكيف تنفّذها. ابدأ بالخطوة المفتوحة — هي التالية.'
+                ? 'كل خطوة تشرح سبب أهميتها وكيفية تنفيذها. الخطوة المفتوحة هي التالية.'
                 : 'Each step explains why it matters and exactly how to do it. Start with the open one — that is your next move.')
           }</p>
           <WebsiteGuide

@@ -21,7 +21,12 @@
 // one, and it is the form this file was actually written in.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { translations } from '../lib/translations.js';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Masculine imperatives that actually appeared in this file, plus the feminine
 // counterparts so a swap in either direction is caught.
@@ -88,4 +93,61 @@ test('the matcher catches a command and spares its verbal noun', () => {
   // And the tokeniser: these contain the letters but are not the command.
   assert.deepEqual(offendingForms('اسم المستخدم'), []);
   assert.deepEqual(offendingForms('الاختيار متاح'), []);
+});
+
+// ---------------------------------------------------------------------------
+// pages/admin.js writes a lot of Arabic INLINE, as `ar ? 'عربي' : 'English'`,
+// which never passes through lib/translations.js. Guarding only the string
+// table therefore missed 35 literals — four of which were still painting a
+// command on a client's screen after the table had been cleaned. This half of
+// the guard reads the source text, the way the other structural guards do.
+//
+// SCOPE, deliberately: principle 11 protects THE CLIENT. The Console is the
+// operator's product, where §7.3 allows real vocabulary and the reader is
+// Feras, not a customer. Operator-only strings are pinned below rather than
+// rewritten — but they are pinned ONE BY ONE, so a new one has to be added
+// consciously instead of a whole file being waved through.
+const OPERATOR_PINNED = new Set([
+  'أدخل معرّفًا صالحًا',
+  'أدخل معرّفًا صالحًا للمساحة',
+  'هذا المعرّف محجوز، اختر غيره',
+  'هذا البريد يخص حساب مالك للمنصة — استخدم بريدًا آخر.',
+  'وهو مرتبط بعميل نشط، لذا استخدم بريدًا مختلفًا.',
+  'وظيفة الاسترجاع غير منشورة بعد على Supabase.',
+  'لا يمكن تحرير حساب ما زال مرتبطًا بمساحة عمل — احذف المساحة أولًا.',
+  'يغيّر العنوان على الحساب نفسه. لا يُرسل شيئًا — استخدم «إرسال الترحيب» بعدها.',
+  'تعذّر تحديث حالة التسليم. أعد المحاولة.',
+  'كل عميل هو مساحة وموقع واحد. اضغط عليه لإدارته دون تبديل مساحة العمل النشطة.',
+  'سجّل دخوله من قبل',
+  'جرّب بحثًا أو تصفية أخرى.',
+]);
+
+function arabicLiterals(src) {
+  const found = [];
+  const re = /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    const v = m[1] || m[2] || m[3] || '';
+    if (/[\u0600-\u06FF]/.test(v)) found.push(v);
+  }
+  return found;
+}
+
+test('no inline Arabic in pages/admin.js gives the client an order', () => {
+  const src = readFileSync(join(ROOT, 'pages/admin.js'), 'utf8');
+  const literals = arabicLiterals(src);
+  assert.ok(literals.length > 50, `expected the inline Arabic, saw ${literals.length}`);
+
+  const offences = [];
+  for (const text of literals) {
+    if ([...OPERATOR_PINNED].some((pin) => text.includes(pin))) continue;
+    for (const form of offendingForms(text)) {
+      offences.push(`"${text.slice(0, 70)}" contains «${form}»`);
+    }
+  }
+  assert.deepEqual(offences, [],
+    'Client-facing Arabic in admin.js must be gender-neutral. Rewrite as a\n'
+    + 'verbal noun, a statement of state, or a passive. If the string is\n'
+    + 'genuinely operator-only, add it to OPERATOR_PINNED with that reasoning:\n  '
+    + offences.join('\n  '));
 });
