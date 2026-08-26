@@ -38,7 +38,7 @@ import { strandedByDeleting, releaseReport, releaseMessage } from '../lib/accoun
 import { deletionBlock, deletionBlockMessage, deletionUnknownMessage } from '../lib/workspace-deletion';
 import { deleteTenantStorage } from '../lib/storage-cleanup';
 import {
-  Button, Card, CardHeader, Badge, EmptyState, Icon, Skeleton,
+  Button, Card, CardHeader, PageHeader, Badge, EmptyState, Icon, Skeleton,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
 } from '../components/ui';
 import PreviewPane from '../components/PreviewPane';
@@ -1134,7 +1134,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         .dashboard.light { background-color: #ffffff; }
         .sidebar { width: 240px; background: var(--bg-secondary); border-inline-end: 1px solid var(--border); display: flex; flex-direction: column; padding: var(--space-4); }
         .sidebar-logo { padding: var(--space-2) var(--space-3) 0; display: grid; justify-items: start; }
-        .sidebar-logo img { grid-area: 1 / 1; height: 26px; width: auto; display: block; opacity: 0; transition: opacity 0.25s ease; }
+        .sidebar-logo img { grid-area: 1 / 1; height: 26px; width: auto; display: block; opacity: 0; transition: opacity var(--t-enter) var(--ease); }
         .sidebar-logo img.on { opacity: 1; }
         .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-3) var(--space-4); gap: 8px; }
         .sidebar-header-right { display: flex; align-items: center; gap: 6px; }
@@ -1160,27 +1160,12 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         .signout-btn:hover { color: var(--text-primary); }
         .content { flex: 1; padding: var(--space-6) var(--space-8); overflow-y: auto; max-height: 100vh; }
 
-        /* Page title area. Every screen already renders its own <h1> and intro
-           paragraph, each styling them slightly differently. The shell now owns
-           that typography so the title area is identical on every tab — rather
-           than adding a second title above the one that is already there. */
-        .content :global(h1) {
-          font-family: var(--font-heading);
-          font-size: var(--text-2xl);
-          font-weight: 700;
-          line-height: 1.25;
-          color: var(--text-primary);
-          margin-bottom: var(--space-2);
-        }
-        .content :global(h1 + .hint) {
-          max-width: 68ch;
-          margin-bottom: var(--space-6);
-          padding-bottom: var(--space-4);
-          border-bottom: 1px solid var(--border);
-          font-size: var(--text-md);
-          line-height: 1.6;
-          color: var(--text-tertiary);
-        }
+        /* The page title area belongs to components/ui/PageHeader now.
+           It used to be owned here AND, with identical specificity, by
+           ".editor h1" in AdminStyles — so source order silently decided
+           whether a title was --text-2xl or a hardcoded 24px. One primitive
+           replaces both rules, and the border that used to sit under the intro
+           is gone: §5.3 separates with space, not a line. */
 
         /* ---- Editor / live-preview split ------------------------------------
            Base (mobile + tablet): a single column. The preview is hidden and the
@@ -1281,7 +1266,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
             width: 280px;
             max-width: 84vw;
             transform: translateX(-100%);
-            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform var(--t-enter) var(--ease);
             z-index: 100;
             border-inline-end: 1px solid var(--border);
             box-shadow: 0 0 40px rgba(0,0,0,0.4);
@@ -1303,7 +1288,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
             z-index: 90;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.25s ease;
+            transition: opacity var(--t-enter) var(--ease);
           }
           .backdrop.show { opacity: 1; pointer-events: auto; }
 
@@ -1344,7 +1329,7 @@ function TenantSelector({ tenants, tenant, onChange, lang }) {
         </span>
       )}
       <style jsx>{`
-        .tenant-bar { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-5); padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-secondary); max-width: 640px; }
+        .tenant-bar { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-5); padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-secondary); max-width: var(--measure); }
         .tenant-bar-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); }
         :global(html[dir="rtl"]) .tenant-bar-label { text-transform: none; letter-spacing: normal; }
         .tenant-current { font-size: 13px; font-weight: 600; color: var(--text-primary); }
@@ -1704,8 +1689,7 @@ function ProfileEditor({ t, lang }) {
 
   return (
     <div className="editor">
-      <h1>{t('nav_profile')}</h1>
-      <p className="hint">{t('profile_sub')}</p>
+      <PageHeader eyebrow={t('eyebrow_profile')} title={t('nav_profile')} description={t('profile_sub')} />
 
       {showStart && (
         <div className="start-here">
@@ -1879,8 +1863,7 @@ function CardEditor({ t, lang }) {
 
   return (
     <div className="editor">
-      <h1>{t('card_title')}</h1>
-      <p className="hint">{t('card_sub')}</p>
+      <PageHeader eyebrow={t('eyebrow_card')} title={t('card_title')} description={t('card_sub')} />
       <p className="hint">{t('lang_note')}</p>
 
       <h2>{t('brand_logo')}</h2>
@@ -2189,11 +2172,12 @@ function ProjectsEditor({ t, lang }) {
 
   return (
     <div className="editor">
-      <div className="editor-header">
-        <h1>{t('nav_projects')}</h1>
-        <Button size="sm" onClick={addProject}>+ {t('add_project')}</Button>
-      </div>
-      <p className="hint">{t('empty_rows_note')}</p>
+      <PageHeader
+        eyebrow={t('eyebrow_projects')}
+        title={t('nav_projects')}
+        description={t('empty_rows_note')}
+        action={<Button size="sm" onClick={addProject}>+ {t('add_project')}</Button>}
+      />
 
       {loading ? (
         <div className="project-list" aria-hidden="true">
@@ -2404,8 +2388,7 @@ function LinksEditor({ t, lang }) {
 
   return (
     <div className="editor">
-      <h1>{t('links_title')}</h1>
-      <p className="hint">{t('links_sub')}</p>
+      <PageHeader eyebrow={t('eyebrow_links')} title={t('links_title')} description={t('links_sub')} />
 
       {loading && (
         <div aria-hidden="true">
@@ -2625,7 +2608,7 @@ function AppearanceEditor({ t, lang }) {
 
   return (
     <div className="editor">
-      <h1>{t('appearance_title')}</h1>
+      <PageHeader eyebrow={t('eyebrow_appearance')} title={t('appearance_title')} />
 
       <h2>{t('theme_preset')}</h2>
       <p className="hint">{t('theme_preset_hint')}</p>
@@ -2690,7 +2673,7 @@ function AppearanceEditor({ t, lang }) {
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
       <AdminStyles />
       <style jsx>{`
-        .preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-5); max-width: 640px; }
+        .preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-5); max-width: var(--measure); }
         .preset { background: var(--bg-secondary); border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2); cursor: pointer; text-align: center; transition: var(--transition); font-family: inherit; }
         .preset:hover { border-color: var(--border-strong); }
         .preset.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
@@ -2849,13 +2832,31 @@ function AnalyticsEditor({ t, lang }) {
 
   return (
     <div className="editor">
-      <h1>{t('analytics_title')}</h1>
-
-      <div className="range-pills">
-        {[['24h', 'range_24h'], ['7d', 'range_7d'], ['30d', 'range_30d'], ['all', 'range_all']].map(([k, lbl]) => (
-          <button key={k} type="button" className={range === k ? 'active' : ''} onClick={() => setRange(k)}>{t(lbl)}</button>
-        ))}
-      </div>
+      {/* Design system §5.2: the summary band sits directly under the title, in
+          the same place on every screen, so the eye stops re-learning the page.
+          These four figures used to be a grid of bordered cards further down —
+          below the range control that scopes them, which put the answer before
+          the question. They are the state of this screen, so they belong in the
+          band. The band renders only once there is something true to put in it:
+          while loading, the skeleton below holds the geometry, and with no data
+          at all the empty state speaks instead. */}
+      <PageHeader
+        eyebrow={t('eyebrow_analytics')}
+        title={t('analytics_title')}
+        action={
+          <div className="range-pills">
+            {[['24h', 'range_24h'], ['7d', 'range_7d'], ['30d', 'range_30d'], ['all', 'range_all']].map(([k, lbl]) => (
+              <button key={k} type="button" className={range === k ? 'active' : ''} onClick={() => setRange(k)}>{t(lbl)}</button>
+            ))}
+          </div>
+        }
+        summary={!loading && events.length > 0 ? [
+          { label: t('stat_total_visits'), value: pageViews.length.toLocaleString() },
+          { label: t('stat_unique_visitors'), value: uniqueVisitors.toLocaleString() },
+          { label: t('stat_project_views'), value: projectViews.length.toLocaleString() },
+          { label: t('stat_contact_clicks'), value: linkClicks.length.toLocaleString() },
+        ] : undefined}
+      />
 
       {loading ? (
         // Switching the range refetches; a text "Loading…" collapsed the whole
@@ -2870,25 +2871,23 @@ function AnalyticsEditor({ t, lang }) {
         <EmptyState icon={<Icon name="chart" size={24} />} title={t('no_data_yet')} compact />
       ) : (
         <>
-          <div className="stat-grid">
-            <StatCard label={t('stat_total_visits')} value={pageViews.length} />
-            <StatCard label={t('stat_unique_visitors')} value={uniqueVisitors} />
-            <StatCard label={t('stat_project_views')} value={projectViews.length} />
-            <StatCard label={t('stat_contact_clicks')} value={linkClicks.length} />
-          </div>
-
           {chartPath && (
             <div className="chart-card">
               <div className="chart-title">{t('visits_over_time')}</div>
               <svg viewBox="0 0 600 160" preserveAspectRatio="none" style={{ width: '100%', height: 160 }}>
                 <defs>
+                  {/* The area fade is data ink, not ornament — it reads the
+                      chart's own extent — so it survives the retired-gradient
+                      rule. What it must not do is hardcode the brand blue:
+                      #4f6ef2 was a stale literal that no longer matched
+                      --accent in either theme. */}
                   <linearGradient id="ag" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#4f6ef2" stopOpacity=".4" />
-                    <stop offset="100%" stopColor="#4f6ef2" stopOpacity="0" />
+                    <stop offset="0%" stopColor="var(--accent)" stopOpacity=".4" />
+                    <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
                   </linearGradient>
                 </defs>
                 <path d={chartPath.area} fill="url(#ag)" />
-                <path d={chartPath.line} fill="none" stroke="#4f6ef2" strokeWidth="2" />
+                <path d={chartPath.line} fill="none" stroke="var(--accent)" strokeWidth="2" />
               </svg>
               <div className="chart-axis">
                 {chartPath.labels.map((l, i) => <span key={i}>{l}</span>)}
@@ -2912,10 +2911,16 @@ function AnalyticsEditor({ t, lang }) {
 
       <AdminStyles />
       <style jsx>{`
-        .range-pills { direction: ltr; display: inline-flex; gap: 4px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; margin-bottom: var(--space-5); }
-        .range-pills button { padding: 6px 12px; font-size: 12px; color: var(--text-tertiary); border-radius: 6px; background: none; border: none; cursor: pointer; font-family: inherit; }
+        /* The range control lives in PageHeader's action slot now, so it no
+           longer carries a margin of its own — the header owns that spacing. */
+        .range-pills { direction: ltr; display: inline-flex; gap: var(--space-1); background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-1); }
+        .range-pills button { padding: var(--space-2) var(--space-3); font-size: var(--text-sm); font-weight: 600; color: var(--text-tertiary); border-radius: var(--radius-sm); background: none; border: none; cursor: pointer; font-family: inherit; transition: background var(--t-ui) var(--ease), color var(--t-ui) var(--ease); }
+        .range-pills button:hover { color: var(--text-primary); }
         .range-pills button.active { background: var(--bg-elevated); color: var(--text-primary); }
-        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: var(--space-6); }
+        .range-pills button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+        /* Only the loading skeleton still uses this grid: it holds the summary
+           band's geometry so switching range does not bounce the page. */
+        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-6); }
         .chart-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); margin-bottom: var(--space-4); }
         .chart-title { font-size: 14px; font-weight: 600; margin-bottom: var(--space-4); }
         .chart-axis { direction: ltr; display: flex; justify-content: space-between; margin-top: 8px; font-size: 10px; color: var(--text-tertiary); }
@@ -2926,21 +2931,11 @@ function AnalyticsEditor({ t, lang }) {
   );
 }
 
-function StatCard({ label, value }) {
-  return (
-    <div className="stat-card">
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value.toLocaleString()}</div>
-      <style jsx>{`
-        .stat-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); position: relative; overflow: hidden; }
-        .stat-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(var(--on-bg),0.08), transparent); }
-        .stat-label { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
-        :global(html[dir="rtl"]) .stat-label { text-transform: none; letter-spacing: normal; }
-        .stat-value { font-size: 26px; font-weight: 700; letter-spacing: -.02em; color: var(--text-primary); }
-      `}</style>
-    </div>
-  );
-}
+// StatCard is gone. Its four figures now render in PageHeader's summary band
+// (§5.2), which also retires two things it was carrying: a decorative gradient
+// hairline on ::before — the constitution retired the gradient tokens and
+// forbids gradient as ornament — and a hand-rolled uppercase label needing its
+// own RTL guard, which the global .eyebrow treatment handles once instead.
 
 function BarChartCard({ title, rows }) {
   const max = Math.max(1, ...rows.map(r => r.value));
@@ -3227,7 +3222,7 @@ function DomainManager({ lang, isOwner }) {
       {err && <div className="ts-err">{err}</div>}
 
       <style jsx>{`
-        .dm { max-width: 640px; }
+        .dm { max-width: var(--measure); }
         .dm-list { display: flex; flex-direction: column; gap: 10px; }
         .dm-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .dm-name { font-size: var(--text-md); font-weight: 600; word-break: break-all; }
@@ -3253,6 +3248,7 @@ function TenantAdminSection({ lang, part = 'settings' }) {
   const confirm = useConfirm();
   const { tenant, setTenant, reloadTenants, isOwner } = useTenant();
   const ar = lang === 'ar';
+  const t = getTranslator(lang);
 
   // Invite a NEW client login (owner-only, via the invite-client Edge Function).
   const [invEmail, setInvEmail] = useState('');
@@ -3752,10 +3748,28 @@ function TenantAdminSection({ lang, part = 'settings' }) {
 
       {(part === 'settings' || part === 'domains') && (
       <>
+      {/* For a CLIENT this is a screen of its own and, until now, the only one
+          in the portal opening with no title at all — it began at an <h2>,
+          which §5.2 does not allow. For an OWNER the same block renders inside
+          a client's panel, where it is a section of a larger surface and a page
+          title would be a second lead (§6.2). Hence the condition. */}
+      {!isOwner && (
+        <PageHeader
+          eyebrow={t('eyebrow_domains')}
+          title={ar ? 'موقعك والنطاق' : 'Your website & domain'}
+          description={ar
+            ? `موقعك متاح دائمًا على /${tenant?.slug || 'slug'}. اربط نطاقك المخصص في ثلاث خطوات: أضِف النطاق، أضِف سجل DNS، ثم تحقّق.`
+            : `Your site is always live at /${tenant?.slug || 'slug'}. Connect a custom domain in three steps: add it, add the DNS record, then verify.`}
+        />
+      )}
+      {isOwner && (
+      <>
       <h2>{ar ? 'موقعك والنطاق' : 'Your website & domain'} <span className="meta">· {tenant?.name || tenant?.slug || (ar ? 'لا توجد مساحة' : 'no workspace')}</span></h2>
       <p className="hint">{ar
         ? `موقعك متاح دائمًا على /${tenant?.slug || 'slug'}. اربط نطاقك المخصص في ثلاث خطوات: أضِف النطاق، أضِف سجل DNS، ثم تحقّق.`
         : `Your site is always live at /${tenant?.slug || 'slug'}. Connect a custom domain in three steps: add it, add the DNS record, then verify.`}</p>
+      </>
+      )}
       <DomainManager lang={lang} isOwner={isOwner} />
       </>
       )}
@@ -3848,7 +3862,7 @@ function WebsiteGuide({ doneMap, onNavigate, lang }) {
         );
       })}
       <style jsx>{`
-        .wg { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+        .wg { display: flex; flex-direction: column; gap: 8px; max-width: var(--measure); }
         .wg-head {
           display: flex; align-items: center; gap: 12px; width: 100%;
           padding: 13px 14px; min-height: 48px;
@@ -3864,11 +3878,17 @@ function WebsiteGuide({ doneMap, onNavigate, lang }) {
         .wg-step.done .wg-mark { background: var(--accent); border-color: var(--accent); color: #fff; }
         .wg-step.done .wg-title { color: var(--text-tertiary); }
         .wg-title { flex: 1; font-weight: 500; }
+        /* This was the one place in the file applying letter-spacing and
+           uppercase with NO RTL guard beside it — twelve others had one. In
+           Arabic the tracking severed the joins in «التالي», which §3.6 rule 1
+           calls broken typography rather than a style choice. Guarded now, and
+           the size moved onto the scale from an off-scale 10px. */
         .wg-next {
-          font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+          font-size: var(--text-xs); font-weight: 700; letter-spacing: var(--track-eyebrow); text-transform: uppercase;
           color: var(--accent); border: 1px solid var(--accent);
           border-radius: 999px; padding: 2px 8px; flex-shrink: 0;
         }
+        :global(html[dir='rtl']) .wg-next { letter-spacing: 0; text-transform: none; }
         .wg-chev { color: var(--text-muted); font-size: 16px; flex-shrink: 0; }
         .wg-body { padding: 0 14px 16px; border-top: 1px solid var(--border); margin-top: -1px; }
         .wg-why { font-size: 13px; line-height: 1.7; color: var(--text-secondary); margin: 14px 0 12px; }
@@ -3889,6 +3909,7 @@ function WebsiteGuide({ doneMap, onNavigate, lang }) {
 function ClientHome({ lang, onNavigate }) {
   const { tenant } = useTenant();
   const ar = lang === 'ar';
+  const t = getTranslator(lang);
   const [profile, setProfile] = useState(null);
   const [projectCount, setProjectCount] = useState(0);
   const [domains, setDomains] = useState([]);
@@ -3920,40 +3941,59 @@ function ClientHome({ lang, onNavigate }) {
 
   return (
     <div className="editor">
-      <h1>{name ? (ar ? `مرحبًا ${name} 👋` : `Welcome, ${name} 👋`) : (ar ? 'مرحبًا بك في منشئ موقعك 👋' : 'Welcome to your portfolio builder 👋')}</h1>
-      <p className="hint">{ar ? 'موقعك جاهز ومباشر. أكمل الخطوات التالية لجعله رائعًا.' : 'Your website is ready and live. Complete the steps below to make it shine.'}</p>
+      {/* §6.2: exactly one thing leads per screen — and exactly one screen gets
+          to be the lead screen. This is it, so `lead` (--text-4xl) appears here
+          and nowhere else in the portal.
 
-      <div className="ch-grid">
-        <Card pad="sm" className="ch-card">
-          <div className="ch-label">{ar ? 'حالة الموقع' : 'Website status'}</div>
-          <div className="ch-status">
-            <Badge tone={active ? 'success' : 'danger'} dot>
-              {active ? (ar ? 'مباشر' : 'Active') : (ar ? 'معلّق' : 'Suspended')}
-            </Badge>
-          </div>
-        </Card>
-        <Card pad="sm" className="ch-card">
-          <div className="ch-label">{ar ? 'رابط موقعك' : 'Your website'}</div>
-          <a className="ch-url" href={publicUrl} target="_blank" rel="noopener noreferrer" dir="ltr">{primary ? primary.domain : slugUrl}</a>
-          {primary ? (
-            <div className="ch-sub"><DomainStatusBadge status={primary.status} ar={ar} /></div>
-          ) : (
-            <button type="button" className="ch-link" onClick={() => onNavigate('account')}>
-              {ar ? 'اربط نطاقك المخصص ←' : 'Connect a custom domain →'}
-            </button>
-          )}
-        </Card>
-        <Card pad="sm" className="ch-card">
-          <div className="ch-label">{ar ? 'الاكتمال' : 'Completion'}</div>
-          {/* An em-dash and an empty bar are indistinguishable from "0% done".
-              A skeleton says "not known yet", which is the truth. */}
-          <div className="ch-status">
-            {loading ? <Skeleton width={52} height={22} /> : `${setup.percent}%`}
-          </div>
-          {!loading && (
-            <div className="ch-bar"><div className="ch-bar-fill" style={{ width: `${setup.percent}%` }} /></div>
-          )}
-        </Card>
+          The greeting dropped its waving emoji. The constitution rejects emoji
+          as iconography, and a premium product does not wave at you; the
+          welcome is carried by the person's own name at 44px instead.
+
+          The three figures below used to be three Cards. §6.4 is explicit: a
+          single value is a stat, not a card — the border was doing nothing the
+          band's own spacing does not. They are withheld entirely while loading,
+          because an em-dash and an empty bar are indistinguishable from "0%
+          done"; the skeleton says "not known yet", which is the truth. */}
+      <PageHeader
+        lead
+        eyebrow={t('eyebrow_home')}
+        title={name
+          ? (ar ? `مرحبًا ${name}` : `Welcome, ${name}`)
+          : (ar ? 'مرحبًا بك في منشئ موقعك' : 'Welcome to your portfolio builder')}
+        description={ar
+          ? 'موقعك جاهز ومباشر. أكمل الخطوات التالية لجعله رائعًا.'
+          : 'Your website is ready and live. Complete the steps below to make it shine.'}
+        summary={loading ? undefined : [
+          {
+            label: ar ? 'حالة الموقع' : 'Website status',
+            value: active ? (ar ? 'مباشر' : 'Live') : (ar ? 'معلّق' : 'Suspended'),
+            tone: active ? 'success' : 'danger',
+          },
+          { label: ar ? 'اكتمال الإعداد' : 'Setup complete', value: `${setup.percent}%` },
+          // "pieces", never "projects" — that is the table's name, not the
+          // product's word for the client's own work.
+          { label: ar ? 'أعمالك' : 'Pieces of work', value: projectCount },
+        ]}
+      />
+
+      {loading && (
+        <div className="ch-grid" aria-hidden="true">
+          {[0, 1, 2].map((i) => <Skeleton key={i} width="100%" height={64} radius="var(--radius-md)" />)}
+        </div>
+      )}
+
+      {/* The address stays its own row rather than joining the band: it is the
+          one thing here a person actually clicks, and a figure it is not. */}
+      <div className="ch-address">
+        <div className="ch-label">{ar ? 'رابط موقعك' : 'Your website'}</div>
+        <a className="ch-url" href={publicUrl} target="_blank" rel="noopener noreferrer" dir="ltr">{primary ? primary.domain : slugUrl}</a>
+        {primary ? (
+          <div className="ch-sub"><DomainStatusBadge status={primary.status} ar={ar} /></div>
+        ) : (
+          <button type="button" className="ch-link" onClick={() => onNavigate('account')}>
+            {ar ? 'اربط نطاقك المخصص ←' : 'Connect a custom domain →'}
+          </button>
+        )}
       </div>
 
       <h2>{ar ? 'إجراءات سريعة' : 'Quick actions'}</h2>
@@ -4000,22 +4040,36 @@ function ClientHome({ lang, onNavigate }) {
 
       <AdminStyles />
       <style jsx>{`
-        .ch-guide-skel { display: flex; flex-direction: column; gap: var(--space-2); max-width: 640px; margin-bottom: var(--space-4); }
-        .ch-progress { height: 6px; border-radius: 999px; background: var(--bg-elevated); border: 1px solid var(--border); max-width: 640px; overflow: hidden; margin-bottom: 10px; }
-        .ch-progress-fill { height: 100%; background: var(--accent); transition: width 0.4s ease; }
-        .ch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; max-width: 640px; margin-bottom: var(--space-5); }
-        /* surface comes from Card */
-        .ch-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 6px; }
-        :global(html[dir="rtl"]) .ch-label { text-transform: none; letter-spacing: normal; }
-        .ch-status { font-size: 18px; font-weight: 700; }
-        .ch-url { font-size: 14px; font-weight: 600; color: var(--accent); text-decoration: none; word-break: break-all; }
-        .ch-sub { font-size: 12px; color: var(--text-tertiary); margin-top: 4px; }
-        .ch-link { margin-top: 6px; padding: 0; background: none; border: none; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: start; }
-        .ch-bar { height: 6px; background: var(--bg-elevated); border-radius: 999px; margin-top: 8px; overflow: hidden; }
-        .ch-bar-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s ease; }
-        .ch-actions { display: flex; flex-wrap: wrap; gap: 8px; max-width: 640px; margin-bottom: var(--space-4); }
-        .ch-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 14px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; color: var(--text-primary); min-height: 44px; }
-        .ch-action:hover { border-color: var(--border-strong); }
+        /* §5.3: one column width, from the token — 640px was one of three
+           hand-picked maxima competing across this file. */
+        .ch-guide-skel { display: flex; flex-direction: column; gap: var(--space-2); max-width: var(--measure); margin-bottom: var(--space-4); }
+        .ch-progress { height: 6px; border-radius: 999px; background: var(--bg-elevated); border: 1px solid var(--border); max-width: var(--measure); overflow: hidden; margin-bottom: var(--space-3); }
+        .ch-progress-fill { height: 100%; background: var(--accent); transition: width var(--t-enter) var(--ease); }
+        /* Only the loading skeleton still uses this grid; the three Cards it
+           used to hold are now figures in the header's summary band. */
+        .ch-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); max-width: var(--measure); margin-bottom: var(--space-5); }
+
+        .ch-address { max-width: var(--measure); margin-bottom: var(--space-6); }
+        /* The label uses the global .eyebrow treatment's job without its class,
+           because it labels a value rather than a screen. Weight carries it —
+           §3.3: a 12px/600 label is assertive where 14px/400 is a form field. */
+        .ch-label { font-size: var(--text-sm); font-weight: 600; color: var(--text-tertiary); margin-bottom: var(--space-1); }
+        .ch-url { font-size: var(--text-lg); font-weight: 700; color: var(--accent); text-decoration: none; word-break: break-all; }
+        .ch-url:hover { text-decoration: underline; }
+        .ch-url:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+        .ch-sub { font-size: var(--text-sm); color: var(--text-tertiary); margin-top: var(--space-1); }
+        .ch-link { margin-top: var(--space-2); padding: 0; background: none; border: none; color: var(--accent); font-size: var(--text-sm); font-weight: 600; cursor: pointer; font-family: inherit; text-align: start; }
+        .ch-link:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+        .ch-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); max-width: var(--measure); margin-bottom: var(--space-4); }
+        .ch-action { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: var(--text-md); font-weight: 600; cursor: pointer; font-family: inherit; color: var(--text-primary); min-height: 44px; transition: border-color var(--t-ui) var(--ease), background var(--t-ui) var(--ease); }
+        .ch-action:hover { border-color: var(--border-strong); background: var(--bg-hover); }
+        /* §4.4: press is faster than hover, and it is the one transform here. */
+        .ch-action:active { transition-duration: var(--t-press); transform: scale(0.98); }
+        .ch-action:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+        @media (max-width: 720px) {
+          .ch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
       `}</style>
     </div>
   );
@@ -5336,7 +5390,7 @@ function BillingEditor({ t, lang }) {
   if (loading) {
     return (
       <div className="editor">
-        <h1>{t('billing_title')}</h1>
+        <PageHeader eyebrow={t('eyebrow_billing')} title={t('billing_title')} />
         <div className="list-skel" aria-busy="true">
           <Skeleton width="100%" height={120} radius="var(--radius-md)" />
           <Skeleton width="100%" height={72} radius="var(--radius-md)" />
@@ -5350,7 +5404,7 @@ function BillingEditor({ t, lang }) {
   if (error) {
     return (
       <div className="editor">
-        <h1>{t('billing_title')}</h1>
+        <PageHeader eyebrow={t('eyebrow_billing')} title={t('billing_title')} />
         <EmptyState
           icon={<Icon name="alert-triangle" size={24} />}
           title={error}
@@ -5372,8 +5426,7 @@ function BillingEditor({ t, lang }) {
 
   return (
     <div className="editor">
-      <h1>{t('billing_title')}</h1>
-      <p className="hint">{t('billing_sub')}</p>
+      <PageHeader eyebrow={t('eyebrow_billing')} title={t('billing_title')} description={t('billing_sub')} />
 
       {/* ---- CURRENT PLAN ---------------------------------------------- */}
       {billing.state === 'none' ? (
@@ -5581,7 +5634,7 @@ function BillingEditor({ t, lang }) {
         }
         .bl-out:hover, .bl-alert-link:hover { border-color: var(--accent); color: var(--accent); }
         .bl-out:focus-visible, .bl-alert-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-        .bl-table-wrap { max-width: 640px; overflow-x: auto; }
+        .bl-table-wrap { max-width: var(--measure); overflow-x: auto; }
         .bl-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
         .bl-table th {
           text-align: start; font-weight: 600; color: var(--text-tertiary);
@@ -5602,12 +5655,12 @@ function BillingEditor({ t, lang }) {
         }
       `}</style>
       <style jsx global>{`
-        .editor .bl-plan { max-width: 640px; }
+        .editor .bl-plan { max-width: var(--measure); }
         .editor .bl-card-row {
-          max-width: 640px; display: flex; align-items: center;
+          max-width: var(--measure); display: flex; align-items: center;
           justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
         }
-        .editor .bl-danger { max-width: 640px; background: var(--danger-bg); border-color: var(--danger-border); }
+        .editor .bl-danger { max-width: var(--measure); background: var(--danger-bg); border-color: var(--danger-border); }
       `}</style>
     </div>
   );
@@ -6281,7 +6334,7 @@ function AccountEditor({ t, lang, session, setChromeLang }) {
 
   return (
     <div className="editor">
-      <h1>{t('account_title')}</h1>
+      <PageHeader eyebrow={t('eyebrow_account')} title={t('account_title')} />
 
       <h2>{t('signed_in_as')}</h2>
       <div className="user-card">
@@ -6650,7 +6703,14 @@ function AdminStyles() {
   return (
     <style jsx global>{`
       /* ---- Editor chrome — headings, inputs, the "start here" callout ---- */
-      .editor h1 { font-size: 24px; font-weight: 700; margin-bottom: var(--space-5); letter-spacing: -0.01em; }
+      /* Client screens render PageHeader instead of a bare <h1>. This rule
+         survives for the owner screens that still use one (Sites, Subscribers,
+         the project edit form) so they stay on the scale rather than falling
+         back to the browser default — 24px was off the scale entirely, which
+         is why the lead-to-body ratio sat at 1.7x against §3.3's 3.1x. */
+      .editor h1 { font-family: var(--font-heading); font-size: var(--text-3xl); font-weight: 800; line-height: var(--leading-tight); letter-spacing: var(--track-tight); margin-bottom: var(--space-5); }
+      /* §3.6 rule 1: never letter-spacing on Arabic. */
+      html[dir="rtl"] .editor h1 { font-family: var(--font-display-ar); letter-spacing: 0; }
       .start-here { position: relative; margin: 0 0 var(--space-6); padding: 16px 18px; background: linear-gradient(180deg, rgba(79,110,242,0.12), rgba(79,110,242,0.04)); border: 1px solid rgba(79,110,242,0.3); border-radius: var(--radius-md); max-width: 520px; }
       .start-here strong { display: block; font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
       .start-here ol { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 4px; }
@@ -6665,7 +6725,11 @@ function AdminStyles() {
       .editor input[type="color"] { width: 60px; height: 40px; padding: 4px; cursor: pointer; }
       .editor .saved-indicator { font-size: 13px; color: var(--accent); margin-inline-start: 4px; }
       @media (max-width: 720px) {
-        .editor h1 { font-size: 20px; margin-bottom: var(--space-4); }
+        /* No font-size step here any more. It used to drop to 20px, which is
+           off the scale AND a different mobile behaviour from PageHeader — the
+           two would have disagreed on small screens. Only the lead size steps
+           down on mobile, and PageHeader owns that decision. */
+        .editor h1 { margin-bottom: var(--space-4); }
         .editor input[type="text"], .editor input[type="email"], .editor input[type="password"], .editor input[type="url"], .editor input:not([type]), .editor textarea, .editor select {
           max-width: 100%; padding: 12px 14px; font-size: 16px; /* 16px prevents iOS zoom on focus */
         }
@@ -6673,13 +6737,19 @@ function AdminStyles() {
       /* ---- Repeating row/card patterns shared by the list editors ---- */
       /* Shared shape for "a list is being fetched" — used by the domain list and
          the workspace-members list, which both previously rendered a lone "…". */
-      .list-skel { display: flex; flex-direction: column; gap: var(--space-2); max-width: 640px; margin-bottom: var(--space-4); }
+      .list-skel { display: flex; flex-direction: column; gap: var(--space-2); max-width: var(--measure); margin-bottom: var(--space-4); }
       .img-hint { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.5; max-width: 360px; text-align: start; }
-      .editor .hint { font-size: 13px; color: var(--text-tertiary); margin-bottom: var(--space-4); max-width: 560px; line-height: 1.5; }
+      .editor .hint { font-size: var(--text-md); color: var(--text-tertiary); margin-bottom: var(--space-4); max-width: var(--measure); line-height: var(--leading-normal); }
       .editor .meta { font-size: 11px; color: var(--text-muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-inline-start: 6px; }
-      .editor h2 { margin-top: var(--space-6); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: var(--space-3); }
-      html[dir="rtl"] .editor h2 { text-transform: none; letter-spacing: normal; }
-      .card-row { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-3); max-width: 640px; }
+      /* Section headings were 13px uppercase micro-labels — the device that
+         made every editor read as a settings panel rather than a place you
+         author something. They are real headings on the scale now, in sentence
+         case, separated by space instead of by caps and tracking (§5.3).
+         Retiring the uppercase also retires the RTL guard that had to sit
+         beside it: with no case and no tracking there is nothing to undo in
+         Arabic, which is the point of §3.6 rather than a workaround for it. */
+      .editor h2 { margin-top: var(--space-8); font-size: var(--text-xl); font-weight: 700; color: var(--text-primary); line-height: var(--leading-snug); margin-bottom: var(--space-2); }
+      .card-row { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-3); max-width: var(--measure); }
       .card-row .row-head { display: flex; align-items: center; gap: 10px; margin-bottom: var(--space-3); }
       .card-row .row-tag { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; }
       html[dir="rtl"] .card-row .row-tag { text-transform: none; letter-spacing: normal; }

@@ -479,10 +479,19 @@
 
    ALSO DELIBERATELY NOT ADOPTED, per the DS-0 decision record:
    the second interactive blue (--royal-*), IBM Plex as the UI face, the
-   box-shadow focus ring, the translateY(1px) press, and the primary-button
-   glow. The GLOW IS REFUSED PERMANENTLY, not deferred: primary actions do not
-   require a coloured glow, and this file already retired one. The other four
-   are deferred, not rejected.
+   translateY(1px) press, and the primary-button glow. The GLOW IS REFUSED
+   PERMANENTLY, not deferred: primary actions do not require a coloured glow,
+   and this file already retired one. The other three are deferred, not
+   rejected.
+
+   ADOPTED SINCE, and moved off the deferred list: THE BOX-SHADOW FOCUS RING.
+   components/ui/Input.js now paints --border-focus plus a 2px --brand-focus
+   ring on :focus, per design system §6.7 ("Never remove the outline"). The
+   ring is a box-shadow rather than an outline so it follows the field's
+   radius. Deferred at DS-0, ratified deliberately afterwards -- it is not an
+   oversight and should not be reverted to restore the deferral. A box-shadow
+   ring elsewhere in the product is now consistent with this file, not against
+   it. This does NOT reopen the glow, which stays refused.
    ======================================================================= */
 
 /* ---- Breakpoint convention (CSS vars can't be used in @media) ------------
