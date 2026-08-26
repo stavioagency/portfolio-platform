@@ -411,12 +411,12 @@ function checkoutError(code, ar) {
     case 'already_subscribed':
       return ar ? 'هذه المساحة مشتركة بالفعل.' : 'This workspace already has a subscription.';
     case 'invalid_or_expired_grant':
-      return ar ? 'انتهت صلاحية هذا الرابط. اطلب رابطًا جديدًا.' : 'This link has expired. Ask for a fresh one.';
+      return ar ? 'انتهت صلاحية هذا الرابط. يلزم رابط جديد.' : 'This link has expired. Ask for a fresh one.';
     case 'plan_not_available':
       return ar ? 'هذه الخطة غير متاحة حاليًا.' : 'That plan is not available right now.';
     case 'forbidden':
       return ar ? 'لا تملك صلاحية الاشتراك لهذه المساحة.' : 'You are not allowed to subscribe for this workspace.';
     default:
-      return ar ? 'تعذّر بدء عملية الدفع. حاول مرة أخرى.' : 'Could not start the checkout. Please try again.';
+      return ar ? 'تعذّر بدء عملية الدفع. يمكن المحاولة مرة أخرى.' : 'Could not start the checkout. Please try again.';
   }
 }

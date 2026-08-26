@@ -31,7 +31,7 @@ export default function PlanPicker({
 
   return (
     <fieldset className="pp" disabled={disabled}>
-      <legend className="sr-only">{ar ? 'اختر خطة' : 'Choose a plan'}</legend>
+      <legend className="sr-only">{ar ? 'اختيار خطة' : 'Choose a plan'}</legend>
       <div className="pp-grid">
         {plans.map((plan) => {
           const selected = value === plan.code;

@@ -116,7 +116,7 @@ export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en'
           <div className="pv-error" role="alert">
             <div className="pv-error-title">{ar ? 'تعذّر تحميل المعاينة' : "Couldn't load the preview"}</div>
             <p className="pv-error-desc">
-              {ar ? 'قد يكون الاتصال بطيئًا. حاول التحديث.' : 'The connection may be slow. Try refreshing.'}
+              {ar ? 'قد يكون الاتصال بطيئًا. يمكن المحاولة مرة أخرى.' : 'The connection may be slow. Try refreshing.'}
             </p>
             <Button size="sm" variant="secondary" onClick={retry}>{ar ? 'إعادة المحاولة' : 'Retry'}</Button>
           </div>

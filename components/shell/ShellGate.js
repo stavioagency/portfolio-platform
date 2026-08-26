@@ -63,7 +63,7 @@ export default function ShellGate({ require: required = 'client', lang = 'ar', c
     return (
       <Notice
         title={ar ? 'تحتاج إلى تسجيل الدخول' : 'You need to sign in'}
-        body={ar ? 'سجّل الدخول من لوحة التحكم، ثم عد إلى هنا.' : 'Sign in from the dashboard, then come back here.'}
+        body={ar ? 'تسجيل الدخول يتم من لوحة التحكم، ثم الرجوع إلى هنا.' : 'Sign in from the dashboard, then come back here.'}
         lang={lang}
         action={<Button onClick={() => window.location.assign('/admin')}>{ar ? 'تسجيل الدخول' : 'Sign in'}</Button>}
       />

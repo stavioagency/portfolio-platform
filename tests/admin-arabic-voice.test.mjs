@@ -21,9 +21,9 @@
 // one, and it is the form this file was actually written in.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { translations } from '../lib/translations.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -96,18 +96,22 @@ test('the matcher catches a command and spares its verbal noun', () => {
 });
 
 // ---------------------------------------------------------------------------
-// pages/admin.js writes a lot of Arabic INLINE, as `ar ? 'عربي' : 'English'`,
-// which never passes through lib/translations.js. Guarding only the string
-// table therefore missed 35 literals — four of which were still painting a
-// command on a client's screen after the table had been cleaned. This half of
-// the guard reads the source text, the way the other structural guards do.
+// THE WHOLE TREE, not just the string table.
+//
+// A great deal of Arabic is written INLINE, as `ar ? 'عربي' : 'English'`, and
+// never passes through lib/translations.js. Guarding only the table guarded
+// only half the product: a live check found commands still painting on screen
+// after the table had been cleaned, and a sweep then found 34 more outside
+// pages/admin.js — 22 of them in lib/onboarding-guide.js, which is the
+// step-by-step guide a brand new client reads first.
 //
 // SCOPE, deliberately: principle 11 protects THE CLIENT. The Console is the
 // operator's product, where §7.3 allows real vocabulary and the reader is
-// Feras, not a customer. Operator-only strings are pinned below rather than
-// rewritten — but they are pinned ONE BY ONE, so a new one has to be added
-// consciously instead of a whole file being waved through.
+// Feras rather than a customer. Operator-only strings are pinned below rather
+// than rewritten — ONE BY ONE, so a new one is a conscious act instead of a
+// whole file being waved through.
 const OPERATOR_PINNED = new Set([
+  // pages/admin.js — the owner's client-management surfaces
   'أدخل معرّفًا صالحًا',
   'أدخل معرّفًا صالحًا للمساحة',
   'هذا المعرّف محجوز، اختر غيره',
@@ -120,7 +124,31 @@ const OPERATOR_PINNED = new Set([
   'كل عميل هو مساحة وموقع واحد. اضغط عليه لإدارته دون تبديل مساحة العمل النشطة.',
   'سجّل دخوله من قبل',
   'جرّب بحثًا أو تصفية أخرى.',
+  // components/CredentialsHandoff.js — the owner hands credentials to a client
+  'اختر طريقة التسليم',
+  'لم يصل شيء إلى العنوان الجديد بعد — اختر طريقة تسليم',
+  'لم يُرسل بريد — اختر طريقة تسليم من الأسفل',
+  // lib/billing-errors.js — plan sync is an owner-only action
+  'الخطط غير مزامنة مع باي بال. اضغط "مزامنة الخطط مع باي بال" أولًا.',
+  // pages/console/index.js — the Console is the operator's product by definition
+  'هذه الشاشة ستنتقل إلى هنا من لوحة التحكم الحالية.',
 ]);
+
+function sourceFiles() {
+  const out = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!/node_modules|\.next|\.git/.test(full)) walk(full);
+        continue;
+      }
+      if (/\.(js|mjs)$/.test(entry.name)) out.push(full);
+    }
+  };
+  for (const r of ['pages', 'components', 'lib']) walk(join(ROOT, r));
+  return out;
+}
 
 function arabicLiterals(src) {
   const found = [];
@@ -133,21 +161,26 @@ function arabicLiterals(src) {
   return found;
 }
 
-test('no inline Arabic in pages/admin.js gives the client an order', () => {
-  const src = readFileSync(join(ROOT, 'pages/admin.js'), 'utf8');
-  const literals = arabicLiterals(src);
-  assert.ok(literals.length > 50, `expected the inline Arabic, saw ${literals.length}`);
-
+test('no Arabic anywhere in the tree gives the client an order', () => {
   const offences = [];
-  for (const text of literals) {
-    if ([...OPERATOR_PINNED].some((pin) => text.includes(pin))) continue;
-    for (const form of offendingForms(text)) {
-      offences.push(`"${text.slice(0, 70)}" contains «${form}»`);
+  let literals = 0;
+  for (const file of sourceFiles()) {
+    const rel = relative(ROOT, file);
+    // The string table has its own test above; skip it here to keep the
+    // failure message pointing at one place per string.
+    if (rel === 'lib/translations.js') continue;
+    for (const text of arabicLiterals(readFileSync(file, 'utf8'))) {
+      literals += 1;
+      if ([...OPERATOR_PINNED].some((pin) => text.includes(pin))) continue;
+      for (const form of offendingForms(text)) {
+        offences.push(`${rel}: "${text.slice(0, 60)}" contains «${form}»`);
+      }
     }
   }
+  assert.ok(literals > 200, `expected the tree's Arabic, saw ${literals}`);
   assert.deepEqual(offences, [],
-    'Client-facing Arabic in admin.js must be gender-neutral. Rewrite as a\n'
-    + 'verbal noun, a statement of state, or a passive. If the string is\n'
-    + 'genuinely operator-only, add it to OPERATOR_PINNED with that reasoning:\n  '
+    'Client-facing Arabic must be gender-neutral. Rewrite as a verbal noun, a\n'
+    + 'statement of state, or a passive. If the string is genuinely\n'
+    + 'operator-only, add it to OPERATOR_PINNED with that reasoning:\n  '
     + offences.join('\n  '));
 });
