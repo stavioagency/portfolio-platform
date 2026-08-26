@@ -53,6 +53,8 @@ import {
   QUEUE_IDS,
 } from '../../lib/studio/draft';
 import { studioStrings } from '../../lib/studio/strings';
+import FirstRun from './FirstRun';
+import { firstDraft, isUntouched } from '../../lib/studio/first-draft';
 import { mockDraft, mockPublished, mockEmpty, PERSONAS, MOCK_ADDRESS } from '../../lib/studio/mock-portfolio';
 
 export default function StudioHome({ lang = 'en' }) {
@@ -81,6 +83,11 @@ export default function StudioHome({ lang = 'en' }) {
 
   const s = studioStrings(lang);
   const state = publishState(draft, published, { offline });
+  // Blueprint §6.2, first row: an untouched client gets the three-step first
+  // run and NOTHING ELSE on the page. Not "all three steps done" — a client
+  // who has written a bio but added no photo has started, and dropping them
+  // back onto a blank slate would discard what they just did.
+  const firstRun = isUntouched(draft);
   const { count, parts } = useMemo(() => diff(draft, published), [draft, published]);
   const items = useMemo(
     () => queueItems(draft, { skipped, published }),
@@ -107,6 +114,24 @@ export default function StudioHome({ lang = 'en' }) {
     }
     setEditing(intent);
   }, []);
+
+  // A first-run step becomes the same kind of intent everything else does.
+  // There is no fourth destination invented for it: name and photo are the
+  // "you" panel, and a piece opens the first empty slot the client was handed.
+  // Reusing intents is what stops the first run becoming a second product with
+  // its own navigation.
+  const onFirstRunStep = useCallback((id) => {
+    if (id === 'piece') {
+      const slot = (draft.pieces || [])[0];
+      if (slot) { act({ panel: PANELS.PIECE, pieceId: slot.id, focus: 'name' }); return; }
+      act(intentForIndex('work'));
+      return;
+    }
+    // 'photo' never reaches here: FirstRun does not make that step a button
+    // while the Studio has no photo control. If that changes, this is where it
+    // routes.
+    act({ panel: PANELS.YOU, focus: 'name' });
+  }, [act, draft.pieces]);
 
   // Clicking the portfolio opens the panel for what was clicked.
   const onFieldClick = useCallback((field) => act(intentForField(field)), [act]);
@@ -212,6 +237,7 @@ export default function StudioHome({ lang = 'en' }) {
         <button type="button" onClick={() => { const d = mockDraft(); d.bioIsSuggestion = false; setDraft(d); setPublished(JSON.parse(JSON.stringify(d))); setOffline(false); }}>up to date</button>
         <button type="button" onClick={() => { const d = mockDraft(); setDraft(d); setPublished(null); setOffline(false); }}>never published</button>
         <button type="button" onClick={() => { setDraft(mockEmpty()); setPublished(null); setOffline(false); }}>empty</button>
+        <button type="button" onClick={() => { setDraft(firstDraft({ name: 'Noura Al-Harbi' })); setPublished(null); setOffline(false); setSkipped([]); }}>first run</button>
         <button type="button" onClick={() => setOffline((v) => !v)}>offline</button>
         {/* Persona fixtures — for judging the work layout against real
             disciplines, not part of the product. */}
@@ -354,9 +380,18 @@ export default function StudioHome({ lang = 'en' }) {
         </div>
       </div>
 
+      {/* Blueprint §5.4: the first run sits under the preview, which is
+          "already there, already showing the real empty portfolio". The queue
+          does not appear at all — there is nothing waiting for someone who has
+          not started, and a queue on an empty portfolio is a list of things
+          they have failed to do. */}
+      {firstRun && !editing && (
+        <FirstRun draft={draft} lang={lang} onStep={onFirstRunStep} />
+      )}
+
       {/* One thing at a time: while a panel is open the queue steps aside
           rather than competing with it. */}
-      {!editing && !indexOpen && (
+      {!firstRun && !editing && !indexOpen && (
         <AttentionQueue
           items={items}
           lang={lang}
@@ -383,9 +418,13 @@ export default function StudioHome({ lang = 'en' }) {
           </span>
         )}
         <span className="spacer" />
-        <button type="button" className="more" onClick={() => { setEditing(null); setIndexOpen((v) => !v); }}>
-          {s.everythingElse} <span aria-hidden="true">{rtl ? '←' : '→'}</span>
-        </button>
+        {/* Depth is reached, not displayed — and during the first run it is not
+            even offered. "Nothing else on the page" is the whole instruction. */}
+        {!firstRun && (
+          <button type="button" className="more" onClick={() => { setEditing(null); setIndexOpen((v) => !v); }}>
+            {s.everythingElse} <span aria-hidden="true">{rtl ? '←' : '→'}</span>
+          </button>
+        )}
       </footer>
 
       {toast && <div className="toast" role="status">{toast}</div>}
