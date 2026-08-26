@@ -1090,10 +1090,14 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
           the CSS can select on, which is honest about being a scope marker
           rather than pretending to be a multiplier.
 
-          While ownership is still resolving, isOwner is null: that renders as
-          the roomier client density, because guessing "operator" would flash
-          the tighter layout at a client and then reflow under them. */}
-      <main className="content" data-portal={isOwner === true ? 'console' : 'studio'}>
+          The split follows the SCREEN, not the viewer. It keyed off isOwner
+          first, which was wrong in a way only visible on the real thing: an
+          owner opening a client's Profile got the operator's tight density in
+          a client-shaped editor, and saw a different screen from the one their
+          client sees. Density is a property of the work being done. The two
+          list screens where an operator scans many objects are console; every
+          editor, whoever opens it, is studio. */}
+      <main className="content" data-portal={activeTab === 'clients' || activeTab === 'subscribers' ? 'console' : 'studio'}>
         {isOwner && <TenantSelector tenants={tenants} tenant={tenant} onChange={switchTenant} lang={lang} />}
 
         <div className={`work ${showPreview ? 'has-preview' : ''} ${previewOpen ? 'preview-open' : ''}`}>
