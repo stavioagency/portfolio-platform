@@ -91,9 +91,12 @@ const CONVERSIONS = [
   ['--text-secondary', '--action-ghost-fg'],
   ['--text-primary', '--action-ghost-fg-hover'],
   ['--danger-bg', '--action-danger-bg'],
-  ['--danger', '--action-danger-bg-hover'],
-  ['--danger', '--action-danger-fg'],
-  ['--danger-fg', '--action-danger-fg-hover'],
+  // Retargeted by design system §6.3 (destructive is outlined, never filled):
+  // the hover deepens the tint instead of going solid, and both inks are
+  // --danger-ink rather than a colour meant to sit on a solid fill.
+  ['--danger-border', '--action-danger-bg-hover'],
+  ['--danger-ink', '--action-danger-fg'],
+  ['--danger-ink', '--action-danger-fg-hover'],
   ['--danger-border', '--action-danger-border'],
   ['--accent', '--border-focus'],
   ['--bg-secondary', '--surface-card'],

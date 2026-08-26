@@ -30,9 +30,13 @@ export default function Input({
         }
         .ui-input::placeholder { color: var(--text-muted); }
         .ui-input:hover:not(:disabled) { border-color: var(--text-muted); }
+        /* Design system §6.7: focus is --border-focus PLUS a 2px --brand-focus
+           ring, and the focus indicator is never removed. The ring is a
+           box-shadow rather than an outline so it follows the field's radius. */
         .ui-input:focus {
           outline: none;
           border-color: var(--border-focus);
+          box-shadow: 0 0 0 2px var(--brand-focus);
         }
         /* The disabled surface stays on --bg-secondary: DS-2 declined to create a
            --field-bg-disabled alias, so there is no semantic name to move it to. */

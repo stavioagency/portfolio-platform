@@ -1400,10 +1400,11 @@ function NavItem({ icon, label, active, onClick }) {
           opacity: 0;
           transition: opacity var(--transition);
         }
+        /* Design system §6.5: the active item goes to weight 700, not 600. */
         .nav-item.active {
           background: var(--bg-hover);
           color: var(--text-primary);
-          font-weight: 600;
+          font-weight: 700;
         }
         .nav-item.active .marker { opacity: 1; }
         .nav-item.active :global(.ui-icon) { color: var(--accent); }

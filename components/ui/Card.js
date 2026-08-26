@@ -29,7 +29,14 @@ export default function Card({
         .pad-sm { padding: var(--space-3); }
         .pad-md { padding: var(--space-4); }
         .pad-lg { padding: var(--space-5); }
-        .elev { background: var(--surface-elevated); box-shadow: var(--shadow-sm); }
+        /* Design system §6.1: "A card with a border and a shadow and a contrasting
+           fill is three separations doing one job." An elevated card separates by
+           surface and shadow, so it drops the border. */
+        .elev {
+          background: var(--surface-elevated);
+          box-shadow: var(--shadow-sm);
+          border-color: transparent;
+        }
         .act { cursor: pointer; }
         .act:hover { border-color: var(--border-strong); background: var(--surface-hover); }
         .act:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }

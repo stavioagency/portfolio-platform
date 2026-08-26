@@ -278,10 +278,18 @@
   --action-ghost-bg-hover: var(--bg-hover);
   --action-ghost-fg: var(--text-secondary);
   --action-ghost-fg-hover: var(--text-primary);
+  /* Design system §6.3: "Destructive is outlined, never filled ... It escalates
+     to a filled red only inside a confirmation dialog, where it is the point."
+     The resting state was already a 12% tint behind a border, which reads as
+     outlined. The hover was a SOLID --danger, which is the filled red the spec
+     forbids outside a confirm. It now deepens the tint instead, and the ink stays
+     --danger-ink rather than the near-black meant to sit on a solid fill.
+     Supersedes the DS-3 mapping for these two aliases; the pins in
+     tests/semantic-conversion.test.mjs are updated to match. */
   --action-danger-bg: var(--danger-bg);
-  --action-danger-bg-hover: var(--danger);
-  --action-danger-fg: var(--danger);
-  --action-danger-fg-hover: var(--danger-fg);
+  --action-danger-bg-hover: var(--danger-border);
+  --action-danger-fg: var(--danger-ink);
+  --action-danger-fg-hover: var(--danger-ink);
   --action-danger-border: var(--danger-border);
 
   /* Text — only the one role the platform does not already name. */
