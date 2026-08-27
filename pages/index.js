@@ -3,7 +3,7 @@ import Head from 'next/head';
 import { supabase } from '../lib/supabase';
 import { getTranslator } from '../lib/translations';
 import { pick } from '../lib/i18n';
-import { resolveTenant } from '../lib/tenant';
+import { fetchPublicPortfolio } from '../lib/tenant';
 import { privacyContent, termsContent } from '../lib/legal-content';
 import { BRAND_ICONS, normalizeIcon, brandColor } from '../lib/brand-icons';
 import { safeUrl } from '../lib/safe-url';
@@ -60,6 +60,9 @@ export default function Home({ slug = null } = {}) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  // Distinct from notFound: the lookup itself failed. A paying client must not
+  // be told their site does not exist because of a transient error.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [lang, setLang] = useState('ar');
   // Captured on the FIRST RENDER, before the persist effect below can run. That
   // effect used to fire on mount with the default 'ar' and overwrite the stored
@@ -96,43 +99,37 @@ export default function Home({ slug = null } = {}) {
 
   async function loadData() {
     try {
-      // Resolve the active tenant by host, then by slug. Fails safe to NO_TENANT
-      // on any error, so a lookup failure 404s instead of guessing.
-      const tenant = await resolveTenant({
+      // ONE read, server-gated. get_public_portfolio() resolves the tenant,
+      // checks status and entitlement inside Postgres, and returns only the
+      // PUBLISHED snapshot. The draft tables are no longer readable by anon,
+      // so this is the whole public data path now (section-q).
+      const { ok, portfolio } = await fetchPublicPortfolio({
         supabase,
         host: typeof window !== 'undefined' ? window.location.hostname : '',
         slug,
       });
-      // Anything we could not resolve to exactly one tenant is a 404 — a mapped
-      // host whose tenant is disabled ('blocked'), an explicit slug that does not
-      // exist, or a host that is not mapped at all ('none', which includes the
-      // bare Vercel URL). Tenants are separate sites: if we cannot say WHICH one
-      // was asked for, we must not render someone else's portfolio. This used to
-      // fall back to profile.id = 1, which served whichever client owned that row.
-      if (tenant.mode !== 'tenant' || !tenant.id) { setNotFound(true); return; }
 
-      // Past this point a tenant is always resolved, so every read below is
-      // scoped to it and analytics are always stamped with a real tenant_id.
-      setTenantId(tenant.id);
+      // The lookup failed rather than resolving to nothing. Say so instead of
+      // rendering a 404 over a working, paid-for site.
+      if (!ok) { setLoadFailed(true); return; }
 
-      // --- Profile ---
-      const { data: profileData } = await supabase
-        .from('profile').select('*').eq('tenant_id', tenant.id).maybeSingle();
+      // Resolved to nothing: unknown slug/host, disabled workspace, lapsed
+      // subscription, or never published. All 404 alike, deliberately — telling
+      // them apart would leak which slugs exist.
+      if (!portfolio) { setNotFound(true); return; }
 
-      // --- Projects ---
-      const { data: projectsData } = await supabase
-        .from('projects').select('*').eq('tenant_id', tenant.id)
-        .order('display_order', { ascending: true });
+      setTenantId(portfolio.tenant_id || null);
 
-      // NOTE (mt): analytics inserts stamp `tenant_id` from the resolved tenant
-      // (see the page_view effect and logEvent).
+      // The snapshot carries the same field names the tables did, so everything
+      // downstream of here is unchanged.
+      const profileData = portfolio.profile || null;
+      const projectsData = Array.isArray(portfolio.projects) ? portfolio.projects : [];
 
       if (profileData) {
         setProfile(profileData);
-        // A visitor's own choice wins; otherwise this tenant's default.
         setLang(storedLangRef.current || profileData.default_lang || 'ar');
       }
-      if (projectsData) setProjects(projectsData);
+      setProjects(projectsData);
     } catch (e) {
       console.error(e);
     } finally {
@@ -322,6 +319,26 @@ export default function Home({ slug = null } = {}) {
             .skel-card { padding: 16px; border-radius: var(--card-radius, 20px); }
           }
         `}</style>
+      </div>
+    );
+  }
+
+  // The lookup failed rather than resolving to nothing. A 404 here would tell a
+  // paying client their site does not exist because a request blipped, so this
+  // says what is actually true and offers a retry.
+  if (loadFailed) {
+    return (
+      <div dir={dir} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, color: 'var(--text-secondary)' }}>
+        <p style={{ fontSize: 15, maxWidth: 420, lineHeight: 1.7, marginBottom: 16 }}>
+          {lang === 'ar' ? 'تعذّر تحميل الموقع الآن. قد يكون الاتصال بطيئًا.' : 'This site could not be loaded right now. The connection may be slow.'}
+        </p>
+        <button
+          type="button"
+          onClick={() => { setLoadFailed(false); setLoading(true); loadData(); }}
+          style={{ padding: '10px 18px', minHeight: 44, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', font: 'inherit', fontWeight: 600, cursor: 'pointer' }}
+        >
+          {lang === 'ar' ? 'إعادة المحاولة' : 'Try again'}
+        </button>
       </div>
     );
   }

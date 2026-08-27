@@ -872,6 +872,37 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   const TENANT_LS_KEY = 'admin_selected_tenant';
   const t = getTranslator(lang);
   const ar = lang === 'ar';
+
+  // PUBLISH — pushes the current draft to the public site (section-q).
+  //
+  // Since the public renderer reads tenants.published_snapshot rather than the
+  // profile/projects rows, saving alone no longer changes what visitors see.
+  // This is the step that does. publish_tenant() carries its own authorization
+  // (can_edit_tenant), so an unentitled workspace is refused by the database
+  // rather than by hiding the button.
+  const [publishing, setPublishing] = useState(false);
+  const [publishedMsg, setPublishedMsg] = useState('');
+  async function publishSite() {
+    if (!tenant?.id || publishing) return;
+    setPublishing(true);
+    setPublishedMsg('');
+    try {
+      const { error } = await supabase.rpc('publish_tenant', { tid: tenant.id });
+      if (error) {
+        // 42501 is the entitlement/permission refusal; anything else is a fault.
+        setPublishedMsg(error.code === '42501'
+          ? (ar ? 'النشر يحتاج اشتراكًا نشطًا.' : 'Publishing needs an active subscription.')
+          : (ar ? 'تعذّر النشر. يمكن المحاولة مرة أخرى.' : 'Could not publish. Try again.'));
+      } else {
+        setPublishedMsg(ar ? 'تم النشر' : 'Published');
+      }
+    } catch (e) {
+      setPublishedMsg(ar ? 'تعذّر النشر. يمكن المحاولة مرة أخرى.' : 'Could not publish. Try again.');
+    } finally {
+      setPublishing(false);
+      window.setTimeout(() => setPublishedMsg(''), 4000);
+    }
+  }
   const confirm = useConfirm();
 
   // Detect platform-owner status from the database (is_platform_owner). This only
@@ -1055,6 +1086,10 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
             <Icon name="external" size={13} mirror />
             {t('view_live_site')}
           </a>
+          <button type="button" className="publish-btn" onClick={publishSite} disabled={publishing}>
+            {publishing ? (ar ? 'جاري النشر…' : 'Publishing…') : (ar ? 'نشر التغييرات' : 'Publish changes')}
+          </button>
+          {publishedMsg && <div className="publish-msg" role="status">{publishedMsg}</div>}
         </div>
 
         <nav className="nav" aria-label={ar ? 'التنقّل' : 'Main'}>
@@ -1183,6 +1218,11 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         .sidebar-legal a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
         .view-site-btn { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: var(--space-3); padding: 7px 12px; background: var(--bg-hover); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-sm); font-weight: 600; text-decoration: none; transition: var(--transition); }
         .view-site-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+        .publish-btn { display: flex; align-items: center; justify-content: center; width: 100%; margin-top: var(--space-2); padding: 9px 12px; min-height: 40px; background: var(--accent); border: 1px solid var(--accent); border-radius: var(--radius-sm); color: var(--accent-fg); font-family: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer; transition: opacity var(--t-ui) var(--ease); }
+        .publish-btn:hover:not(:disabled) { opacity: 0.9; }
+        .publish-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .publish-btn:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+        .publish-msg { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--text-tertiary); text-align: center; }
         .signout-btn { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--text-tertiary); padding: 6px 0; background: none; border: none; cursor: pointer; font-family: inherit; }
         .signout-btn:hover { color: var(--text-primary); }
         .content { flex: 1; padding: var(--space-6) var(--space-8); overflow-y: auto; max-height: 100vh; }
