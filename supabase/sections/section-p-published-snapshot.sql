@@ -54,21 +54,48 @@
 -- a table would add a join to the hottest read path in the product to model a
 -- 1:1 relationship.
 --
--- THE COST, so nobody discovers it later: `tenants` is a narrow, frequently
--- scanned table and this puts a potentially large jsonb on it. Postgres TOASTs
--- an oversized value out of line, so `select id, slug, status from tenants`
--- does not read it — but `select *` does, and the admin's workspace switcher
--- does exactly that. If that becomes measurable, the fix is a separate table,
--- and moving it is a mechanical change to one function and one read.
+-- THE COST, stated accurately rather than dramatically. `tenants` is a narrow,
+-- frequently scanned table and this puts a potentially large jsonb on it.
+-- Postgres stores an oversized jsonb out of line (TOAST) and does not read it
+-- unless the column is actually selected.
+--
+-- AS OF THIS MIGRATION, NO APPLICATION READ SELECTS IT. Every read of `tenants`
+-- in the codebase names its columns:
+--   pages/admin.js:942   .select('id, slug, name, status')   -- workspace switcher
+--   pages/admin.js:4872  .select('id,handed_over_at')
+--   lib/tenant.js:237    .select('id, slug, status')         -- public site path
+-- The only unqualified .select() against tenants is the insert-returning at
+-- pages/admin.js:3333, which returns ONE freshly created row whose snapshot is
+-- NULL. So the practical cost today is zero, and the concern is future: a later
+-- `select *` would start paying for it. If that ever measures, the fix is a
+-- separate table, and moving it is a mechanical change to one function and one
+-- read.
+--
+-- (An earlier draft of this file claimed the workspace switcher used `select *`.
+-- It does not. Corrected after review rather than left to mislead.)
 --
 --
 -- SECURITY MODEL
 -- --------------
--- The snapshot is written ONLY by publish_tenant(), never by a direct UPDATE.
--- That is the pattern SCHEMA.sql already describes for the billing tables:
--- "every write is a function or an edge function". There is deliberately no
--- UPDATE policy for the column, so a client cannot hand-craft a snapshot that
--- differs from their own draft.
+-- publish_tenant() is the INTENDED publish path. It is not the only technically
+-- possible writer, and the distinction matters -- PostgreSQL RLS is ROW-level,
+-- not column-level, so nothing here protects these two columns specifically.
+--
+-- What actually protects them, precisely:
+--   * `tenants` INSERT/UPDATE/DELETE is gated by is_platform_owner()
+--     (SCHEMA.sql, ROW LEVEL SECURITY section). An ordinary client is not a
+--     platform owner, so they have NO update on `tenants` at all -- and
+--     therefore cannot write published_snapshot or published_at directly, nor
+--     hand-craft a snapshot that differs from their own draft.
+--   * A PLATFORM OWNER can update those columns directly, bypassing this
+--     function entirely. That is accepted: an operator can already edit every
+--     content row in the database, and closing it would mean a column-level
+--     grant that the rest of this schema does not use.
+--
+-- The function is still the only path that GUARANTEES the snapshot matches the
+-- draft, which is the property that matters. This follows the pattern SCHEMA.sql
+-- describes for the billing tables -- "every write is a function or an edge
+-- function" -- without overstating what the database enforces.
 --
 -- Publishing is gated by can_edit_tenant(), which is
 --   is_platform_owner() OR (is_tenant_admin(tid) AND tenant_has_active_subscription(tid))
@@ -128,7 +155,7 @@ alter table public.tenants
   add column if not exists published_at timestamptz;
 
 comment on column public.tenants.published_snapshot is
-  'The portfolio a visitor sees, serialised at publish time. NULL = never published. Written ONLY by publish_tenant(); there is no UPDATE policy for it. See section-p-published-snapshot.sql.';
+  'The portfolio a visitor sees, serialised at publish time. NULL = never published. publish_tenant() is the intended writer; clients cannot write it because tenants UPDATE is owner-only, but a platform owner technically can. See section-p-published-snapshot.sql.';
 
 comment on column public.tenants.published_at is
   'When published_snapshot was last written. NULL = never published.';
@@ -236,12 +263,29 @@ begin
          published_at = stamp
    where id = tid;
 
+  -- A publish that writes nothing must FAIL, never return a timestamp.
+  --
+  -- This function is SECURITY DEFINER, so it normally runs as the table owner
+  -- and bypasses RLS on `tenants` -- which is what lets it write a column whose
+  -- UPDATE policy is owner-only. If that ever stops being true (FORCE ROW LEVEL
+  -- SECURITY enabled on tenants, or the function recreated under a role that is
+  -- not the table owner), the UPDATE silently matches zero rows and the caller
+  -- is told the portfolio was published when nothing was written. The client
+  -- would see "published" over an unchanged site.
+  --
+  -- Cheap to check, and the failure it prevents is invisible otherwise.
+  if not found then
+    raise exception 'publish_tenant: tenant % was not updated -- 0 rows affected', tid
+      using errcode = '25000',
+            hint = 'Check pg_class.relforcerowsecurity for tenants and the owner of this function.';
+  end if;
+
   return stamp;
 end;
 $function$;
 
 comment on function public.publish_tenant(uuid) is
-  'Promotes the current draft (profile + projects) into tenants.published_snapshot. Gated by can_edit_tenant(). The ONLY writer of that column. See section-p-published-snapshot.sql.';
+  'Promotes the current draft (profile + projects) into tenants.published_snapshot. Gated by can_edit_tenant(). The INTENDED writer of that column; a platform owner can also update it directly. See section-p-published-snapshot.sql.';
 
 revoke all on function public.publish_tenant(uuid) from public;
 grant execute on function public.publish_tenant(uuid) to authenticated;
@@ -260,10 +304,25 @@ grant execute on function public.publish_tenant(uuid) to authenticated;
 --     from public.tenants;
 --   -- expected: 15 / 15  — applying must publish nothing by itself
 --
--- The function is owner-gated and refuses an unknown tenant:
+-- The function refuses an unknown tenant. READ THE EXPECTED ERROR CAREFULLY --
+-- it depends on WHO runs it, and the obvious guess is wrong:
 --
 --   select public.publish_tenant('00000000-0000-0000-0000-000000000000');
---   -- expected: ERROR  publish_tenant: not permitted for tenant …
+--
+--   As a PLATFORM OWNER (which is who will be running this):
+--     ERROR  publish_tenant: tenant 00000000-… has no profile to publish  (P0002)
+--   NOT "not permitted". can_edit_tenant() is
+--     is_platform_owner() OR (is_tenant_admin(tid) AND entitled)
+--   and is_platform_owner() ignores `tid` entirely, so the permission check
+--   PASSES for an owner against any uuid, real or not. Execution then reaches
+--   the profile-existence guard, which is what raises.
+--
+--   As a non-owner client:
+--     ERROR  publish_tenant: not permitted for tenant 00000000-…  (42501)
+--
+-- Both outcomes are correct. Seeing P0002 as an owner does NOT mean the
+-- authorization check is broken -- proving that path requires a non-owner
+-- session, which this block deliberately does not set up.
 --
 -- A real publish, run as an owner against the SAFE TEST WORKSPACE ONLY
 -- (OneCentTest — never a real client):
