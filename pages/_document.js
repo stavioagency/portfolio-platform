@@ -66,7 +66,7 @@ export default function Document() {
             __html:
               '(function(){try{' +
                 'var p=location.pathname.replace(/\\/+$/,"")||"/";' +
-                'if(p==="/admin"||p==="/console"||p==="/studio"||p==="/signup"||p==="/signup/verify"||p==="/subscribe"||p==="/reset-password"){' +
+                'if(p==="/admin"||p==="/signup"||p==="/signup/verify"||p==="/subscribe"||p==="/reset-password"){' +
                   'document.documentElement.setAttribute("data-admin-theme",localStorage.getItem("admin_theme")||"dark");' +
                 '}' +
               '}catch(e){}})();',

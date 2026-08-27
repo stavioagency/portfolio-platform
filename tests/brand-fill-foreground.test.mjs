@@ -143,18 +143,13 @@ test('raw white on the brand fill is measurably the defect, not a preference', (
 
 test('the sweep reaches the tree, and the decorative exemption is real', () => {
   const files = sources();
-  assert.ok(files.length >= 30, `only ${files.length} in-scope files walked`);
+  assert.ok(files.length >= 18, `only ${files.length} in-scope files walked`);
   const filled = filledRules();
-  assert.ok(filled.length >= 8, `only ${filled.length} brand-filled rules found — scan is broken`);
-  // The exemption must stay justified: the elements it covers must render no
-  // children. If OwnerBar's marks ever gain text they need an ink like the rest.
-  const owner = readFileSync(join(ROOT, 'components/studio/OwnerBar.js'), 'utf8');
-  for (const cls of ['diamond', 'dot']) {
-    assert.match(
-      owner,
-      new RegExp(`<span className="${cls}"[^>]*aria-hidden="true"\\s*/>`),
-      `OwnerBar .${cls} is no longer an empty decorative span — if it now renders `
-      + 'text it needs var(--brand-ink), and this exemption must be reconsidered',
-    );
-  }
+  // Was 8 while components/studio and components/shell existed; they carried
+  // several brand-filled rules and were deleted with the Studio/Console shells.
+  // Six is what the shipped product actually has.
+  assert.ok(filled.length >= 6, `only ${filled.length} brand-filled rules found — scan is broken`);
+  // The OwnerBar exemption that used to be checked here is gone with
+  // components/studio/. Nothing in the product now fills with the brand and
+  // renders text inside it without an ink, which is what this test is for.
 });

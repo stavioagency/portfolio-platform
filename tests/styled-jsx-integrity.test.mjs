@@ -105,8 +105,8 @@ test('the guard actually reached the styled-jsx blocks it claims to check', () =
   // so a broken walk or a changed tag spelling fails loudly instead of quietly.
   const files = sources();
   const found = templates();
-  assert.ok(files.length >= 40, `only ${files.length} .js files walked — the scan is broken`);
-  assert.ok(found.length >= 30, `only ${found.length} styled-jsx templates found — the scan is broken`);
+  assert.ok(files.length >= 25, `only ${files.length} .js files walked — the scan is broken`);
+  assert.ok(found.length >= 50, `only ${found.length} styled-jsx templates found — the scan is broken`);
   assert.ok(
     found.every((t) => t.inner === null || t.inner.length > 0),
     'a template was matched but read as empty',

@@ -19,6 +19,58 @@ log**, and never in this file.
 
 ---
 
+## 0. THE PRODUCT, AS IT ACTUALLY IS (2026-08-27)
+
+Read this before anything else in `docs/`, because several documents below were
+written for a product direction that was abandoned.
+
+**Designakum lets clients create and manage their portfolio, while the owner has
+a simple internal panel to manage those clients and their subscriptions.**
+
+Four surfaces, and there are only four:
+
+| Surface | Where | What it is |
+|---|---|---|
+| Marketing site | `designakum.com` | Separate. Not in this repo. Do not touch. |
+| Public portfolio | `designakum.site/<slug>` | What a client pays for; what visitors see |
+| Client editor | `designakum.site/admin` | A client signs in and edits THEIR portfolio |
+| Owner back office | `designakum.site/admin` (owner sign-in) | Sites + Subscribers: every client, their email, subscription, reset password, change login email, grant free access |
+
+`/console` redirects to `/admin`. It is a convenience URL, not a second product.
+
+### What was REMOVED on 2026-08-27, and why
+
+`pages/studio/`, `pages/console/` (the shell), `components/studio/`,
+`components/shell/`, `lib/studio/`, `lib/shell-nav.js`, `lib/shell-prefs.js`
+and their tests are **deleted**. They were an unbuilt second product — a
+"Studio" for clients and a "Console" for the owner — intended to eventually
+replace `/admin`. `/admin` already does both jobs and is live, so maintaining
+two half-answers to "where do I manage clients" cost more than it returned.
+
+**The editing model is: a client edits their portfolio and it is live.** There is
+no draft/publish step in the product.
+
+`tenants.published_snapshot`, `tenants.published_at` and `publish_tenant()`
+exist in the production database (migration `20260826200344`). **Nothing reads
+or calls them, and nothing is expected to.** They are inert and were left in
+place rather than dropped, because dropping columns on a live table to tidy up
+is a worse risk than carrying two unused nullable columns. If publishing is ever
+wanted, they are the head start; if not, they cost nothing.
+
+### Documents written for the abandoned direction
+
+Still present because they are referenced by tooling or record real decisions,
+but **they describe a product that does not exist**. Treat their Studio/Console
+sections as history, not as instructions:
+
+`product/designakum-blueprint.md` (§8.5 publishing, Studio) ·
+`architecture/published-snapshot.md` · `architecture/publishing-model.md` (deleted) ·
+`architecture/renderer-migration.md` · `architecture/renderer-contracts.md` ·
+`design/design.md` §6 · `design/next-step.md` ·
+`ux/designakum-design-system-final.md` §7
+
+---
+
 ## 1. What this is
 
 A multi-tenant SaaS that builds **bilingual (Arabic / English) portfolio
