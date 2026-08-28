@@ -191,13 +191,7 @@ function applyLang(lang) {
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
 }
 
-const BANNER_BGS = {
-  purple: { name: 'Purple',  gradient: 'linear-gradient(135deg, #7a72d6, #9FA7FF)' },
-  blue:   { name: 'Blue',    gradient: 'linear-gradient(135deg, #3b82f6, #06b6d4)' },
-  sunset: { name: 'Sunset',  gradient: 'linear-gradient(135deg, #ec4899, #f97316)' },
-  forest: { name: 'Forest',  gradient: 'linear-gradient(135deg, #10b981, #3b82f6)' },
-  dark:   { name: 'Dark',    gradient: 'linear-gradient(135deg, #1f2937, #374151)' },
-};
+// BANNER_BGS (the five text-banner gradients) went with BannerRow.
 
 const THEME_PRESETS = {
   midnight: { key: 'midnight', tokens: { accent: '#9FA7FF', bg: '#0a0a0c', surface: '#131318', text: '#ffffff', text_muted: 'rgba(255, 255, 255, 0.45)', border: 'rgba(255, 255, 255, 0.06)' } },
@@ -2015,17 +2009,6 @@ function CardEditor({ t, lang: uiLang }) {
   async function uploadBrandLogo(file) { const url = await uploadAsset('brand-logo', file); if (url) patch({ brand_logo: url }); }
   async function uploadFavicon(file)   { const url = await uploadAsset('favicon',    file); if (url) patch({ favicon_url: url }); }
 
-  function addBanner() { if ((profile.banners?.length || 0) >= 5) return; patch({ banners: [...(profile.banners || []), { id: newId(), type: 'text', text: emptyBilingual(), subtitle: emptyBilingual(), bg: 'purple', image_url: '' }] }); }
-  function updateBanner(id, u) { patch({ banners: profile.banners.map(b => b.id === id ? { ...b, ...u } : b) }); }
-  async function removeBanner(id) { if (!(await confirm(removeDialog(t)))) return; patch({ banners: profile.banners.filter(b => b.id !== id) }); }
-  function moveBanner(id, dir) { const a = [...profile.banners]; const i = a.findIndex(b => b.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ banners: a }); }
-  async function uploadBannerImage(bannerId, file) { const url = await uploadAsset(`banner-${bannerId}`, file); if (url) updateBanner(bannerId, { image_url: url }); }
-
-
-  function addButton() { patch({ cta_buttons: [...(profile.cta_buttons || []), { id: newId(), icon: 'whatsapp', label: emptyBilingual(), action: 'link', href: '' }] }); }
-  function updateButton(id, u) { patch({ cta_buttons: profile.cta_buttons.map(b => b.id === id ? { ...b, ...u } : b) }); }
-  async function removeButton(id) { if (!(await confirm(removeDialog(t)))) return; patch({ cta_buttons: profile.cta_buttons.filter(b => b.id !== id) }); }
-  function moveButton(id, dir) { const a = [...profile.cta_buttons]; const i = a.findIndex(b => b.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ cta_buttons: a }); }
 
   return (
     <div className="editor">
@@ -2040,56 +2023,23 @@ function CardEditor({ t, lang: uiLang }) {
       <p className="hint">{t('favicon_hint')}</p>
       <ImageUpload value={profile.favicon_url} onUpload={uploadFavicon} onClear={() => patch({ favicon_url: '' })} aspect={1} hint={t('img_hint_favicon')} t={t} />
 
-      <h2>{t('ticker_title')} <span className="meta">· {t('ticker_sub')} · {t('optional')}</span></h2>
-      <div className="card-row" style={{ maxWidth: 640 }}>
-        <div className="toggle-row" style={{ paddingTop: 0 }}>
-          <span>{t('ticker_enabled')}</span>
-          <button type="button" className={`switch ${profile.top_ticker?.enabled ? 'on' : ''}`} onClick={() => patchTicker({ enabled: !profile.top_ticker?.enabled })} aria-pressed={!!profile.top_ticker?.enabled} />
-        </div>
-        {profile.top_ticker?.enabled && (
-          <>
-            <div className="row-grid-2">
-              <Field id="ticker-text" label={t('ticker_text')}>
-                <input id="ticker-text" value={pick(profile.top_ticker.text, lang)} onChange={(e) => patchTicker({ text: setLangValue(profile.top_ticker.text, lang, e.target.value) })} placeholder={lang === 'ar' ? 'متاح لمشاريع جديدة · تواصل معي' : 'Available for new projects · contact me'} />
-              </Field>
-              <Field id="ticker-speed" label={t('ticker_speed')}>
-                <select id="ticker-speed" value={profile.top_ticker.speed || 'medium'} onChange={(e) => patchTicker({ speed: e.target.value })}>
-                  <option value="slow">{t('ticker_speed_slow')}</option>
-                  <option value="medium">{t('ticker_speed_medium')}</option>
-                  <option value="fast">{t('ticker_speed_fast')}</option>
-                </select>
-              </Field>
-            </div>
-            <div className="row-grid-2" style={{ marginTop: 10 }}>
-              <Field id="ticker-bg" label={t('ticker_bg')}>
-                <input id="ticker-bg" type="color" value={profile.top_ticker.bg_color || '#9FA7FF'} onChange={(e) => patchTicker({ bg_color: e.target.value })} />
-              </Field>
-              <Field id="ticker-text-color" label={t('ticker_text_color')}>
-                <input id="ticker-text-color" type="color" value={profile.top_ticker.text_color || '#0a0a0c'} onChange={(e) => patchTicker({ text_color: e.target.value })} />
-              </Field>
-            </div>
-            {/* live preview */}
-            <div style={{ marginTop: 12, background: profile.top_ticker.bg_color || '#9FA7FF', color: profile.top_ticker.text_color || '#0a0a0c', padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500, overflow: 'hidden', whiteSpace: 'nowrap' }}>
-              {pick(profile.top_ticker.text, lang) || pick(profile.top_ticker.text, 'en') || (lang === 'ar' ? 'معاينة نص الشريط...' : 'Preview of ticker text...')}
-            </div>
-          </>
-        )}
-      </div>
+      {/* THE TICKER AND THE BANNERS WERE EDITED HERE, AND ARE GONE.
 
-      <h2>{t('banners_title')} <span className="meta">· {t('banners_sub')} · {(profile.banners?.length || 0)}/5</span></h2>
-      {profile.banners?.map((b, i) => (
-        <BannerRow key={b.id} banner={b} lang={lang} onChange={(u) => updateBanner(b.id, u)} onRemove={() => removeBanner(b.id)} onUp={() => moveBanner(b.id, -1)} onDown={() => moveBanner(b.id, 1)} canUp={i > 0} canDown={i < profile.banners.length - 1} uploadImage={(f) => uploadBannerImage(b.id, f)} t={t} />
-      ))}
-      {(profile.banners?.length || 0) < 5 && <Button variant="secondary" size="sm" onClick={addBanner}>+ {t('banner_add')}</Button>}
+          The ticker was a marquee across the top of the page, scrolling
+          forever. The banners were promotional images sitting above the work,
+          which a visitor read as the client's work when it was not.
 
+          Neither is rendered by the portfolio any more, so these were controls
+          for things that no longer happen — the worst kind of setting, because
+          the client changes one and nothing moves. profile.top_ticker and
+          profile.banners are still in the database, untouched.
+
+          THE BUTTONS MOVED to the Contact tab, where the contact icons already
+          were. They are the same three fields — an icon, a label and a URL —
+          and having them in two places is why one client entered four social
+          profiles as unlabelled buttons: they found this tab first. */}
       <h2>{t('facts_title')} <span className="meta">· {t('facts_sub')}</span></h2>
       <QuickFacts profile={profile} patch={patch} t={t} lang={lang} />
-
-      <h2>{t('buttons_title')} <span className="meta">· {t('buttons_sub')}</span></h2>
-      {profile.cta_buttons?.map((b, i) => (
-        <ButtonRow key={b.id} btn={b} lang={lang} onChange={(u) => updateButton(b.id, u)} onRemove={() => removeButton(b.id)} onUp={() => moveButton(b.id, -1)} onDown={() => moveButton(b.id, 1)} canUp={i > 0} canDown={i < profile.cta_buttons.length - 1} t={t} />
-      ))}
-      <Button variant="secondary" size="sm" onClick={addButton}>+ {t('button_add')}</Button>
 
       <h2>{t('footer_title')} <span className="meta">· {t('footer_sub')} · {t('optional')}</span></h2>
       <div className="card-row" style={{ maxWidth: 640 }}>
@@ -2107,74 +2057,10 @@ function CardEditor({ t, lang: uiLang }) {
   );
 }
 
-function BannerRow({ banner, lang, onChange, onRemove, onUp, onDown, canUp, canDown, uploadImage, t }) {
-  const previewText = pick(banner.text, lang) || pick(banner.text, 'en') || pick(banner.text, 'ar');
-  const previewSub = pick(banner.subtitle, lang) || pick(banner.subtitle, 'en') || pick(banner.subtitle, 'ar');
-  return (
-    <div className="card-row">
-      <div className="row-head">
-        <div className="row-tabs">
-          <button type="button" className={banner.type === 'text' ? 'active' : ''} onClick={() => onChange({ type: 'text' })}>{t('banner_type_text')}</button>
-          <button type="button" className={banner.type === 'image' ? 'active' : ''} onClick={() => onChange({ type: 'image' })}>{t('banner_type_image')}</button>
-        </div>
-        <div className="row-actions">
-          <button type="button" className="x-small" disabled={!canUp} onClick={onUp} aria-label={t('move_up')}>↑</button>
-          <button type="button" className="x-small" disabled={!canDown} onClick={onDown} aria-label={t('move_down')}>↓</button>
-          <button type="button" className="x-small" onClick={onRemove} aria-label={t('remove')}>×</button>
-        </div>
-      </div>
-      {banner.type === 'text' ? (
-        <>
-          <div className="row-grid-2">
-            <Field id={`b-text-${banner.id}`} label={t('banner_text')}>
-              <input id={`b-text-${banner.id}`} value={pick(banner.text, lang)} onChange={(e) => onChange({ text: setLangValue(banner.text, lang, e.target.value) })} placeholder={lang === 'ar' ? 'أهلاً وسهلاً' : 'Welcome'} />
-            </Field>
-            <Field id={`b-sub-${banner.id}`} label={t('banner_subtitle')}>
-              <input id={`b-sub-${banner.id}`} value={pick(banner.subtitle, lang)} onChange={(e) => onChange({ subtitle: setLangValue(banner.subtitle, lang, e.target.value) })} placeholder={t('optional')} />
-            </Field>
-          </div>
-          <Field id={`b-bg-${banner.id}`} label={t('banner_bg')}>
-            <select id={`b-bg-${banner.id}`} value={banner.bg || 'purple'} onChange={(e) => onChange({ bg: e.target.value })}>
-              {Object.entries(BANNER_BGS).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
-            </select>
-          </Field>
-          <div className="banner-preview" style={{ background: BANNER_BGS[banner.bg || 'purple'].gradient }}>
-            <div className="banner-text">{previewText || '...'}</div>
-            {previewSub && <div className="banner-sub">{previewSub}</div>}
-          </div>
-        </>
-      ) : (
-        <Field id={`b-img-${banner.id}`} label={t('banner_upload')}>
-          <ImageUpload value={banner.image_url} onUpload={uploadImage} onClear={() => onChange({ image_url: '' })} aspect={3/2} hint={t('img_hint_banner')} t={t} />
-        </Field>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// QUICK FACTS — the three things under the client's work.
-//
-// This replaces three free-text {value,label} rows and a manual availability
-// switch. What the clients typed into those rows is the whole argument for the
-// change: every one of them used a slot for "am I available", by hand, and
-// nothing ever expired it. One of them said "no" and had said "no" for months.
-//
-// So each slot has ONE meaning and a control that cannot be misused:
-//   * the rating is CHOSEN from a list, so it cannot become a sentence;
-//   * the client count is a number, and there is no label to write beside it;
-//   * availability is derived from working hours and is never typed at all.
-//
-// The labels are gone from the portfolio -- the icon says what the number is --
-// so there is nothing here to translate, and this whole block is the same in
-// both languages. That is most of why it is short.
-// ---------------------------------------------------------------------------
-
-// 5.0 down to 3.0. Below 3 nobody advertises, and a list that runs to 1.0 is a
-// list where a mis-click is a disaster. One decimal, because "4.9" is the thing
-// people write and "4" beside a neighbour's "4.9" reads as a different unit.
-const RATING_CHOICES = Array.from({ length: 21 }, (_, i) => Number((5 - i * 0.1).toFixed(1)));
-
+// BannerRow was here. The banners it edited are not rendered by the portfolio
+// any more — the image band shows the client's WORK now, not a promotional
+// graphic sitting above it — so this was an editor for something that no
+// longer happens.
 function QuickFacts({ profile, patch, t, lang }) {
   const hours = profile.hours || null;
   const days = Array.isArray(hours?.days) ? hours.days : [];
@@ -2662,6 +2548,13 @@ function LinksEditor({ t, lang: uiLang }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [links, setLinks] = useState([]);
+  // The buttons moved here from the Home Page tab. They are the SAME three
+  // fields as a link — an icon, a label and a URL — and keeping them on a
+  // different screen is why one client entered four social profiles as
+  // unlabelled buttons: they found that tab first. Two lists, one screen, and
+  // the difference between them is now stated on the page instead of implied
+  // by which tab you happened to open.
+  const [buttons, setButtons] = useState([]);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
@@ -2674,15 +2567,17 @@ function LinksEditor({ t, lang: uiLang }) {
 
   useEffect(() => { load(); }, []);
   async function load() {
-    const { data } = await loadProfile(tenant, 'custom_links');
+    const { data } = await loadProfile(tenant, 'custom_links, cta_buttons');
     setLinks(data?.custom_links || []);
+    setButtons(data?.cta_buttons || []);
     setLoading(false);
   }
   function patch(next) { setLinks(next); setDirty(true); }
+  function patchButtons(next) { setButtons(next); setDirty(true); }
   async function save() {
     setSaving(true);
     try {
-      const { error } = await persistProfile(tenant, { custom_links: links });
+      const { error } = await persistProfile(tenant, { custom_links: links, cta_buttons: buttons });
       if (!error) { setSavedMsg(t('saved')); setDirty(false); }
       else { console.error(error); toast.error(t('save_failed')); }
     } catch (err) {
@@ -2693,6 +2588,15 @@ function LinksEditor({ t, lang: uiLang }) {
   function update(id, u) { patch(links.map(l => l.id === id ? { ...l, ...u } : l)); }
   async function remove(id) { if (!(await confirm(removeDialog(t)))) return; patch(links.filter(l => l.id !== id)); }
   function move(id, dir) { const a = [...links]; const i = a.findIndex(l => l.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch(a); }
+
+  // THREE, and the cap is the design rather than a limit on generosity. One
+  // client had six, all styled identically, and the card read as a wall. Three
+  // is enough to be useful and few enough that the eye ranks them.
+  const BUTTON_MAX = 3;
+  function addButton() { if (buttons.length >= BUTTON_MAX) return; patchButtons([...buttons, { id: newId(), icon: 'whatsapp', label: emptyBilingual(), action: 'link', href: '' }]); }
+  function updateButton(id, u) { patchButtons(buttons.map(b => b.id === id ? { ...b, ...u } : b)); }
+  async function removeButton(id) { if (!(await confirm(removeDialog(t)))) return; patchButtons(buttons.filter(b => b.id !== id)); }
+  function moveButton(id, dir) { const a = [...buttons]; const i = a.findIndex(b => b.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patchButtons(a); }
 
   return (
     <div className="editor">
@@ -2741,6 +2645,19 @@ function LinksEditor({ t, lang: uiLang }) {
           underneath it as a duplicate control. Only show it once a list exists. */}
       {!loading && links.length > 0 && (
         <Button variant="secondary" size="sm" onClick={add}>+ {t('add_link')}</Button>
+      )}
+
+      {/* THE BUTTONS. Same screen, stated difference: the list above is the row
+          of icons at the top of the card, this is the row of labelled buttons
+          at the bottom. Both are an icon, a label and a URL, which is exactly
+          why they belong side by side — a client comparing them can see which
+          one they want, instead of guessing from a tab name. */}
+      <h2>{t('buttons_title')} <span className="meta">· {t('buttons_sub')} · {buttons.length}/{BUTTON_MAX}</span></h2>
+      {!loading && buttons.map((b, i) => (
+        <ButtonRow key={b.id} btn={b} lang={lang} onChange={(u) => updateButton(b.id, u)} onRemove={() => removeButton(b.id)} onUp={() => moveButton(b.id, -1)} onDown={() => moveButton(b.id, 1)} canUp={i > 0} canDown={i < buttons.length - 1} t={t} />
+      ))}
+      {!loading && buttons.length < BUTTON_MAX && (
+        <Button variant="secondary" size="sm" onClick={addButton}>+ {t('button_add')}</Button>
       )}
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
@@ -3081,17 +2998,20 @@ function AnalyticsEditor({ t, lang }) {
             </div>
           )}
 
-          <div className="twocol">
-            <BarChartCard title={t('top_projects')} rows={topProjects} />
-            <BarChartCard title={t('contact_clicks')} rows={topLinks} />
-          </div>
+          {/* FIVE BLOCKS WERE REMOVED HERE: top work, contact clicks broken
+              down by platform, top referrers, visitors by country, and a log of
+              recent visits.
 
-          <div className="twocol">
-            <TableCard title={t('top_referrers')} headLabel={t('source')} headValue={t('visits')} rows={topReferrers} />
-            <TableCard title={t('visitors_by_country')} headLabel={t('country')} headValue={t('visits')} rows={topCountries} />
-          </div>
+              The client's question is "did anyone look, and is it getting
+              better". Four numbers and a line answer it. A referrer table and a
+              country breakdown answer a question a freelance designer is not
+              asking, and they turned a reassuring screen into a report.
 
-          <TableCard title={t('recent_visits')} headLabel={t('time')} headValue={t('country')} rows={recentVisits} />
+              THE EVENTS ARE STILL COLLECTED — referrer, country and user agent
+              are all still written on every page view, and 2,191 of them exist.
+              Nothing is being thrown away; it is not being shown. Putting a
+              block back is a query away, which is the right shape for a
+              decision that might be reversed. */}
         </>
       )}
 
