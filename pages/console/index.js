@@ -691,11 +691,28 @@ async function readFnBlock(error, t) {
   }
 }
 
+// A grant with days left says so, because "Free" was equally true of one that
+// never ends and one that ends on Thursday — and the second is the only one
+// that needs anybody to do something. daysLeft is null for a permanent grant,
+// so the two read differently without a second badge or a second column.
+const ENDING_SOON_DAYS = 14;
+function endingSoon(r) {
+  return r.billing.state === 'comped'
+    && typeof r.billing.daysLeft === 'number'
+    && r.billing.daysLeft <= ENDING_SOON_DAYS;
+}
 function accessLabel(r, t) {
-  if (r.billing.state === 'comped') return t('free');
+  if (r.billing.state === 'comped') {
+    // Latin digits in both languages, like every other number in the product.
+    return endingSoon(r) ? `${t('free')} · ${r.billing.daysLeft}d` : t('free');
+  }
   return statusLabel(r.billing.state, t('free') === 'Free' ? 'en' : 'ar');
 }
 function accessTone(r) {
+  // Amber only when it is time-bounded AND somebody can act on it, which is
+  // exactly what design.md reserves amber for. A permanent grant stays neutral
+  // accent; an expiring one is the one row worth looking at.
+  if (endingSoon(r)) return 'warning';
   if (r.billing.state === 'comped') return 'accent';
   return r.billing.entitled ? 'success' : 'neutral';
 }
