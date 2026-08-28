@@ -878,9 +878,13 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   // they came for; BillingEditor reads the same parameter and preselects it.
   // Anything else — including a plan code this build does not know — falls
   // through to the normal landing tab rather than opening an empty screen.
+  // Opens on the work, which is what the client came to change. `profile` and
+  // `billing` were the two landing tabs and neither exists any more: the first
+  // merged into `card`, the second into `account`. A checkout return still
+  // lands where the subscription is, which is now `account`.
   const [activeTab, setActiveTab] = useState(() => {
-    if (typeof window === 'undefined') return 'profile';
-    return planFromQuery(window.location.search) ? 'billing' : 'profile';
+    if (typeof window === 'undefined') return 'projects';
+    return planFromQuery(window.location.search) ? 'account' : 'projects';
   });
   const dirtyRef = useRef(false); // set by the mounted SaveBar via DirtyContext
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -941,15 +945,14 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
     return () => { cancelled = true; };
   }, [session]);
 
-  // Once we know the user is a CLIENT, land them on their Home (onboarding) screen
-  // instead of the raw Profile editor. Owners keep the Profile default.
+  // A TAB ID THAT NO LONGER EXISTS RENDERS NOTHING. The five deleted tabs can
+  // still arrive from a bookmarked ?plan= link, or from a browser that
+  // remembered one — and the panel would simply be blank, with the sidebar
+  // showing nothing selected. Map the old ids onto where their contents went.
+  const RETIRED_TABS = { home: 'projects', profile: 'card', billing: 'account', appearance: 'card', domains: 'account' };
   useEffect(() => {
-    if (isOwner === false) setActiveTab((prev) => (prev === 'profile' ? 'home' : prev));
-    // An owner has no Billing tab — it belongs to a workspace, and they
-    // administer many. Only reachable by an owner opening a ?plan= link that
-    // was meant for a client, which would otherwise render an empty panel.
-    if (isOwner === true) setActiveTab((prev) => (prev === 'billing' ? 'profile' : prev));
-  }, [isOwner]);
+    setActiveTab((prev) => RETIRED_TABS[prev] || prev);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The grouped nav is the single source of truth for tab labels, so the mobile
   // bar and the page header can never drift from the sidebar.
@@ -1175,7 +1178,10 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
           client sees. Density is a property of the work being done. The two
           list screens where an operator scans many objects are console; every
           editor, whoever opens it, is studio. */}
-      <main className="content" data-portal={activeTab === 'clients' || activeTab === 'subscribers' ? 'console' : 'studio'}>
+      {/* Every tab here is now an editor, so the density is always the client's.
+          The two list screens that wanted the operator's tighter density moved
+          to /console. */}
+      <main className="content" data-portal="studio">
         {isOwner && <TenantSelector tenants={tenants} tenant={tenant} onChange={switchTenant} lang={lang} />}
 
         <div className={`work ${showPreview ? 'has-preview' : ''} ${previewOpen ? 'preview-open' : ''}`}>
@@ -1190,16 +1196,22 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
                   : (ar ? 'معاينة مباشرة' : 'Live preview')}
               </button>
             )}
-            {activeTab === 'home'       && isOwner === false && <ClientHome key={tenantKey} lang={lang} onNavigate={navigate} />}
-            {activeTab === 'billing'    && isOwner === false && <BillingEditor     key={tenantKey} t={t} lang={lang} />}
-            {activeTab === 'profile'    && <ProfileEditor    key={tenantKey} t={t} lang={lang} />}
-            {activeTab === 'card'       && <CardEditor       key={tenantKey} t={t} lang={lang} />}
+            {/* FIVE TABS. `card` and `account` each render two editors, which
+                is the honest shape of a merge that has not been finished: the
+                two panels below `card` were the Profile and Home Page tabs, and
+                nobody could say which held what. They are one screen now even
+                though they are still two components. */}
             {activeTab === 'projects'   && <ProjectsEditor   key={tenantKey} t={t} lang={lang} />}
+            {activeTab === 'card'       && <><ProfileEditor  key={`${tenantKey}-p`} t={t} lang={lang} /><CardEditor key={`${tenantKey}-c`} t={t} lang={lang} /></>}
             {activeTab === 'links'      && <LinksEditor      key={tenantKey} t={t} lang={lang} />}
-            {activeTab === 'appearance' && <AppearanceEditor key={tenantKey} t={t} lang={lang} />}
             {activeTab === 'analytics'  && <AnalyticsEditor  key={tenantKey} t={t} lang={lang} />}
-            {activeTab === 'domains'    && <TenantAdminSection key={tenantKey} lang={lang} part="settings" />}
-            {activeTab === 'account'    && <AccountEditor    key={tenantKey} t={t} lang={lang} session={session} setChromeLang={setLang} />}
+            {activeTab === 'account'    && (
+              <>
+                <AccountEditor key={`${tenantKey}-a`} t={t} lang={lang} session={session} setChromeLang={setLang} />
+                {isOwner === false && <BillingEditor key={`${tenantKey}-b`} t={t} lang={lang} />}
+                <TenantAdminSection key={`${tenantKey}-w`} lang={lang} part="settings" />
+              </>
+            )}
           </div>
 
           {showPreview && previewOrigin && (
@@ -1503,8 +1515,11 @@ function NavItem({ icon, label, active, onClick }) {
 // control — grouping is the point, collapsing is not.
 function NavGroup({ label, children }) {
   return (
-    <div className="nav-group" role="group" aria-label={label}>
-      <div className="nav-group-label">{label}</div>
+    <div className="nav-group" role="group" aria-label={label || undefined}>
+      {/* A null label is a FLAT list, not an empty heading. The editor's
+          navigation is five items with no grouping (lib/admin-nav.js), and an
+          empty div here would still occupy its padding. */}
+      {label && <div className="nav-group-label">{label}</div>}
       {children}
       <style jsx>{`
         .nav-group-label {
@@ -2860,129 +2875,17 @@ function IconPickerModal({ selected, onPick, onClose, t }) {
 
 // =========================================================
 // Appearance Editor
-// =========================================================
-function AppearanceEditor({ t, lang }) {
-  const toast = useToast();
-  const [appearance, setAppearance] = useState({ theme: 'midnight', tokens: { ...THEME_PRESETS.midnight.tokens }, font_body: 'manrope', density: 'comfortable', radius: 'soft' });
-  const [saving, setSaving] = useState(false);
-  const [savedMsg, setSavedMsg] = useState('');
-  const [dirty, setDirty] = useState(false);
-  const { tenant } = useTenant();
-
-  useEffect(() => { load(); }, []);
-  async function load() {
-    const { data } = await loadProfile(tenant, 'appearance');
-    if (data?.appearance) {
-      setAppearance({
-        theme: data.appearance.theme || 'midnight',
-        tokens: { ...(THEME_PRESETS.midnight.tokens), ...(data.appearance.tokens || {}) },
-        font_body: data.appearance.font_body || 'manrope',
-        density: data.appearance.density || 'comfortable',
-        radius: data.appearance.radius || 'soft',
-      });
-    }
-  }
-  function patch(updates) { setAppearance(a => ({ ...a, ...updates })); setDirty(true); }
-  function patchTokens(updates) { setAppearance(a => ({ ...a, tokens: { ...a.tokens, ...updates } })); setDirty(true); }
-  function applyPreset(key) { setAppearance(a => ({ ...a, theme: key, tokens: { ...THEME_PRESETS[key].tokens } })); setDirty(true); }
-  async function save() {
-    setSaving(true);
-    try {
-      const { error } = await persistProfile(tenant, { appearance });
-      if (!error) { setSavedMsg(t('saved')); setDirty(false); }
-      else { console.error(error); toast.error(t('save_failed')); }
-    } catch (err) {
-      console.error(err); toast.error(t('save_failed'));
-    } finally { setSaving(false); }
-  }
-
-
-  return (
-    <div className="editor">
-      <PageHeader eyebrow={t('eyebrow_appearance')} title={t('appearance_title')} />
-
-      <h2>{t('theme_preset')}</h2>
-      <p className="hint">{t('theme_preset_hint')}</p>
-      <div className="preset-grid">
-        {Object.entries(THEME_PRESETS).map(([k, v]) => (
-          <button
-            key={k}
-            type="button"
-            className={`preset ${appearance.theme === k ? 'active' : ''}`}
-            onClick={() => applyPreset(k)}
-            aria-pressed={appearance.theme === k}
-          >
-            {/* a miniature of the real card, not a colour chip — see ThemePreview */}
-            <div className="preset-shot"><ThemePreview tokens={v.tokens} /></div>
-            <div className="preset-name">{t(`preset_${k}`)}</div>
-          </button>
-        ))}
-      </div>
-
-      <h2>{t('custom_colors')}</h2>
-      <div className="color-grid">
-        {[['bg', 'color_background'], ['surface', 'color_surface'], ['accent', 'color_accent'], ['text', 'color_text'], ['text_muted', 'color_text_muted'], ['border', 'color_border']].map(([k, lbl]) => (
-          <div key={k} className="color-item">
-            {/* The label is a sibling rather than a wrapper here, so the association
-                has to be explicit — same id/htmlFor pairing Field uses everywhere else
-                in this file. Without it the swatch announces only its value. */}
-            <input id={`color-${k}`} type="color" value={normalizeColor(appearance.tokens[k])} onChange={(e) => patchTokens({ [k]: e.target.value })} />
-            <label htmlFor={`color-${k}`}>{t(lbl)}</label>
-          </div>
-        ))}
-      </div>
-
-      <h2>{t('typography')}</h2>
-      <Field id="font-b" label={t('font_body')}>
-        <select id="font-b" value={appearance.font_body} onChange={(e) => patch({ font_body: e.target.value })}>
-          {FONT_OPTIONS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-        </select>
-      </Field>
-
-      <h2>{t('layout')}</h2>
-      <Field id="density" label={t('density')}>
-        <select id="density" value={appearance.density} onChange={(e) => patch({ density: e.target.value })}>
-          {DENSITY_OPTS.map(o => <option key={o.key} value={o.key}>{t(`density_${o.key}`)}</option>)}
-        </select>
-      </Field>
-      <Field id="radius" label={t('corner_roundness')}>
-        <select id="radius" value={appearance.radius} onChange={(e) => patch({ radius: e.target.value })}>
-          {RADIUS_OPTS.map(o => <option key={o.key} value={o.key}>{t(`roundness_${o.key}`)}</option>)}
-        </select>
-      </Field>
-
-      {/* The second preview that used to sit here is gone. It was an
-          <iframe src="/"> pointed at the ROOT, which resolves to no tenant on
-          designakum.site -- so it rendered a 404 next to a working preview and
-          made the screen look broken. The pane beside this editor is the real
-          one, and it is device-switchable already. */}
-
-      <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
-      <AdminStyles />
-      <style jsx>{`
-        .preset-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-5); max-width: var(--measure); }
-        .preset { background: var(--bg-secondary); border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: var(--space-2); cursor: pointer; text-align: center; transition: var(--transition); font-family: inherit; }
-        .preset:hover { border-color: var(--border-strong); }
-        .preset.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-        .preset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-        .preset-shot { border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); margin-bottom: var(--space-2); }
-        .preset-name { font-size: var(--text-sm); color: var(--text-secondary); padding-bottom: var(--space-1); }
-        .preset.active .preset-name { color: var(--text-primary); font-weight: 600; }
-        .color-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; max-width: 500px; margin-bottom: var(--space-4); }
-        .color-item { display: flex; align-items: center; gap: 10px; padding: 8px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); }
-        .color-item input[type="color"] { width: 36px; height: 36px; padding: 2px; border-radius: 6px; cursor: pointer; }
-        .color-item label { flex: 1; font-size: 12px; color: var(--text-secondary); }
-        .preview-shell { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; justify-content: center; }
-        @media (max-width: 720px) {
-          .preset-grid { grid-template-columns: repeat(2, 1fr); }
-          .color-grid { grid-template-columns: 1fr; }
-          .preview-shell { padding: 8px; }
-          .preview-shell :global(iframe) { height: 420px !important; }
-        }
-      `}</style>
-    </div>
-  );
-}
+// APPEARANCE WAS DELETED HERE (2026-08-28).
+//
+// A theme preset, free hex colours for six tokens, a font stack, a density and
+// a corner radius. Every one of them a way for a client to produce a portfolio
+// worse than the template, and together they are why f9designer's own site
+// rendered lilac from edge to edge: tokens.bg had been set to the accent and
+// nothing stopped it.
+//
+// The accent survives as the one thing a client picks, and pages/index.js reads
+// it directly from profile.appearance. The rest of that column is still in the
+// database, unread.
 
 function normalizeColor(v) {
   if (!v) return '#000000';
@@ -3527,6 +3430,22 @@ function DomainManager({ lang, isOwner }) {
 // Default 'all' keeps the original combined rendering.
 // `session` was dropped when the standalone create-workspace form went away — it
 // was only used to self-enrol the creator, which the Section F trigger now does.
+// WORKSPACE — now a section of the client's Account screen, not a tab.
+//
+// It was labelled "مساحة العمل" / "Workspace": developer vocabulary on a
+// client's own screen, for a tab holding their site address, a custom-domain
+// manager, and the button that closes their account.
+//
+// The tab is gone and the contents are not, because one of them is real. An
+// earlier pass deleted the whole component and took deleteWorkspace() with it —
+// a client's only way to close their own account — which is exactly the kind of
+// thing a navigation change must not quietly remove.
+//
+// STILL TO TRIM, deliberately not done in the same change as the nav: rename,
+// slug and suspend are the OWNER's controls and are already in /console, and
+// the custom-domain manager is UI for a feature with no domains table behind
+// it. Removing them is its own decision with its own reading of what a client
+// would lose.
 function TenantAdminSection({ lang, part = 'settings' }) {
   const confirm = useConfirm();
   const { tenant, setTenant, reloadTenants, isOwner } = useTenant();
@@ -3943,174 +3862,13 @@ function WebsiteGuide({ doneMap, onNavigate, lang }) {
 }
 
 // Client home / welcome screen — status, URL, completion, quick actions, checklist.
-function ClientHome({ lang, onNavigate }) {
-  const { tenant } = useTenant();
-  const ar = lang === 'ar';
-  const t = getTranslator(lang);
-  const [profile, setProfile] = useState(null);
-  const [projectCount, setProjectCount] = useState(0);
-  const [domains, setDomains] = useState([]);
-  const [loading, setLoading] = useState(true);
+// THE OVERVIEW SCREEN WAS DELETED HERE (2026-08-28).
+//
+// A second screen also called some version of "home", sitting above a tab
+// already called Home Page. It carried an onboarding checklist and a
+// subscription summary; the checklist is what the editor itself should make
+// obvious, and the subscription lives in the account.
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      const { data: p } = await loadProfile(tenant);
-      let pc = 0, dm = [];
-      if (tenant) {
-        const { count } = await supabase.from('projects').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id);
-        pc = count || 0;
-        const { data: d } = await supabase.from('tenant_domains').select('domain,is_primary,status').eq('tenant_id', tenant.id);
-        dm = d || [];
-      }
-      if (!cancelled) { setProfile(p || {}); setProjectCount(pc); setDomains(dm); setLoading(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [tenant]);
-
-  const setup = computeSetup({ profile, projectCount, domainCount: domains.length });
-  const name = pick(profile?.name, lang) || pick(profile?.name, 'en') || '';
-  const primary = domains.find((d) => d.is_primary) || domains[0];
-  const slugUrl = tenant ? `/${tenant.slug}` : '/';
-  const publicUrl = primary ? `https://${primary.domain}` : slugUrl;
-  const active = (tenant?.status || 'active') !== 'disabled';
-
-  return (
-    <div className="editor">
-      {/* §6.2: exactly one thing leads per screen — and exactly one screen gets
-          to be the lead screen. This is it, so `lead` (--text-4xl) appears here
-          and nowhere else in the portal.
-
-          The greeting dropped its waving emoji. The constitution rejects emoji
-          as iconography, and a premium product does not wave at you; the
-          welcome is carried by the person's own name at 44px instead.
-
-          The three figures below used to be three Cards. §6.4 is explicit: a
-          single value is a stat, not a card — the border was doing nothing the
-          band's own spacing does not. They are withheld entirely while loading,
-          because an em-dash and an empty bar are indistinguishable from "0%
-          done"; the skeleton says "not known yet", which is the truth. */}
-      <PageHeader
-        lead
-        eyebrow={t('eyebrow_home')}
-        title={name
-          ? (ar ? `مرحبًا ${name}` : `Welcome, ${name}`)
-          : (ar ? 'مرحبًا بك في منشئ موقعك' : 'Welcome to your portfolio builder')}
-        description={ar
-          ? 'موقعك جاهز ومباشر. أكمل الخطوات التالية لجعله رائعًا.'
-          : 'Your website is ready and live. Complete the steps below to make it shine.'}
-        summary={loading ? undefined : [
-          {
-            label: ar ? 'حالة الموقع' : 'Website status',
-            value: active ? (ar ? 'مباشر' : 'Live') : (ar ? 'معلّق' : 'Suspended'),
-            tone: active ? 'success' : 'danger',
-          },
-          { label: ar ? 'اكتمال الإعداد' : 'Setup complete', value: `${setup.percent}%` },
-          // "pieces", never "projects" — that is the table's name, not the
-          // product's word for the client's own work.
-          { label: ar ? 'أعمالك' : 'Pieces of work', value: projectCount },
-        ]}
-      />
-
-      {loading && (
-        <div className="ch-grid" aria-hidden="true">
-          {[0, 1, 2].map((i) => <Skeleton key={i} width="100%" height={64} radius="var(--radius-md)" />)}
-        </div>
-      )}
-
-      {/* The address stays its own row rather than joining the band: it is the
-          one thing here a person actually clicks, and a figure it is not. */}
-      <div className="ch-address">
-        <div className="ch-label">{ar ? 'رابط موقعك' : 'Your website'}</div>
-        <a className="ch-url" href={publicUrl} target="_blank" rel="noopener noreferrer" dir="ltr">{primary ? primary.domain : slugUrl}</a>
-        {primary ? (
-          <div className="ch-sub"><DomainStatusBadge status={primary.status} ar={ar} /></div>
-        ) : (
-          <button type="button" className="ch-link" onClick={() => onNavigate('account')}>
-            {ar ? 'ربط نطاق مخصص ←' : 'Connect a custom domain →'}
-          </button>
-        )}
-      </div>
-
-      <h2>{ar ? 'إجراءات سريعة' : 'Quick actions'}</h2>
-      <div className="ch-actions">
-        <button className="ch-action" onClick={() => onNavigate('profile')}><Icon name="user" size={16} />{ar ? 'تعديل الملف' : 'Edit profile'}</button>
-        <button className="ch-action" onClick={() => onNavigate('projects')}><Icon name="folder" size={16} />{ar ? 'إضافة مشروع' : 'Add project'}</button>
-        <button className="ch-action" onClick={() => onNavigate('appearance')}><Icon name="palette" size={16} />{ar ? 'تخصيص التصميم' : 'Customize design'}</button>
-        <button className="ch-action" onClick={() => onNavigate('account')}><Icon name="globe" size={16} />{ar ? 'ربط نطاق' : 'Connect domain'}</button>
-      </div>
-
-      {/* the whole "· 3/7" meta is withheld until the count is known — an
-          orphaned separator is worse than no separator */}
-      <h2>{ar ? 'أكمل موقعك' : 'Complete your website'}{!loading && <span className="meta">· {setup.done}/{setup.total}</span>}</h2>
-      {loading && (
-        // Mirrors the guide's own rhythm so the steps fade in place rather than
-        // pushing the page down when they arrive.
-        <div className="ch-guide-skel" aria-hidden="true">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} width="100%" height={64} radius="var(--radius-md)" />
-          ))}
-        </div>
-      )}
-      {!loading && (
-        <>
-          {/* Progress before the steps: seeing a filled bar is what makes the
-              remaining work feel finite rather than open-ended. */}
-          <div className="ch-progress" aria-hidden="true">
-            <div className="ch-progress-fill" style={{ width: `${setup.percent}%` }} />
-          </div>
-          <p className="hint" style={{ marginBottom: 14 }}>{
-            setup.done === setup.total
-              ? (ar ? 'اكتمل كل شيء. موقعك جاهز تمامًا للمشاركة 🎉' : 'Everything is done. Your site is ready to share 🎉')
-              : (ar
-                ? 'كل خطوة تشرح سبب أهميتها وكيفية تنفيذها. الخطوة المفتوحة هي التالية.'
-                : 'Each step explains why it matters and exactly how to do it. Start with the open one — that is your next move.')
-          }</p>
-          <WebsiteGuide
-            doneMap={Object.fromEntries(setup.items.map((i) => [i.key, i.done]))}
-            onNavigate={onNavigate}
-            lang={lang}
-          />
-        </>
-      )}
-
-      <AdminStyles />
-      <style jsx>{`
-        /* §5.3: one column width, from the token — 640px was one of three
-           hand-picked maxima competing across this file. */
-        .ch-guide-skel { display: flex; flex-direction: column; gap: var(--space-2); max-width: var(--measure); margin-bottom: var(--space-4); }
-        .ch-progress { height: 6px; border-radius: 999px; background: var(--bg-elevated); border: 1px solid var(--border); max-width: var(--measure); overflow: hidden; margin-bottom: var(--space-3); }
-        .ch-progress-fill { height: 100%; background: var(--accent); transition: width var(--t-enter) var(--ease); }
-        /* Only the loading skeleton still uses this grid; the three Cards it
-           used to hold are now figures in the header's summary band. */
-        .ch-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); max-width: var(--measure); margin-bottom: var(--space-5); }
-
-        .ch-address { max-width: var(--measure); margin-bottom: var(--space-6); }
-        /* The label uses the global .eyebrow treatment's job without its class,
-           because it labels a value rather than a screen. Weight carries it —
-           §3.3: a 12px/600 label is assertive where 14px/400 is a form field. */
-        .ch-label { font-size: var(--text-sm); font-weight: 600; color: var(--text-tertiary); margin-bottom: var(--space-1); }
-        .ch-url { font-size: var(--text-lg); font-weight: 700; color: var(--accent); text-decoration: none; word-break: break-all; }
-        .ch-url:hover { text-decoration: underline; }
-        .ch-url:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; border-radius: var(--radius-sm); }
-        .ch-sub { font-size: var(--text-sm); color: var(--text-tertiary); margin-top: var(--space-1); }
-        .ch-link { margin-top: var(--space-2); padding: 0; background: none; border: none; color: var(--accent); font-size: var(--text-sm); font-weight: 600; cursor: pointer; font-family: inherit; text-align: start; }
-        .ch-link:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; border-radius: var(--radius-sm); }
-
-        .ch-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); max-width: var(--measure); margin-bottom: var(--space-4); }
-        .ch-action { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); font-size: var(--text-md); font-weight: 600; cursor: pointer; font-family: inherit; color: var(--text-primary); min-height: 44px; transition: border-color var(--t-ui) var(--ease), background var(--t-ui) var(--ease); }
-        .ch-action:hover { border-color: var(--border-strong); background: var(--bg-hover); }
-        /* §4.4: press is faster than hover, and it is the one transform here. */
-        .ch-action:active { transition-duration: var(--t-press); transform: scale(0.98); }
-        .ch-action:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
-        @media (max-width: 720px) {
-          .ch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
-      `}</style>
-    </div>
-  );
-}
 // Sites and Subscribers used to live here: OwnerClientsOverview and
 // SubscribersOverview, the owner's client roster and billing list, plus the
 // ClientPanel and PendingRow surfaces and the helpers only they used. They

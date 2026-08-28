@@ -86,37 +86,31 @@ test('every label is associated with a control', () => {
   );
 });
 
-test('the Appearance colour swatches are each bound to their own label', () => {
-  const src = readFileSync('pages/admin.js', 'utf8');
-  const at = src.indexOf('className="color-item"');
-  assert.notEqual(at, -1, 'the colour-item row is gone');
-  const row = src.slice(at, src.indexOf('</div>', at));
-
-  // The input must carry an id, and it must be keyed on the map variable so each of
-  // the six swatches gets a distinct one — a constant id would collide six ways.
-  const input = openingTag(row, row.indexOf('<input')).tag;
-  const inputId = (input.match(/id=\{`([^`]+)`\}/) || [])[1];
-  assert.ok(inputId, 'the colour input has no templated id');
-  assert.match(inputId, /\$\{k\}/, 'the colour input id is not per-swatch — six controls would share one id');
-
-  const label = openingTag(row, row.indexOf('<label')).tag;
-  const labelFor = (label.match(/htmlFor=\{`([^`]+)`\}/) || [])[1];
-  assert.ok(labelFor, 'the colour label has no templated htmlFor');
-  assert.equal(labelFor, inputId, 'htmlFor and id do not match, so the label points at nothing');
-
-  // The decision was id/htmlFor, not aria-label; and no visible text was added.
-  assert.doesNotMatch(input, /aria-label/, 'aria-label was introduced instead of the project mechanism');
-  assert.match(label, /^<label/, 'the label element was replaced');
-});
+// The Appearance colour-swatch test stood here. It pinned six per-swatch
+// colour inputs to six templated htmlFor labels — the case where a constant id
+// would have collided six ways.
+//
+// The whole Appearance tab was deleted on 2026-08-28: a theme preset, free hex
+// for six tokens, a font stack, a density and a corner radius, every one of
+// them a way for a client to produce a portfolio worse than the template. So
+// there are no swatches to bind.
+//
+// THE RULE IT DEMONSTRATED IS NOT GONE, and it is the one worth writing down:
+// a control rendered in a LOOP needs an id derived from the loop variable, or
+// every iteration shares one id and every label points at the first. The
+// tree-wide sweep at the top of this file catches the label half of that; this
+// note is here so the id half is not rediscovered the hard way.
 
 test('the Field labelling convention is still the norm in admin.js', () => {
   const src = readFileSync('pages/admin.js', 'utf8');
   // Field is the project's explicit-association component; it renders
   // <label htmlFor={id}> against a matching input id.
-  // Was >= 40 while admin.js also held the two owner screens. Those moved to
-  // /console on 2026-08-27 and took ~1,200 lines with them; 45 Field uses
-  // remain in the client editor, which is what this guard is actually about.
-  assert.ok((src.match(/<Field\b/g) || []).length >= 40, 'the Field convention has been dismantled');
+  // A moving floor, and the reason it moves is recorded each time: >= 40 while
+  // admin.js held the two owner screens; they moved to /console on 2026-08-27.
+  // >= 25 since 2026-08-28, when the editor went from ten tabs to five and the
+  // Appearance and Overview screens were deleted outright. The guard is about
+  // the CONVENTION still being the norm, not about a particular count.
+  assert.ok((src.match(/<Field\b/g) || []).length >= 25, 'the Field convention has been dismantled');
   assert.match(readFileSync('pages/admin.js', 'utf8'), /<label htmlFor=\{id\}>/,
     'Field no longer renders an htmlFor label');
 
