@@ -33,11 +33,13 @@ export default function ConsolePage() {
 function Console() {
   const toast = useToast();
   const confirm = useConfirm();
-  const [phase, setPhase] = useState('loading');   // loading | denied | ready
+  const [phase, setPhase] = useState('loading');   // loading | signedout | denied | ready
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState(null);
   const [busy, setBusy] = useState('');
+  const [view, setView] = useState('clients');   // clients | archived
+  const [archived, setArchived] = useState([]);
 
   // Same stored preference the admin uses, applied on mount. _document.js
   // initialises it before paint; this keeps it correct after hydration and is
@@ -52,7 +54,12 @@ function Console() {
 
   async function boot() {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { window.location.replace('/admin'); return; }
+    // Bouncing straight to /admin made this look like it had no sign-in at all.
+    // Say what is happening instead. There is deliberately no sign-in FORM here:
+    // one login screen for the platform is the whole point, and it lives at
+    // /admin. (No ?next= — admin does not read one, and a dead parameter is
+    // worse than an honest link.)
+    if (!session) { setPhase('signedout'); return; }
     // The database decides. This call returns false for every client.
     const { data: isOwner } = await supabase.rpc('is_platform_owner');
     if (isOwner !== true) { setPhase('denied'); return; }
@@ -70,6 +77,9 @@ function Console() {
     ]);
     const subByTenant = new Map((subs || []).map((s) => [s.tenant_id, s]));
     const memberByTenant = new Map((members || []).filter((m) => m.tenant_id).map((m) => [m.tenant_id, m]));
+    const { data: gone } = await supabase
+      .from('deleted_clients').select('*').order('deleted_at', { ascending: false });
+    setArchived(gone || []);
     setRows((tenants || []).map((t) => ({
       ...t,
       billing: deriveBilling(subByTenant.get(t.id)),
@@ -158,11 +168,53 @@ function Console() {
     }, 'Free access revoked.');
   }
 
+  // Removes the workspace and the client's login outright. The Edge Function
+  // re-checks ownership, refuses while a subscription could still be charged,
+  // and requires the slug back as confirmation -- none of which is enforced
+  // here, because a delete must not trust the browser.
+  async function deleteClient(row) {
+    const typed = window.prompt(
+      `This permanently deletes ${row.name || row.slug}, their portfolio and their login.\n`
+      + 'Their email becomes free to sign up with again. This cannot be undone.\n\n'
+      + `Type the address to confirm: ${row.slug}`,
+    );
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== row.slug.toLowerCase()) {
+      toast.error('That did not match. Nothing was deleted.');
+      return;
+    }
+    await run(`del:${row.id}`, async () => {
+      const { data, error } = await supabase.functions.invoke('delete-client', {
+        body: { tenant_id: row.id, confirm_slug: typed.trim() },
+      });
+      if (error) {
+        // The function returns 409 with the state when money is still live.
+        const detail = await readFnError(error);
+        return detail || 'Could not delete this client';
+      }
+      return data?.error || null;
+    }, 'Client deleted. Their email is free to use again.');
+    setOpenId(null);
+  }
+
   // ---- render ---------------------------------------------------------------
 
   if (phase === 'loading') {
     return <Shell><div className="skel">{[0,1,2,3,4].map((i) => <Skeleton key={i} width="100%" height={52} radius="10px" />)}</div></Shell>;
   }
+  if (phase === 'signedout') {
+    return (
+      <Shell>
+        <EmptyState
+          icon={<Icon name="user" size={24} />}
+          title="Sign in to manage clients"
+          description="Use the same login as the dashboard, then come back here."
+          action={<Button onClick={() => window.location.assign('/admin')}>Go to sign in</Button>}
+        />
+      </Shell>
+    );
+  }
+
   if (phase === 'denied') {
     return (
       <Shell>
@@ -179,14 +231,50 @@ function Console() {
   return (
     <Shell>
       <div className="head">
-        <h1>Clients <span className="count">{rows.length}</span></h1>
-        <input
-          className="search" value={q} onChange={(e) => setQ(e.target.value)}
-          placeholder="Search name, address or email" aria-label="Search clients"
-        />
+        <h1>
+          {view === 'clients' ? 'Clients' : 'Removed'}
+          <span className="count">{view === 'clients' ? rows.length : archived.length}</span>
+        </h1>
+        <div className="tabs" role="tablist">
+          <button type="button" role="tab" aria-selected={view === 'clients'}
+                  className={view === 'clients' ? 'on' : ''} onClick={() => setView('clients')}>Clients</button>
+          <button type="button" role="tab" aria-selected={view === 'archived'}
+                  className={view === 'archived' ? 'on' : ''} onClick={() => setView('archived')}>Removed</button>
+        </div>
+        {view === 'clients' && (
+          <input
+            className="search" value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name, address or email" aria-label="Search clients"
+          />
+        )}
       </div>
 
-      {filtered.length === 0 ? (
+      {view === 'archived' ? (
+        archived.length === 0 ? (
+          <EmptyState icon={<Icon name="users" size={24} />} title="Nobody has been removed." compact />
+        ) : (
+          <div className="table" role="table">
+            <div className="tr arc th" role="row">
+              <span role="columnheader">Client</span>
+              <span role="columnheader">Email</span>
+              <span role="columnheader">Removed</span>
+            </div>
+            {archived.map((a) => (
+              <div className="tr arc" role="row" key={a.id}>
+                <span role="cell" className="c-name">
+                  <b>{a.name || a.slug}</b>
+                  <span className="slug" dir="ltr">/{a.slug} · {a.projects_count} pieces</span>
+                </span>
+                <span role="cell" className="c-email" dir="ltr">{a.email || <i>no login</i>}</span>
+                <span role="cell" className="c-email">
+                  {new Date(a.deleted_at).toLocaleDateString('en-GB')}
+                  {a.billing_state && <span className="slug"> · was {a.billing_state}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        )
+      ) : filtered.length === 0 ? (
         <EmptyState icon={<Icon name="users" size={24} />} title="No client matches that." compact />
       ) : (
         <div className="table" role="table">
@@ -226,6 +314,7 @@ function Console() {
           onChangeEmail={(email) => changeEmail(open, email)}
           onGrantFree={() => grantFree(open)}
           onRevokeFree={() => revokeFree(open)}
+          onDelete={() => deleteClient(open)}
         />
       )}
 
@@ -233,6 +322,11 @@ function Console() {
         .head { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-5); }
         h1 { font-size: var(--text-2xl); font-weight: 700; margin: 0; }
         .count { margin-inline-start: var(--space-2); font-size: var(--text-md); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+        .tabs { display: inline-flex; gap: 2px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 3px; }
+        .tabs button { padding: 6px 14px; min-height: 34px; border: none; background: none; border-radius: var(--radius-sm);
+                       color: var(--text-tertiary); font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
+        .tabs button.on { background: var(--bg-elevated); color: var(--text-primary); }
+        .tabs button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
         .search { margin-inline-start: auto; min-width: 260px; flex: 1 1 260px; max-width: 380px; padding: 10px 14px; min-height: 44px;
                   background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md);
                   color: var(--text-primary); font: inherit; }
@@ -247,6 +341,7 @@ function Console() {
         .c-email { font-size: var(--text-sm); color: var(--text-secondary); overflow-wrap: anywhere; }
         .c-email i { color: var(--text-muted); }
         .c-act { display: flex; gap: var(--space-2); justify-content: flex-end; flex-wrap: wrap; }
+        .arc { grid-template-columns: 1.4fr 1.6fr 1fr; opacity: 0.75; }
         @media (max-width: 860px) {
           .tr { grid-template-columns: 1fr; gap: var(--space-2); }
           .th { display: none; }
@@ -255,6 +350,21 @@ function Console() {
       `}</style>
     </Shell>
   );
+}
+
+// supabase-js puts a non-2xx Edge Function body inside error.context. Reading
+// it is what turns "Edge Function returned a non-2xx status code" into the
+// actual reason, which for a delete is usually "the subscription is still live".
+async function readFnError(error) {
+  try {
+    const body = await error?.context?.json?.();
+    if (!body) return null;
+    if (body.error === 'subscription_live') {
+      return `Still has a ${body.state} subscription. Cancel it at PayPal first.`;
+    }
+    if (body.error === 'confirm_mismatch') return 'The address did not match.';
+    return body.detail || body.error || null;
+  } catch (e) { return null; }
 }
 
 function accessLabel(r) {
@@ -266,7 +376,7 @@ function accessTone(r) {
   return r.billing.entitled ? 'success' : 'neutral';
 }
 
-function ManagePanel({ row, busy, onClose, onResetPassword, onChangeEmail, onGrantFree, onRevokeFree }) {
+function ManagePanel({ row, busy, onClose, onResetPassword, onChangeEmail, onGrantFree, onRevokeFree, onDelete }) {
   const [email, setEmail] = useState(row.member?.email || '');
   const [editing, setEditing] = useState(false);
   const comped = row.billing.state === 'comped';
@@ -328,6 +438,17 @@ function ManagePanel({ row, busy, onClose, onResetPassword, onChangeEmail, onGra
           )}
         </section>
 
+        <section className="danger">
+          <h3>Remove this client</h3>
+          <p>
+            Deletes their portfolio, their content and their login. Their email becomes
+            free to sign up with again. This cannot be undone.
+          </p>
+          <Button size="sm" variant="danger" loading={busy === `del:${row.id}`} onClick={onDelete}>
+            Delete permanently
+          </Button>
+        </section>
+
         <section className="links">
           <Button size="sm" variant="ghost" onClick={() => window.open(`/${row.slug}`, '_blank', 'noopener')}>Open portfolio ↗</Button>
           <Button size="sm" variant="ghost" onClick={() => window.open('/admin', '_blank', 'noopener')}>Open editor ↗</Button>
@@ -351,6 +472,8 @@ function ManagePanel({ row, busy, onClose, onResetPassword, onChangeEmail, onGra
         p { margin: 0; font-size: var(--text-sm); color: var(--text-tertiary); line-height: 1.5; }
         .row { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
         .links { flex-direction: row; gap: var(--space-2); flex-wrap: wrap; }
+        .danger { border-top: 1px solid var(--danger-border); padding-top: var(--space-4); }
+        .danger h3 { color: var(--danger-ink); }
       `}</style>
     </div>
   );
