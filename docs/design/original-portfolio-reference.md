@@ -24,52 +24,139 @@ toward the Netlify build above, not undoing recent commits.**
 
 ## Measured from the live reference, 2026-08-28
 
-Read out of the running page, not eyeballed.
+Read out of the running page with `getComputedStyle`, at 375px and at 1280px.
+This supersedes the shorter list this section used to carry: several values
+below were missing from it, and three of them changed the character of the card.
 
 ### Page
 ```
-background: linear-gradient(#050507 0%, #0a0a14 55%, #6a70ab 100%)
-font-family: Tajawal, sans-serif
+background:            linear-gradient(#050507 0%, #0a0a14 55%, #6a70ab 100%)
+background-attachment: fixed          <-- the violet tracks the VIEWPORT
+font-family:           Tajawal, sans-serif
+padding:               50px 0
 ```
-A violet glow rising from the bottom of an almost-black page. The current build
-is flat dark with no gradient, and uses Manrope / Cairo / Reem Kufi — **Tajawal
-is not currently loaded at all.**
 
 ### The card — `.main-container.card-section`
 ```
 width:         330px          (narrow, and that is the point)
-border-radius: 35px           (current build: 14–20px)
+border-radius: 35px
 padding:       25px
-background:    rgba(255,255,255,0.05)
+background:    rgba(255,255,255,0.05)   <-- TRANSLUCENT. The page shows through.
+backdrop-filter: blur(20px)
 border:        1px solid rgba(255,255,255,0.08)
 box-shadow:    0 25px 50px rgba(0,0,0,0.5)
 ```
 
-### Structure, top to bottom
-1. **Icon row inside the card** — share button at one end, social glyphs and a
-   circular brand monogram at the other. Contact lives at the TOP, as icons.
-2. **Name**, large. **Subtitle** under it: `F9 Designer | مصمم جرافيك`.
-3. **Banner** with carousel arrows (`❯ ❮`, 50% radius, `rgba(0,0,0,0.5)`).
-4. **Stats row, three cells:** `لا / متفرغ` · `+300 / الأعمال` · `★ 4.9 / التقييم`
-5. **ONE call to action** — `تواصل معي عبر واتساب`, WhatsApp glyph, full width:
-   ```
-   border-radius: 18px · background: rgba(255,255,255,0.08)
-   color: #fff · 14px / 700
-   ```
-6. **Footer** — one copyright line.
+### The rhythm
+**Every block inside the card separates by `margin-top: 20px`.** One number, no
+exceptions except the name block at 15px, where the mark's circle carries its
+own optical space. That single gap is most of why the stack reads as composed.
 
-### What the current build does differently
-| | Original | Current |
+### Top row — `.header-top`, `justify-content: space-between`
+```
+share button    32px, radius 10, rgba(255,255,255,0.10)
+social glyphs   28px, radius 8,  rgba(255,255,255,0.08), gap 6, glyphs WHITE
+the mark        55px circle, 2px solid #9FA7FF, padding 2
+```
+The mark and the glyphs travel together at the inline end; the share button sits
+alone at the inline start.
+
+### Name — `.info`, `margin-top: 15px`, `text-align: right`
+```
+h1   19px / 700 / #fff            <-- SMALL. Not a headline.
+p    12px / 400 / rgba(255,255,255,0.5), margin-top 4
+```
+
+### The image band — `.slider-section`
+```
+height:        170px  FIXED (not an aspect ratio)
+border-radius: 20px
+border:        1px solid rgba(255,255,255,0.1)
+img            object-fit: cover
+arrows         32px circle, rgba(0,0,0,0.5), opacity 0 until :hover
+dots           6px, gap 6; active 18x6, radius 10, #9FA7FF
+```
+
+### Stats — `.stats`
+```
+ONE container: radius 20, rgba(0,0,0,0.2), padding 12, space-between
+value  14px / 700 / #9FA7FF       <-- THE ACCENT, not white
+label  10px / 400 / rgba(255,255,255,0.6)
+```
+No dividers, no per-cell borders, no per-cell background. A single recessed
+strip, not three tiles.
+
+### The one action — `.unified-btn`
+```
+height:        52px
+border-radius: 18px
+background:    rgba(255,255,255,0.08)
+border:        1px solid rgba(255,255,255,0.10)
+14px / 700 / #fff, gap 10, justify-content: CENTER
+```
+The glyph and the label are centred **as a group**. There is no reserved icon
+column — a column exists to align glyphs down a stack of buttons, and there is
+no stack.
+
+### The shine — `.glass-shine-effect`
+On the share button, the image band and the action:
+```
+::after  40% wide, 200% tall, rotate(30deg)
+         linear-gradient(to right, transparent, rgba(255,255,255,0.15), transparent)
+         left: -100%  ->  :hover  left: 150%   over 0.8s
+```
+
+### Footer
+`12px / 500, opacity 0.8`, centred, `margin-top: 20px`.
+
+---
+
+## What was built, 2026-08-28
+
+The card above is now what `pages/index.js` renders. Verified in the browser on
+real tenant data, in Arabic and English, at 375px and desktop.
+
+### Two things in the original that were deliberately NOT copied
+
+* **`letter-spacing: 0.5px` on the Arabic `h1`.** Arabic is cursive and tracking
+  severs the joins between letterforms. design.md §10, and it is product law.
+* **The share button.** It is a single-tenant affordance. That corner now holds
+  the language switch, which needed a home and is the right kind of quiet.
+
+### Two things the original does that the constitution overrules
+
+* **No auto-advance.** The image band does not step itself. Motion on a timer,
+  forever, communicates none of the four things motion may communicate
+  (design.md §5), and it takes the choice of which piece leads away from the
+  client, who ordered them.
+* **No page-background or radius control.** Both were tenant settings and both
+  are presentation, not content. f9designer's own site rendered lilac from edge
+  to edge because `appearance.tokens.bg` had been set to the accent. Only the
+  accent is still a tenant value.
+
+### The banner concept is gone — "the slider IS the work"
+
+Approved 2026-08-28. What used to be a separate `banners` array — promotional
+images above the portfolio, which a visitor reads as the client's work when it
+is not — is now the client's actual pieces, drawn from `projects` in the order
+they chose. Tapping one opens it full size.
+
+**This was safe to do because no tenant has a banner without also having
+pieces** — checked against all seven before it was written, not assumed.
+
+It also deleted the auto-appended "open my portfolio" button: the work is on the
+card, so a button whose job was to go and find it has nothing left to do.
+
+### Removed from the render, and live for someone today
+
+Each of these still exists in the database. Nothing was migrated or deleted.
+
+| Removed | Was live on | Why |
 |---|---|---|
-| Card width | 330px | wider |
-| Radius | 35px | 14–20px |
-| Font | Tajawal | Manrope / Cairo / Reem Kufi |
-| Page | violet gradient | flat dark |
-| Contact | icons at the top | three stacked buttons at the bottom |
-| CTAs | exactly one | up to three, plus a links row |
-
-**The three stacked buttons are the biggest visual difference** and the likely
-source of "hot mess": the original had ONE thing to press.
+| The ticker | `designakum`, `roza` | A marquee. Loudest thing on a page selling calm, and it sat above the work |
+| CTAs 2..n | `roza` (6), `alihabibfilms` (4), `designakum` (3) | A page with five equal asks has none. Contact is the icon row at the top |
+| The admin setup nudge | any signed-in owner | The product talking to itself on a customer's site |
+| `sections.projects` | `f9designer`, `designakum` | It was hiding the only real work on the platform. Sections appear from content |
 
 ## THE STAR RATING ALREADY EXISTED
 

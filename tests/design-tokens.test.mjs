@@ -467,9 +467,23 @@ test('the Arabic display face is one already in the font request', () => {
   assert.match(DARK['--font-display-ar'], /Reem Kufi/);
   const doc = readFileSync(join(HERE, '..', 'pages', '_document.js'), 'utf8');
   assert.match(doc, /Reem\+Kufi/, 'Reem Kufi is not in the single font <link>');
-  // No fifth family: the four-into-one <link> was deliberate performance work.
+  // The consolidated <link> was deliberate performance work, and this cap is
+  // what stops a family being added because it was easier than choosing one
+  // already loaded. It moved 4 -> 5 on 2026-08-28, once, for Tajawal.
+  //
+  // WHY THAT ONE WAS ALLOWED, so the next request has a bar to clear:
+  //   * it is the public portfolio's typeface in the design being returned to,
+  //     and no loaded family substitutes for it — Cairo and Reem Kufi are the
+  //     admin's Arabic faces and read as a different product;
+  //   * it costs NO extra request. The families share one stylesheet, so the
+  //     network cost is @font-face bytes, not a round trip;
+  //   * it costs no font file on any page that does not use it. The portfolio
+  //     is the only surface set in Tajawal; the admin downloads nothing new.
+  //
+  // A sixth family needs all three of those to be true again.
   const families = (doc.match(/family=/g) || []).length;
-  assert.ok(families <= 4, `font request grew to ${families} families`);
+  assert.ok(families <= 5, `font request grew to ${families} families`);
+  assert.match(doc, /family=Tajawal/, 'the portfolio typeface left the font <link>');
 });
 
 test('the Arabic eyebrow drops tracking and case', () => {

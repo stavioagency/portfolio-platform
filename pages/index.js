@@ -9,15 +9,6 @@ import { BRAND_ICONS, normalizeIcon, brandColor } from '../lib/brand-icons';
 import { safeUrl } from '../lib/safe-url';
 import { hasPublicContent } from '../lib/profile-content';
 import BrandGlyph from '../components/ui/BrandGlyph';
-import { readableInkOn } from '../lib/contrast';
-
-const BANNER_BGS = {
-  purple: 'linear-gradient(135deg, #7a72d6, #9FA7FF)',
-  blue:   'linear-gradient(135deg, #3b82f6, #06b6d4)',
-  sunset: 'linear-gradient(135deg, #ec4899, #f97316)',
-  forest: 'linear-gradient(135deg, #10b981, #3b82f6)',
-  dark:   'linear-gradient(135deg, #1f2937, #374151)',
-};
 
 function readLang() {
   if (typeof window === 'undefined') return null;
@@ -47,13 +38,12 @@ function getVisitorId() {
   return id;
 }
 
-const FONT_STACKS = {
-  manrope:  "'Manrope', 'IBM Plex Sans Arabic', system-ui, sans-serif",
-  cairo:    "'Cairo', 'Manrope', system-ui, sans-serif",
-  reemkufi: "'Reem Kufi', 'Cairo', serif",
-  plexar:   "'IBM Plex Sans Arabic', 'Manrope', sans-serif",
-};
-const RADIUS_VALUES  = { soft: 12, sharp: 4, pill: 24 };
+// The portfolio is set in Tajawal, which is the original's font and the only
+// one this page uses. It was four client-selectable stacks and a three-value
+// radius scale; both were presentation controls and both are gone -- see the
+// appearance effect below for why. The stack keeps Arabic and Latin fallbacks
+// so the page is legible in the moment before the webfont lands.
+const PF_FONT = "'Tajawal', 'IBM Plex Sans Arabic', system-ui, sans-serif";
 
 export default function Home({ slug = null } = {}) {
   const [profile, setProfile] = useState(null);
@@ -71,13 +61,16 @@ export default function Home({ slug = null } = {}) {
   // already gone, and the admin (same origin, via the preview iframe) was reset to
   // Arabic on its next load. Read once, up front, and nothing can clobber it.
   const storedLangRef = useRef(readLang());
-  const [bannerIdx, setBannerIdx] = useState(0);
-  const [bannerPaused, setBannerPaused] = useState(false);
-  const [loadedBanners, setLoadedBanners] = useState(() => new Set([0, 1])); // only active+next load initially
+  const [workIdx, setWorkIdx] = useState(0);
+  const [loadedSlides, setLoadedSlides] = useState(() => new Set([0, 1])); // only active+next load initially
   const [projectsOpen, setProjectsOpen] = useState(false);
+  // The piece a visitor is currently looking at, already resolved to what the
+  // Lightbox needs. Owned HERE rather than inside the projects modal, because
+  // the card opens a piece directly now — the modal is no longer the only way
+  // in, and two owners of one lightbox is two lightboxes.
+  const [openPiece, setOpenPiece] = useState(null);
   const [legalModal, setLegalModal] = useState(null); // 'privacy' | 'terms' | null
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [pageUrl, setPageUrl] = useState('');
   // Resolved tenant id for analytics stamping. Always set once the page renders —
   // an unresolved tenant 404s before this is ever used.
@@ -92,11 +85,7 @@ export default function Home({ slug = null } = {}) {
     if (typeof window !== 'undefined') setPageUrl(window.location.origin + window.location.pathname);
   }, []);
 
-  useEffect(() => {
-    loadData();
-    // detect admin (we hide setup hints from non-admin visitors)
-    supabase.auth.getSession().then(({ data }) => setIsAdmin(!!data.session));
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   // True only when the admin's preview pane asked for it.
   const isPreview = typeof window !== 'undefined'
@@ -211,22 +200,22 @@ export default function Home({ slug = null } = {}) {
     if (!profile?.appearance) return;
     const a = profile.appearance;
     const root = document.documentElement;
-    if (a.accent_color) root.style.setProperty('--accent', a.accent_color);
-    if (a.bg_color) root.style.setProperty('--bg-primary', a.bg_color);
-    if (a.tokens) {
-      const tk = a.tokens;
-      if (tk.bg)         root.style.setProperty('--bg-primary', tk.bg);
-      if (tk.surface)    root.style.setProperty('--bg-secondary', tk.surface);
-      if (tk.accent)     root.style.setProperty('--accent', tk.accent);
-      if (tk.text)       root.style.setProperty('--text-primary', tk.text);
-      if (tk.text_muted) root.style.setProperty('--text-tertiary', tk.text_muted);
-      if (tk.border)     root.style.setProperty('--border', tk.border);
-    }
-    if (a.font_body && FONT_STACKS[a.font_body]) {
-      root.style.setProperty('--font-body', FONT_STACKS[a.font_body]);
-      root.style.setProperty('--font-sans', FONT_STACKS[a.font_body]);
-    }
-    if (a.radius  && RADIUS_VALUES[a.radius])   root.style.setProperty('--card-radius', `${RADIUS_VALUES[a.radius]}px`);
+    // ONLY THE ACCENT. The page background, the surfaces, the text ramp, the
+    // border colour, the font stack and the corner radius used to be client
+    // settings too, and together they are what produced the page this redesign
+    // replaces: f9designer's own site rendered lilac from edge to edge because
+    // tokens.bg had been set to the accent colour, and nothing stopped it.
+    //
+    // design.md draws the line: "The client controls content and emphasis.
+    // Designakum controls structure and presentation." A background colour is
+    // presentation. So is a radius, and so is a font. The frame is ours; the
+    // work in it is theirs.
+    //
+    // NOTHING IS DELETED. Every one of those values is still in the database,
+    // untouched. The admin is being rebuilt one control at a time, and only the
+    // ones this design turned out to need come back.
+    const accent = a.tokens?.accent || a.accent_color;
+    if (accent) root.style.setProperty('--accent', accent);
   }, [profile]);
 
   // Apply custom favicon (uploaded via the admin) to the browser tab
@@ -265,27 +254,24 @@ export default function Home({ slug = null } = {}) {
     supabase.from('analytics_events').insert(row).then(() => {}).catch(() => {});
   }, [loading, tenantId]);
 
-  // Auto-advance banner every 5s — paused on hover/focus and when reduced-motion is requested
-  useEffect(() => {
-    const count = profile?.banners?.length || 0;
-    if (count < 2 || bannerPaused) return;
-    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (reduce) return;
-    const id = setInterval(() => setBannerIdx(i => (i + 1) % count), 5000);
-    return () => clearInterval(id);
-  }, [profile?.banners?.length, bannerPaused]);
+  // THERE IS NO AUTO-ADVANCE, and its removal is deliberate rather than an
+  // oversight in the port. A carousel that steps itself every five seconds is
+  // motion on a timer, forever, on every visit — it communicates none of the
+  // four things motion may communicate (design.md §5) and it takes the choice
+  // of which piece leads away from the client, who ordered them. The visitor
+  // moves it, or it does not move.
 
-  // Preload only the active + next banner image (avoids eager-loading all banners at once)
+  // Preload only the active + next slide (avoids fetching the whole set at once)
   useEffect(() => {
-    const count = profile?.banners?.length || 0;
+    const count = projects.length;
     if (!count) return;
-    setLoadedBanners(prev => {
+    setLoadedSlides(prev => {
       const n = new Set(prev);
-      n.add(bannerIdx);
-      n.add((bannerIdx + 1) % count);
+      n.add(workIdx);
+      n.add((workIdx + 1) % count);
       return n;
     });
-  }, [bannerIdx, profile?.banners?.length]);
+  }, [workIdx, projects.length]);
 
   // A centred spinner on an empty page tells a visitor nothing except that
   // something is missing. This is the same card, at the same width, in the same
@@ -301,42 +287,39 @@ export default function Home({ slug = null } = {}) {
               that row is variable-length, so any fixed number of dots would be
               wrong for most tenants. */}
           <div className="skel-top">
+            <span className="sk sk-avatar" />
             <span className="sk sk-pill" />
           </div>
-          <div className="skel-name">
-            <span className="sk sk-avatar" />
-            <div className="skel-name-text">
-              <span className="sk sk-line lg" />
-              <span className="sk sk-line sm" />
-            </div>
+          <div className="skel-name-text">
+            <span className="sk sk-line lg" />
+            <span className="sk sk-line sm" />
           </div>
-          <span className="sk sk-banner" />
+          <span className="sk sk-work" />
           <div className="skel-ctas">
-            <span className="sk sk-cta" />
             <span className="sk sk-cta" />
           </div>
         </div>
         <style jsx>{`
+          /* Geometry, gradient and font are copied from .page / .card below.
+             The two must stay identical or the swap from skeleton to content
+             becomes a visible jump -- which is the whole reason the skeleton is
+             a card rather than a spinner. */
           .skel-page {
             min-height: 100vh;
-            background:
-              radial-gradient(ellipse 900px 600px at 50% 0%, rgba(159,167,255,0.18), transparent 60%),
-              radial-gradient(ellipse 600px 400px at 50% 100%, rgba(159,167,255,0.08), transparent 60%),
-              var(--bg-primary);
+            font-family: ${PF_FONT};
+            background: linear-gradient(#050507 0%, #0a0a14 55%, #6a70ab 100%) fixed;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 80px 20px 40px;
+            padding: 50px 20px 40px;
           }
-          /* geometry copied from .card below — the two must stay identical or
-             the swap from skeleton to content becomes a visible jump */
           .skel-card {
             width: 100%;
-            max-width: 440px;
-            background: linear-gradient(180deg, rgba(30,30,42,0.7), rgba(20,20,28,0.5));
+            max-width: 330px;
+            background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.08);
-            border-radius: var(--card-radius, 24px);
-            padding: 20px;
+            border-radius: 35px;
+            padding: 25px;
           }
           .sr-only {
             position: absolute; width: 1px; height: 1px;
@@ -358,22 +341,21 @@ export default function Home({ slug = null } = {}) {
           }
           /* 30px keeps the row at the real top bar's height (the social icons
              are 30px, taller than the 28px pill). */
-          .skel-top { display: flex; align-items: center; min-height: 30px; margin-bottom: 20px; }
-          .sk-pill { width: 56px; height: 28px; border-radius: 999px; }
-          .skel-name { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; padding: 0 6px; }
-          .sk-avatar { width: 56px; height: 56px; border-radius: 50%; flex-shrink: 0; }
-          .skel-name-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-          .sk-line.lg { height: 20px; width: 65%; }
-          .sk-line.sm { height: 12px; width: 45%; }
-          /* 20px matches --card-stack on the real card — the skeleton and the
+          /* 55px is the mark's height, which is what sets the real top row. */
+          .skel-top { display: flex; align-items: center; justify-content: space-between; min-height: 55px; }
+          .sk-pill { width: 32px; height: 32px; border-radius: 10px; }
+          .sk-avatar { width: 55px; height: 55px; border-radius: 50%; flex-shrink: 0; }
+          /* flex-start on the CROSS axis follows the writing direction: the
+             right edge in Arabic, the left in English. That is the reading
+             edge, and it is where the real name block sits (text-align: start). */
+          .skel-name-text { margin-top: 15px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+          .sk-line.lg { height: 19px; width: 45%; }
+          .sk-line.sm { height: 12px; width: 60%; }
+          /* 20px matches --pf-stack on the real card — the skeleton and the
              content it becomes must agree, or the swap is a visible jump. */
-          .sk-banner { width: 100%; aspect-ratio: 3 / 2; border-radius: 18px; margin-bottom: 20px; }
-          .skel-ctas { display: flex; flex-direction: column; gap: 8px; }
-          .sk-cta { width: 100%; height: 48px; border-radius: var(--card-radius, 14px); }
-          @media (max-width: 480px) {
-            .skel-page { padding: 24px 12px; }
-            .skel-card { padding: 16px; border-radius: var(--card-radius, 20px); }
-          }
+          .sk-work { width: 100%; height: 170px; border-radius: 20px; margin-top: 20px; }
+          .skel-ctas { margin-top: 20px; }
+          .sk-cta { width: 100%; height: 52px; border-radius: 18px; }
         `}</style>
       </div>
     );
@@ -426,10 +408,26 @@ export default function Home({ slug = null } = {}) {
   const name = pick(profile.name, lang);
   const tagline = pick(profile.tagline, lang);
   const bio = pick(profile.bio, lang);
-  const banners = (profile.banners || []).filter(b => {
-    if (b.type === 'image') return !!b.image_url;
-    return pick(b.text, 'en') || pick(b.text, 'ar');
-  });
+  // THE WORK. What used to be a separate "banners" array — promotional images
+  // sitting above the portfolio, which a visitor read as the client's work when
+  // it was not — is now the client's actual pieces. One image list, and it is
+  // the one that was always the point.
+  //
+  // A piece needs something to show: its cover, or the first image of its set.
+  // One with neither cannot lead the card and is left to the lightbox.
+  //
+  // NO sections.projects CHECK. The visibility toggles are being retired — a
+  // section appears when it has content and does not when it has none — and
+  // that toggle in particular was doing real damage: it was set to false on the
+  // two workspaces that actually have pieces, which is most of why the page
+  // reads as a link card rather than a portfolio.
+  const pieces = projects
+    .map(p => ({
+      raw: p,
+      cover: p.cover_image || (Array.isArray(p.images) ? p.images[0] : null) || null,
+      title: pick(p.title, lang) || pick(p.title, 'en') || '',
+    }))
+    .filter(p => !!p.cover);
   const stats = (profile.stats || []).filter(s => pick(s.value, lang) || pick(s.value, 'en') || pick(s.label, lang) || pick(s.label, 'en'));
   const ctas = (profile.cta_buttons || []).filter(b => {
     const hasLabel = pick(b.label, lang) || pick(b.label, 'en') || pick(b.label, 'ar');
@@ -439,9 +437,15 @@ export default function Home({ slug = null } = {}) {
   const allLinks = profile.custom_links || [];
   const customFields = profile.custom_fields || [];
   const sections = profile.sections || {};
-  const ticker = profile.top_ticker || {};
-  const tickerText = pick(ticker.text, lang) || pick(ticker.text, 'en') || pick(ticker.text, 'ar');
-  const showTicker = !!ticker.enabled && !!tickerText;
+  // THE TICKER IS GONE. A marquee across the top of the page, scrolling
+  // forever: it moves continuously, it communicates none of the four things
+  // motion may communicate (design.md §5), it cannot be read at a glance, and
+  // it was the loudest element on a page whose product sells calm. It also sat
+  // above the work, which nothing but identity and quiet chrome may do.
+  //
+  // It is switched ON for two live workspaces, so this removes something a
+  // visitor sees today. That is the intent, not an accident of the port.
+  // profile.top_ticker is left in the database untouched.
 
   const footer = profile.footer || {};
   const customFooterText = pick(footer.text, lang) || pick(footer.text, 'en') || pick(footer.text, 'ar');
@@ -465,14 +469,6 @@ export default function Home({ slug = null } = {}) {
 
   const initial = (name || '?').trim()[0] || '?';
 
-  // The accent this tenant actually renders with, resolved the same way the
-  // appearance effect above applies it (tokens win over the legacy field).
-  // The primary CTA is a SOLID fill of it, so it needs a foreground that stays
-  // readable whichever colour the client picked — see lib/contrast.js. A colour
-  // we cannot parse falls back to white, which is what the button used before.
-  const accentColor = profile.appearance?.tokens?.accent || profile.appearance?.accent_color || '#9FA7FF';
-  const accentInk = readableInkOn(accentColor) || '#ffffff';
-
   function logEvent(payload) {
     if (typeof window === 'undefined') return;
     const row = { visitor_id: getVisitorId(), ...payload };
@@ -488,18 +484,45 @@ export default function Home({ slug = null } = {}) {
   function onSocialClick(iconKey) {
     logEvent({ event_type: 'link_click', link_key: iconKey });
   }
-  function onProjectOpen(projectId) {
-    logEvent({ event_type: 'project_view', project_id: projectId });
+  // Resolve a project ROW into the flat shape the Lightbox renders, and show it.
+  // Prefers the gallery images[]; falls back to the single cover_image; a piece
+  // with neither but with an external link just opens the link, which is what
+  // the projects grid did before the lightbox was extracted.
+  function showPiece(p, title, desc) {
+    logEvent({ event_type: 'project_view', project_id: p.id });
+    const images = (p.images && p.images.length) ? p.images
+      : (p.cover_image ? [p.cover_image] : []);
+    if (!images.length) {
+      const dest = safeUrl(p.external_url);
+      if (dest) window.open(dest, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    setOpenPiece({
+      images,
+      title: title || pick(p.title, lang) || pick(p.title, 'en') || '',
+      desc: desc || pick(p.description, lang) || pick(p.description, 'en') || '',
+      meta: [p.client, p.year, p.role].filter(Boolean).join('  ·  '),
+      url: p.external_url || null,
+    });
   }
 
-  // CTAs to render — append auto "open_projects" button if user has projects but no such CTA
-  const hasOpenProjectsCta = ctas.some(b => b.action === 'open_projects');
-  const showProjects = (sections.projects !== false) && projects.length > 0;
-  const finalCtas = (showProjects && !hasOpenProjectsCta)
-    ? [...ctas, { id: '__auto_projects', icon: null, label: { en: t('open_portfolio'), ar: t('open_portfolio') }, action: 'open_projects', href: '' }]
-    : ctas;
-
-  const cardIsEmpty = banners.length === 0 && stats.length === 0 && finalCtas.length === 0 && !showAbout;
+  // THE NEXT STEP — and there is exactly one of it.
+  //
+  // This was a stack of up to six buttons, the first filled in the tenant's
+  // accent and the rest ghosts. A page with five equal asks has none, and the
+  // "first one is the important one" rule was a layout decision the client was
+  // being charged for without being told. Contact now lives in the icon row at
+  // the top of the card, which is where the original put it and the reason the
+  // bottom of the card can end on a single thing to press.
+  //
+  // The auto-appended "open my portfolio" button is gone with it: the work is
+  // ON the card now, so a button whose job was to go and find it has nothing
+  // left to do.
+  //
+  // The other buttons are still in the database and still in the editor. What
+  // happens to them is an admin question, and the admin is being rebuilt one
+  // control at a time.
+  const action = ctas[0] || null;
 
   return (
     <>
@@ -520,36 +543,35 @@ export default function Home({ slug = null } = {}) {
         {shareImage && <meta name="twitter:image" content={shareImage} />}
       </Head>
 
-      <main className={`page ${showTicker ? 'has-ticker' : ''}`} dir={dir}>
-        {/* TOP TICKER — scrolls right-to-left, full-width strip above the card */}
-        {showTicker && (
-          <div
-            className={`ticker speed-${ticker.speed || 'medium'}`}
-            style={{ background: ticker.bg_color || '#9FA7FF', color: ticker.text_color || '#0a0a0c' }}
-          >
-            <div className="ticker-track">
-              {/* Repeated copies so the strip fills wide screens seamlessly */}
-              {Array.from({ length: 24 }).map((_, i) => (
-                <span className="ticker-text" key={i} aria-hidden={i > 0}>{tickerText}</span>
-              ))}
-            </div>
-          </div>
-        )}
-
+      <main className="page" dir={dir}>
         <div className="card">
 
-          {/* TOP BAR — lang switcher + socials (brand logo moved to name-block) */}
-          <div className="top-bar">
-            {langSwitcherOn ? (
-              <button className="lang-pill" onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} title={lang === 'ar' ? 'Switch to English' : 'التحويل إلى العربية'}>
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                <span>{lang === 'ar' ? 'EN' : 'ع'}</span>
-              </button>
-            ) : (
-              <span />
-            )}
+          {/* TOP ROW — the mark, the contact glyphs, and the language switch.
+              The mark and the glyphs sit together at the inline END (the right,
+              in Arabic); the language switch sits alone at the inline START.
+              That is the original's composition, and it mirrors correctly: the
+              identity leads in both directions.
 
-            <div className="socials">
+              CONTACT LIVES HERE, as icons, and this is the whole reason the
+              card can end with a single button. The original put contact at the
+              top precisely so the bottom of the card had one thing to press. */}
+          <div className="top-bar">
+            <div className="identity-marks">
+              <div className="brand-logo">
+                {avatarSrc
+                  ? <img
+                      src={avatarSrc}
+                      alt={name}
+                      width="55"
+                      height="55"
+                      decoding="async"
+                      /* above the fold and an LCP candidate — never lazy */
+                      fetchPriority="high"
+                    />
+                  : <span>{initial}</span>}
+              </div>
+
+              <div className="socials">
               {socialIcons.map((l, i) => {
                 const iconKey = normalizeIcon(l.icon);
                 const ic = BRAND_ICONS[iconKey];
@@ -560,20 +582,21 @@ export default function Home({ slug = null } = {}) {
                 const isMail = iconKey === 'email' && (l.href || '').includes('@');
                 const href = safeUrl(isMail ? `mailto:${l.href}` : rawHref);
                 if (!href) return null; // drop links with an unsafe/empty scheme
-                // Paint the glyph in the platform's own colour — a grey
-                // Instagram mark is not recognisable, and recognition is the
-                // entire job of this row. brandColor() returns null for the
-                // generic email/website icons and for anything unknown, and
-                // those keep inheriting the neutral currentColor below.
-                const tint = brandColor(iconKey, 'dark');
+                // NOT brand-coloured, and that reversed an earlier decision.
+                // Four platform colours in a 96px row is four things asking to
+                // be looked at, in the one place the design has reserved for
+                // the mark and the name -- design.md §4, "only one element may
+                // be loud at a time, and it is never chrome". The original
+                // sets them all in white on identical chips, so the row reads
+                // as one control rather than a strip of stickers, and the
+                // shapes still say which platform is which.
                 return (
                   <a
                     key={i}
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`social-icon ${tint ? 'tinted' : ''}`}
-                    style={tint ? { '--brand': tint } : undefined}
+                    className="social-icon"
                     aria-label={pick(l.label, lang)}
                     onClick={() => onSocialClick(iconKey)}
                   >
@@ -581,34 +604,33 @@ export default function Home({ slug = null } = {}) {
                   </a>
                 );
               })}
+              </div>
             </div>
+
+            {langSwitcherOn ? (
+              <button className="lang-pill" onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')} title={lang === 'ar' ? 'Switch to English' : 'التحويل إلى العربية'}>
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                <span>{lang === 'ar' ? 'EN' : 'ع'}</span>
+              </button>
+            ) : (
+              <span />
+            )}
           </div>
 
-          {/* NAME BLOCK — brand logo now sits next to the name (side-by-side header pair) */}
+          {/* NAME — under the marks, aligned to the reading edge, and SMALL.
+              19px is not an oversight: on a page whose largest element is the
+              client's work, a name set as a headline competes with it, and a
+              name set as a label does not (hierarchy §4). It is still the
+              heaviest text on the card. */}
           <div className="name-block">
-            <div className="brand-logo">
-              {avatarSrc
-                ? <img
-                    src={avatarSrc}
-                    alt={name}
-                    width="56"
-                    height="56"
-                    decoding="async"
-                    /* above the fold and an LCP candidate — never lazy */
-                    fetchPriority="high"
-                  />
-                : <span>{initial}</span>}
-            </div>
-            <div className="name-text">
-              <h1>{name}</h1>
-              {tagline && <p>{tagline}</p>}
-              {showAbout && (
-                <button className="about-toggle" onClick={() => setAboutOpen(o => !o)}>
-                  <span>{aboutOpen ? '↑' : '↓'}</span>
-                  {aboutOpen ? t('about_hide') : t('about_show')}
-                </button>
-              )}
-            </div>
+            <h1>{name}</h1>
+            {tagline && <p>{tagline}</p>}
+            {showAbout && (
+              <button className="about-toggle" onClick={() => setAboutOpen(o => !o)}>
+                <span>{aboutOpen ? '↑' : '↓'}</span>
+                {aboutOpen ? t('about_hide') : t('about_show')}
+              </button>
+            )}
           </div>
 
           {/* ABOUT (collapsible: bio + custom fields) */}
@@ -637,67 +659,81 @@ export default function Home({ slug = null } = {}) {
             </div>
           )}
 
-          {/* BANNER SLIDER (3:2 aspect, more dominant) */}
-          {banners.length > 0 && (
-            <div className="banner-frame"
-              onMouseEnter={() => setBannerPaused(true)}
-              onMouseLeave={() => setBannerPaused(false)}
-              onFocusCapture={() => setBannerPaused(true)}
-              onBlurCapture={() => setBannerPaused(false)}>
-              {banners.map((b, i) => (
-                <div key={b.id || i}
-                  className={`banner ${i === bannerIdx ? 'active' : ''}`}
-                  style={b.type === 'image'
-                    ? undefined
-                    : { background: BANNER_BGS[b.bg || 'purple'] }}>
-                  {/* A real <img> rather than a CSS background-image. The banner
-                      is the biggest thing on the card and usually the LCP
-                      element, and a background-image cannot carry a priority
-                      hint, cannot be decoded off the main thread, and is
-                      invisible to the preload scanner — so the browser only
-                      discovers it after the stylesheet resolves. The
-                      `loadedBanners` gate is unchanged: slides beyond the
-                      active+next pair still render no <img> at all. */}
-                  {b.type === 'image' && loadedBanners.has(i) && (
+          {/* THE WORK — the client's pieces, in the order they chose.
+              This is the single biggest element on the card, and it is the one
+              thing a visitor is here to judge. Tapping it opens the piece. */}
+          {pieces.length > 0 && (
+            <div className="work-frame">
+              {pieces.map((pc, i) => (
+                <div
+                  key={pc.raw.id}
+                  className={`work-slide ${i === workIdx ? 'active' : ''}`}
+                  aria-hidden={i !== workIdx}
+                >
+                  {/* A real <img> rather than a CSS background-image. This is
+                      the biggest thing on the card and usually the LCP element,
+                      and a background-image cannot carry a priority hint, cannot
+                      be decoded off the main thread, and is invisible to the
+                      preload scanner. Slides beyond the active+next pair
+                      render no <img> at all. */}
+                  {loadedSlides.has(i) && (
                     <img
-                      className="banner-img"
-                      src={b.image_url}
-                      alt=""
+                      className="work-img"
+                      src={pc.cover}
+                      alt={pc.title}
                       decoding="async"
                       loading={i === 0 ? 'eager' : 'lazy'}
                       fetchPriority={i === 0 ? 'high' : 'low'}
                     />
                   )}
-                  {b.type === 'text' && (
-                    <div className="banner-content">
-                      <div className="banner-text">{pick(b.text, lang) || pick(b.text, 'en')}</div>
-                      {(pick(b.subtitle, lang) || pick(b.subtitle, 'en')) && (
-                        <div className="banner-sub">{pick(b.subtitle, lang) || pick(b.subtitle, 'en')}</div>
-                      )}
-                    </div>
-                  )}
                 </div>
               ))}
-              {banners.length > 1 && (
-                <div className="banner-dots">
-                  {banners.map((_, i) => (
-                    <button key={i} className={i === bannerIdx ? 'on' : ''} onClick={() => setBannerIdx(i)} aria-label={`Banner ${i + 1}`} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
-          {available && (
-            <div className="avail-badge">
-              <span className="avail-dot" aria-hidden="true" />
-              {t('avail_badge')}
+              {/* One control over the whole frame, so the target is the image
+                  itself rather than a caption or a corner. */}
+              <button
+                type="button"
+                className="work-open"
+                onClick={() => showPiece(pieces[workIdx].raw)}
+                aria-label={pieces[workIdx].title || t('open_portfolio')}
+              />
+
+              {pieces.length > 1 && (
+                <>
+                  {/* Physical mapping: left is previous, right is next, in both
+                      directions. The arrows sit where they are pointed. */}
+                  <button
+                    type="button"
+                    className="work-nav prev"
+                    onClick={() => setWorkIdx(i => (i - 1 + pieces.length) % pieces.length)}
+                    aria-label={lang === 'ar' ? 'السابق' : 'Previous'}
+                  >‹</button>
+                  <button
+                    type="button"
+                    className="work-nav next"
+                    onClick={() => setWorkIdx(i => (i + 1) % pieces.length)}
+                    aria-label={lang === 'ar' ? 'التالي' : 'Next'}
+                  >›</button>
+                  <div className="work-dots">
+                    {pieces.map((pc, i) => (
+                      <button
+                        key={pc.raw.id}
+                        type="button"
+                        className={i === workIdx ? 'on' : ''}
+                        onClick={() => setWorkIdx(i)}
+                        aria-label={pc.title || `${i + 1}`}
+                        aria-current={i === workIdx}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
           {/* STATS */}
           {stats.length > 0 && (
-            <div className="stats" style={{ gridTemplateColumns: `repeat(${stats.length}, 1fr)` }}>
+            <div className="stats">
               {stats.map((s, i) => (
                 <div key={s.id || i} className="stat">
                   <div className="stat-value">{pick(s.value, lang) || pick(s.value, 'en')}</div>
@@ -707,48 +743,51 @@ export default function Home({ slug = null } = {}) {
             </div>
           )}
 
-          {/* CTA BUTTONS — first is PRIMARY (accent border + tint), rest are ghost */}
-          {finalCtas.length > 0 && (
-            <div className="ctas">
-              {finalCtas.map((b, i) => {
-                const iconKey = normalizeIcon(b.icon);
-                const ic = iconKey && BRAND_ICONS[iconKey];
-                const label = pick(b.label, lang) || pick(b.label, 'en');
-                const isPrimary = i === 0;
-                // Same brand colours as the social row, so a platform looks
-                // like itself wherever it appears on the card.
-                const ctaTint = ic ? brandColor(iconKey, 'dark') : null;
-                return (
-                  <button
-                    key={b.id || i}
-                    // Icons are optional in the admin. Without one there is no
-                    // gutter to align to, so the label centres instead.
-                    className={`cta ${isPrimary ? 'primary' : ''} ${ic ? '' : 'no-icon'}`}
-                    style={{
-                      ...(isPrimary ? { '--cta-bg': accentColor, '--cta-ink': accentInk } : null),
-                      ...(ctaTint ? { '--brand': ctaTint } : null),
-                    }}
-                    onClick={() => onCtaClick(b)}
-                    title={label}
-                  >
-                    {ic && (
-                      <span className={`cta-icon ${ctaTint ? 'tinted' : ''}`}>
-                        <BrandGlyph icon={iconKey} size={19} />
-                      </span>
-                    )}
-                    <span className="cta-label">{label}</span>
-                  </button>
-                );
-              })}
+          {/* AVAILABILITY — context for the action directly below it, which is
+              the only reason it is on the page. It sits here rather than under
+              the work because "can I hire this person" is a question a visitor
+              forms after seeing the work, and it is answered a line above the
+              button that acts on it. */}
+          {available && (
+            <div className="avail-badge">
+              <span className="avail-dot" aria-hidden="true" />
+              {t('avail_badge')}
             </div>
           )}
 
-          {/* Empty-state nudge — ADMIN ONLY (visitors see nothing extra) */}
-          {cardIsEmpty && isAdmin && (
-            <div className="setup-hint">
-              <p>{t('card_empty_hint_a')} <a href="/admin">/admin → {t('nav_card')}</a> {t('card_empty_hint_b')}</p>
-            </div>
-          )}
+          {/* THE ONE ACTION */}
+          {action && (() => {
+            const iconKey = normalizeIcon(action.icon);
+            const ic = iconKey && BRAND_ICONS[iconKey];
+            const label = pick(action.label, lang) || pick(action.label, 'en');
+            // The platform's own colour, same as the icon row above it. On the
+            // dark ghost button a brand green or blue reads as itself, which is
+            // the whole point of showing a glyph at all.
+            const tint = ic ? brandColor(iconKey, 'dark') : null;
+            return (
+              <button
+                className={`cta ${ic ? '' : 'no-icon'}`}
+                style={tint ? { '--brand': tint } : undefined}
+                onClick={() => onCtaClick(action)}
+                title={label}
+              >
+                {ic && (
+                  <span className={`cta-icon ${tint ? 'tinted' : ''}`}>
+                    <BrandGlyph icon={iconKey} size={22} />
+                  </span>
+                )}
+                <span className="cta-label">{label}</span>
+              </button>
+            );
+          })()}
+
+          {/* THE SETUP NUDGE IS GONE. It rendered a dashed box pointing at
+              /admin into the customer's own published site — the product
+              talking to itself on somebody's portfolio. It was gated on the
+              viewer being signed in, which made it invisible to visitors and
+              therefore easy to keep, but a page that is finished work on
+              display has no business carrying a note to its author. The editor
+              is where a client is told their card is empty. */}
         </div>
 
         {/* FOOTER — custom user line + legal links */}
@@ -768,7 +807,18 @@ export default function Home({ slug = null } = {}) {
             t={t}
             lang={lang}
             onClose={() => setProjectsOpen(false)}
-            onOpenProject={onProjectOpen}
+            onOpenPiece={showPiece}
+          />
+        )}
+
+        {/* A PIECE, FULL SIZE. Rendered from here so it can be opened either by
+            the work slider on the card or from the projects modal. */}
+        {openPiece && (
+          <Lightbox
+            piece={openPiece}
+            t={t}
+            lang={lang}
+            onClose={() => setOpenPiece(null)}
           />
         )}
 
@@ -783,149 +833,160 @@ export default function Home({ slug = null } = {}) {
       </main>
 
       <style jsx>{`
+        /* ---- THE PORTFOLIO'S OWN TOKENS -------------------------------------
+           The public portfolio is not the admin, and it does not inherit the
+           admin's visual language. It is dark-only, Arabic-first, and every
+           value below was measured out of the running original at
+           docs/design/original-portfolio-reference.md rather than chosen here.
+
+           They live as tokens for one reason: the card used to be about forty
+           separate rgba() literals, each one picked to look like its neighbour,
+           and that is exactly how a surface drifts. There is now one place to
+           change what "the card" or "the gap" means.
+
+           --pf-accent is the ONLY value a tenant supplies. */
         .page {
+          --pf-page-top:  #050507;
+          --pf-page-mid:  #0a0a14;
+          --pf-page-foot: #6a70ab;
+
+          --pf-card-w:   330px;
+          --pf-card-r:   35px;
+          --pf-card-pad: 25px;
+          /* ONE vertical gap for the whole card. The original separates every
+             block by exactly 20px with no exceptions, and that single number is
+             most of why it reads as composed. */
+          --pf-stack:    20px;
+          /* The one measured exception. The name sits 15px under the header row
+             rather than 20 because the avatar's circle carries its own optical
+             space above the text -- a full gap there reads as a hole. */
+          --pf-stack-tight: 15px;
+
+          --pf-surface:      rgba(255,255,255,0.05);
+          --pf-raised:       rgba(255,255,255,0.08);
+          --pf-raised-lit:   rgba(255,255,255,0.10);
+          --pf-well:         rgba(0,0,0,0.20);
+          --pf-hairline:     rgba(255,255,255,0.08);
+          --pf-hairline-lit: rgba(255,255,255,0.10);
+
+          --pf-ink:       #ffffff;
+          --pf-ink-dim:   rgba(255,255,255,0.60);
+          --pf-ink-faint: rgba(255,255,255,0.50);
+
+          --pf-accent: var(--accent, #9FA7FF);
+
           min-height: 100vh;
-          background:
-            radial-gradient(ellipse 900px 600px at 50% 0%, rgba(159,167,255,0.18), transparent 60%),
-            radial-gradient(ellipse 600px 400px at 50% 100%, rgba(159,167,255,0.08), transparent 60%),
-            var(--bg-primary);
+          font-family: ${PF_FONT};
+          /* FIXED, deliberately. The violet then rises from the bottom of the
+             VIEWPORT rather than the bottom of the document, so it stays where
+             it was composed to be however tall the page grows. The original
+             does the same. */
+          background: linear-gradient(
+            var(--pf-page-top)  0%,
+            var(--pf-page-mid)  55%,
+            var(--pf-page-foot) 100%
+          ) fixed;
           display: flex;
           flex-direction: column;
           align-items: center;
-          padding: 80px 20px 40px; /* card sits lower from the top */
-        }
-        .page.has-ticker { padding-top: 100px; /* extra room when ticker strip is visible */ }
-
-        /* TOP TICKER — scrolls right-to-left always (regardless of page dir) */
-        .ticker {
-          position: fixed;
-          top: 0; left: 0; right: 0;
-          height: 36px;
-          overflow: hidden;
-          display: flex;
-          align-items: center;
-          direction: ltr;
-          z-index: 50;
-          font-size: 13px;
-          font-weight: 500;
-          box-shadow: 0 2px 12px rgba(0,0,0,0.2);
-        }
-        .ticker-track {
-          display: flex;
-          width: max-content;
-          flex-shrink: 0;
-          gap: 60px;
-          padding-inline-start: 60px;
-          white-space: nowrap;
-          animation: tickerScroll linear infinite;
-          direction: ltr; /* force LTR so the marquee scrolls predictably */
-        }
-        .ticker.speed-slow .ticker-track   { animation-duration: 60s; }
-        .ticker.speed-medium .ticker-track { animation-duration: 35s; }
-        .ticker.speed-fast .ticker-track   { animation-duration: 20s; }
-        .ticker:hover .ticker-track { animation-play-state: paused; }
-        .ticker-text { display: inline-block; flex-shrink: 0; }
-        @keyframes tickerScroll {
-          from { transform: translateX(0); }
-          to   { transform: translateX(-50%); }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .ticker-track { animation: none; transform: none; padding-inline-start: 20px; }
+          padding: 50px 20px 40px;
         }
         .card {
-          /* ONE vertical rhythm for the whole card. Its blocks previously sat on
-             five different gaps (10 / 14 / 16 / 18 / 20px) picked per block,
-             which is what made the stack read as slightly-off rather than
-             composed. Every sibling block now separates by --card-stack and
-             every nested one by --card-stack-sm, so the spacing is a rule
-             rather than a series of one-off decisions. */
-          --card-stack: 20px;
+          --card-stack: var(--pf-stack);
           --card-stack-sm: 12px;
           width: 100%;
-          max-width: 440px;
-          background: linear-gradient(180deg, rgba(30,30,42,0.7), rgba(20,20,28,0.5));
+          max-width: var(--pf-card-w);
+          /* A FLAT translucent surface, not a gradient. The card is 5% white
+             over the page's own violet, which is what lets the gradient show
+             THROUGH it -- the reason the original's card looks like glass on a
+             lit page rather than a dark rectangle sitting on one. The 180deg
+             gradient it used to carry made it opaque and killed that entirely. */
+          background: var(--pf-surface);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: var(--card-radius, 24px);
-          padding: 20px;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+          border: 1px solid var(--pf-hairline);
+          border-radius: var(--pf-card-r);
+          padding: var(--pf-card-pad);
+          box-shadow: 0 25px 50px rgba(0,0,0,0.5);
         }
-        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--card-stack); gap: 8px; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        /* The mark and the contact glyphs travel together at the inline end. */
+        .identity-marks { display: flex; align-items: center; gap: 12px; min-width: 0; }
 
-        /* Lang pill (replaces share button) */
+        /* The language switch. Sized and shaped like the original's share
+           button, because it occupies that corner and the corner has a weight:
+           chrome, quiet, out of the way (hierarchy §5). */
         .lang-pill {
-          padding: 7px 12px;
+          height: 32px;
+          padding: 0 10px;
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 999px;
-          color: rgba(255,255,255,0.85);
+          background: var(--pf-raised-lit);
+          border-radius: 10px;
+          color: var(--pf-ink);
           font-size: 11px;
-          font-weight: 600;
+          font-weight: 700;
           cursor: pointer;
-          letter-spacing: 0.04em;
           font-family: inherit;
-          transition: var(--transition);
+          flex-shrink: 0;
+          transition: background-color 300ms ease;
         }
-        .lang-pill:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        /* Latin only — 'EN' is an abbreviation and tracks; the Arabic 'ع' must
+           not (design.md §10). */
+        :global(html[dir='ltr']) .lang-pill { letter-spacing: 0.04em; }
+        .lang-pill:hover { background: rgba(255,255,255,0.2); }
+        .lang-pill:focus-visible { outline: 2px solid var(--pf-accent); outline-offset: 2px; }
 
-        .socials { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+        .socials { display: flex; gap: 6px; align-items: center; }
         .social-icon {
-          width: 30px; height: 30px;
+          width: 28px; height: 28px;
+          flex-shrink: 0;
           display: flex; align-items: center; justify-content: center;
           border-radius: 8px;
-          color: rgba(255,255,255,0.7);
-          transition: var(--transition);
+          background: var(--pf-raised);
+          color: var(--pf-ink);
+          transition: background-color 300ms ease, transform 300ms ease;
         }
-        /* Brand-coloured glyphs. Every icon keeps the same 30px box, the same
-           gap and the same hit area, so the row still reads as one set rather
-           than as a strip of stickers — only the glyph's colour changes. */
-        .social-icon.tinted { color: var(--brand); }
-        .social-icon:hover { color: #fff; transform: translateY(-1px); }
-        /* A tinted icon KEEPS its brand colour on hover — turning it white would
-           undo the recognition it exists for — and gets its lift from a neutral
-           backplate instead. */
-        .social-icon.tinted:hover { color: var(--brand); background: rgba(255,255,255,0.09); }
-        .social-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .social-icon:hover { background: var(--pf-raised-lit); transform: translateY(-3px); }
+        .social-icon:focus-visible { outline: 2px solid var(--pf-accent); outline-offset: 2px; }
+        @media (prefers-reduced-motion: reduce) { .social-icon:hover { transform: none; } }
 
-        /* BIGGER brand logo (56px) with accent glow */
+        /* The mark, ringed in the tenant's accent — the one place on the card
+           where the accent is structural rather than incidental. */
         .brand-logo {
-          width: 56px; height: 56px;
+          width: 55px; height: 55px;
           border-radius: 50%;
-          border: 1.5px solid rgba(159,167,255,0.55);
+          border: 2px solid var(--pf-accent);
+          padding: 2px;
           display: flex; align-items: center; justify-content: center;
           font-size: 22px; font-weight: 700;
-          color: rgba(255,255,255,0.95);
+          color: var(--pf-ink);
           overflow: hidden;
           flex-shrink: 0;
         }
-        .brand-logo img { width: 100%; height: 100%; object-fit: contain; }
+        .brand-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
 
         .name-block {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          margin-bottom: var(--card-stack);
-          padding: 0 6px;
-        }
-        .name-text {
-          flex: 1;
-          min-width: 0;
-          text-align: start; /* text hugs the avatar — start = right in RTL, left in LTR */
+          margin-top: var(--pf-stack-tight);
+          text-align: start; /* start = right in Arabic, left in English */
         }
         .name-block h1 {
-          font-family: 'Cairo', 'Manrope', sans-serif;
-          font-size: 26px; font-weight: 700;
-          color: #fff;
-          letter-spacing: -0.01em;
-          margin-bottom: 4px;
+          font-size: 19px; font-weight: 700;
+          color: var(--pf-ink);
+          line-height: 1.2;
         }
-        :global(html[dir="rtl"]) .name-block h1 { letter-spacing: normal; }
-        .name-block p { font-size: 13px; color: rgba(255,255,255,0.5); margin-bottom: 8px; }
+        /* The original letter-spaces this heading by 0.5px. It is NOT copied:
+           Arabic is cursive and tracking severs the joins between letterforms
+           (design.md §10). It is the one measured value from the reference that
+           is deliberately not transferred. */
+        .name-block p {
+          font-size: 12px;
+          color: var(--pf-ink-faint);
+          margin-top: 4px;
+        }
         .about-toggle {
+          margin-top: 8px;
           padding: 4px 12px;
           font-size: 11px;
           color: rgba(255,255,255,0.6);
@@ -941,7 +1002,7 @@ export default function Home({ slug = null } = {}) {
         }
         .about-toggle:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
 
-        .about-section { margin-bottom: var(--card-stack); animation: aboutIn 0.25s ease; }
+        .about-section { margin-top: var(--card-stack); animation: aboutIn 0.25s ease; }
         @keyframes aboutIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 
         .bio-block { padding: 12px 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; margin-bottom: var(--card-stack-sm); }
@@ -951,82 +1012,140 @@ export default function Home({ slug = null } = {}) {
         .cf-label { color: rgba(255,255,255,0.5); }
         .cf-value { color: rgba(255,255,255,0.92); font-weight: 500; text-align: end; }
 
-        /* Banner 3:2 (was 16:9) — bigger / more dominant */
-        .banner-frame {
+        /* ---- THE WORK ------------------------------------------------------
+           A FIXED HEIGHT BAND, not an aspect ratio. Every piece is drawn into
+           the same 170px strip at object-fit: cover, so the card's proportions
+           are the card's and do not change with whatever the client uploaded.
+           It is a crop, and that is the honest trade: this is a 330px card, and
+           a card whose height moves with each slide is not a card. The full,
+           uncropped piece is one tap away in the lightbox. */
+        .work-frame {
           position: relative;
           width: 100%;
-          aspect-ratio: 3 / 2;
-          border-radius: 18px;
+          height: 170px;
+          border: 1px solid var(--pf-hairline-lit);
+          border-radius: 20px;
           overflow: hidden;
-          margin-bottom: var(--card-stack);
-          background: rgba(0,0,0,0.2);
+          margin-top: var(--card-stack);
+          background: var(--pf-well);
         }
-        .banner {
+        .work-slide {
           position: absolute; inset: 0;
-          display: flex; align-items: center; justify-content: center;
           opacity: 0;
           transition: opacity 0.5s ease;
         }
-        .banner.active { opacity: 1; }
-        /* replaces background-size:cover / background-position:center */
-        .banner-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-        .banner-content { position: relative; text-align: center; padding: 28px; }
-        .banner-text {
-          font-family: 'Reem Kufi', 'Cairo', 'Manrope', sans-serif;
-          font-size: 36px; font-weight: 700; color: #fff; margin-bottom: 10px;
-          line-height: 1.15;
+        .work-slide.active { opacity: 1; }
+        .work-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+        /* The whole frame is the target. */
+        .work-open {
+          position: absolute; inset: 0;
+          width: 100%; height: 100%;
+          background: none; border: none; padding: 0;
+          cursor: pointer;
+          z-index: 1;
         }
-        .banner-sub { font-size: 14px; color: rgba(255,255,255,0.9); line-height: 1.5; }
-        .banner-dots { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; }
-        .banner-dots button {
-          width: 6px; height: 3px; background: rgba(255,255,255,0.4);
-          border: none; border-radius: 2px; padding: 0; cursor: pointer;
-          transition: var(--transition);
+        .work-open:focus-visible { outline: 2px solid var(--pf-accent); outline-offset: -4px; }
+
+        /* Hidden until the pointer is over the frame, exactly as the original
+           has them. They are navigation for a visitor who is already looking;
+           painted at rest they would be two more things on a card that is
+           trying to have one. Keyboard focus reveals them too — a control that
+           can be tabbed to but not seen is worse than no control. */
+        .work-nav {
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 32px; height: 32px;
+          display: flex; align-items: center; justify-content: center;
+          border-radius: 50%;
+          background: rgba(0,0,0,0.5);
+          color: var(--pf-ink);
+          font-size: 18px; line-height: 1;
+          border: none; cursor: pointer;
+          opacity: 0;
+          transition: opacity 300ms ease, background-color 300ms ease;
+          z-index: 2;
         }
-        .banner-dots button.on { width: 20px; background: #fff; }
+        .work-nav.prev { left: 10px; }
+        .work-nav.next { right: 10px; }
+        .work-frame:hover .work-nav,
+        .work-nav:focus-visible { opacity: 1; }
+        .work-nav:hover { background: rgba(0,0,0,0.7); }
+        .work-nav:focus-visible { outline: 2px solid var(--pf-accent); outline-offset: 2px; }
+        /* A pointer that cannot hover never reveals them, so on a phone the
+           dots and the swipe of a finger across the images are the whole
+           control surface — which is what the original does too. */
+        @media (hover: none) { .work-nav { display: none; } }
+
+        .work-dots {
+          position: absolute;
+          bottom: 12px; left: 50%;
+          transform: translateX(-50%);
+          display: flex; gap: 6px;
+          z-index: 2;
+        }
+        .work-dots button {
+          width: 6px; height: 6px;
+          background: rgba(255,255,255,0.3);
+          border: none; border-radius: 50%;
+          padding: 0; cursor: pointer;
+          transition: width 300ms ease, background-color 300ms ease, border-radius 300ms ease;
+        }
+        .work-dots button.on {
+          width: 18px;
+          border-radius: 10px;
+          background: var(--pf-accent);
+        }
+        .work-dots button:focus-visible { outline: 2px solid var(--pf-accent); outline-offset: 3px; }
+        @media (prefers-reduced-motion: reduce) {
+          .work-slide, .work-nav, .work-dots button { transition: none; }
+        }
 
         /* Small, quiet, and only ever present when it is true -- the whole
            point is that it removes itself. A pulsing dot was rejected: the
            brand forbids perpetual motion, and a badge that breathes at you is
            louder than the fact it carries. */
+        /* Green, and green is doing real work here — it is the one status on
+           the card, it is time-bounded, and it expires by itself. The card has
+           no other coloured surface, so it cannot be mistaken for decoration.
+           A pulsing dot was rejected and stays rejected: nothing on a published
+           portfolio may demand, and a badge that breathes at you is louder than
+           the fact it carries. */
         .avail-badge {
-          display: inline-flex; align-items: center; gap: 6px;
-          align-self: flex-start;
-          padding: 5px 11px; margin-bottom: var(--card-stack);
+          width: fit-content;
+          margin-top: var(--card-stack);
+          display: flex; align-items: center; gap: 6px;
+          padding: 5px 11px;
           border-radius: 999px;
           background: rgba(52,199,89,0.12);
           border: 1px solid rgba(52,199,89,0.28);
           color: #6BE08D;
-          font-size: 11px; font-weight: 600;
+          font-size: 11px; font-weight: 700;
         }
         .avail-dot { inline-size: 6px; block-size: 6px; border-radius: 50%; background: #34C759; flex-shrink: 0; }
 
+        /* ONE WELL, not three tiles.
+           The stats used to be a grid of bordered cells on their own darker
+           background — three boxes, each with a hairline, each reading as a
+           separate claim. The original is a single recessed strip with the
+           figures spaced across it, and the difference is the whole character
+           of the block: a strip is one quiet fact about the client, three tiles
+           are three assertions competing with the work above them. */
         .stats {
-          display: grid; gap: 1px;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.06);
-          border-radius: 14px;
-          overflow: hidden;
-          margin-bottom: var(--card-stack);
-        }
-        /* Grid stretches every cell to the tallest, so a label that wraps to two
-           lines used to leave the single-line cells top-heavy with dead space
-           beneath them. Centring the content vertically makes all three read as
-           balanced whatever the copy does. Padding raised from 14/8 to sit on
-           the same rhythm as the buttons below. */
-        .stat {
-          /* Roomier, and it can no longer clip. A two-line label like "We are
-             available to connect." sat tight against the cell edge and read as
-             text cut in half -- the cell had just enough padding for one line.
-             min-height keeps all three cells the same size when only one wraps,
-             and overflow-wrap stops a long unbroken word from pushing out. */
-          padding: 18px 12px;
-          min-block-size: 84px;
           display: flex;
-          flex-direction: column;
-          justify-content: center;
+          justify-content: space-between;
+          align-items: stretch;
+          gap: 4px;
+          padding: 12px;
+          background: var(--pf-well);
+          border-radius: 20px;
+          margin-top: var(--card-stack);
+        }
+        .stat {
+          flex: 1 1 0;
+          min-width: 0;
           text-align: center;
-          background: rgba(20,20,28,0.6);
           overflow-wrap: anywhere;
         }
         /* unicode-bidi on both: a stat is a self-contained string, and without
@@ -1034,450 +1153,276 @@ export default function Home({ slug = null } = {}) {
            intent — "2+" renders as "+2" and "connect." as ".connect". A rating
            or a count displayed backwards is a correctness bug, not a nicety. */
         .stat-value {
-          font-size: 18px; font-weight: 700; color: #fff;
-          margin-bottom: 3px; line-height: 1.2;
+          /* The accent, and this is the one number on the card allowed to carry
+             it. The figures were white, which made them the same weight as the
+             name and the button label — three more shouts. In the accent they
+             read as one coloured detail, and the colour is the tenant's own. */
+          font-size: 14px; font-weight: 700; color: var(--pf-accent);
+          line-height: 1.4;
           unicode-bidi: plaintext;
         }
         .stat-label {
-          font-size: 11px; color: rgba(255,255,255,0.5); line-height: 1.5;
+          font-size: 10px; color: var(--pf-ink-dim); line-height: 1.4;
           unicode-bidi: plaintext;
         }
 
-        /* ---- CTA SYSTEM -----------------------------------------------------
-           A 24px icon column that never flexes, so the glyph sits at the same
-           offset in EVERY button whatever its label. The label takes the
-           remaining room and ellipsises only if it genuinely overflows.
+        /* ---- THE ONE ACTION -------------------------------------------------
+           A GHOST BUTTON, not a filled one, and that is a reversal worth
+           stating. The old primary was a solid fill of the tenant's accent with
+           a contrast-checked ink on top — good engineering answering the wrong
+           question. It was filled because it had to out-shout four other
+           buttons. There are no other buttons now, so the only thing it has to
+           be louder than is nothing, and the card's one raised surface is
+           already enough to read as pressable.
 
-           The column sits at the INLINE START, so it mirrors: left in English,
-           right in Arabic. An earlier version pinned it left in both directions
-           for cross-language consistency, which rendered as Arabic text stranded
-           against a left icon with a dead gutter on the right — the eye starts
-           on the right in Arabic and found nothing there. Alignment discipline
-           holds within each direction instead of across them.
+           It also stops the accent from appearing three times on one card. The
+           accent is the mark's ring and the stat figures; the button is white
+           on white-8%, exactly as the original has it.
 
            NOTE: no backticks in these comments — the whole block is a template
            literal and one would end it mid-stylesheet. */
-        .ctas {
-          --cta-icon-col: 24px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
         .cta {
           width: 100%;
-          min-height: 52px;
+          height: 52px;
+          margin-top: var(--card-stack);
           display: flex;
           align-items: center;
-          gap: 14px;
+          justify-content: center;
+          gap: 10px;
           padding: 0 16px;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 14px;
-          color: #fff;
+          background: var(--pf-raised);
+          border: 1px solid var(--pf-hairline-lit);
+          border-radius: 18px;
+          color: var(--pf-ink);
           font-family: inherit;
-          font-size: 14px; font-weight: 600;
+          font-size: 14px; font-weight: 700;
           cursor: pointer;
-          box-shadow: 0 1px 2px rgba(0,0,0,0.20);
-          /* PAINT-ONLY STATE CHANGES.
-             Every property below is composited or repaint-only — none can
-             reflow. Width, padding, gap, the icon column and the text column are
-             therefore byte-identical at rest, on hover and on press: the button
-             lifts, it never resizes. 160ms to respond and 220ms to settle reads
-             as responsive rather than springy. */
+          overflow: hidden;
+          /* PAINT-ONLY STATE CHANGES. Nothing below can reflow, so the button
+             is byte-identical in width at rest, on hover and on press. */
           transition:
-            background-color 160ms cubic-bezier(0.4, 0, 0.2, 1),
-            border-color 160ms cubic-bezier(0.4, 0, 0.2, 1),
-            box-shadow 220ms cubic-bezier(0.4, 0, 0.2, 1),
-            transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+            background-color 300ms ease,
+            border-color 300ms ease;
         }
+
+        /* THE SHINE. A 40%-wide band of white at 15% crossing the button on
+           hover, over 0.8s. It is the original's one flourish and the only
+           motion left on the card, and it earns its place by being feedback:
+           it fires on the pointer arriving and it does not repeat, idle or
+           loop. Composited transform, so it costs a paint and nothing else. */
+        .cta::after {
+          content: "";
+          position: absolute;
+          top: -50%; left: -100%;
+          width: 40%; height: 200%;
+          background: linear-gradient(to right, transparent, rgba(255,255,255,0.15), transparent);
+          transform: rotate(30deg);
+          transition: left 800ms ease;
+          pointer-events: none;
+        }
+        .cta { position: relative; }
 
         /* Hover is gated on a real hovering pointer. Touch browsers otherwise
-           latch :hover after a tap and leave the button stuck in the lifted
-           state until something else is tapped. */
+           latch :hover after a tap and leave the button in its hovered state
+           until something else is tapped. */
         @media (hover: hover) {
-          .cta:hover {
-            background: rgba(255,255,255,0.10);
-            border-color: rgba(255,255,255,0.18);
-            /* Wide soft ambient shadow for the lift, plus a tight contact shadow
-               so the button still feels attached to the card. */
-            box-shadow: 0 10px 24px -8px rgba(0,0,0,0.55),
-                        0 2px 6px -2px rgba(0,0,0,0.35);
-            transform: translateY(-2px);
-          }
-          /* NOTE: the icon colour deliberately does not change on hover. Every
-             glyph now carries an identity colour — a brand mark or the site
-             accent — and washing it to white would throw that away for the one
-             moment the user is looking straight at it. The lift and shadow are
-             the hover feedback. */
-          .cta.primary:hover {
-            box-shadow: 0 14px 30px -10px rgba(0,0,0,0.6),
-                        0 3px 8px -3px rgba(0,0,0,0.4);
-          }
+          .cta:hover { background: var(--pf-raised-lit); }
+          .cta:hover::after { left: 150%; }
         }
-
-        /* Press settles back to the surface faster than it rose. */
-        .cta:active {
-          transform: translateY(0);
-          box-shadow: 0 1px 2px rgba(0,0,0,0.25);
-          transition-duration: 90ms;
-        }
-        .cta.primary:active { box-shadow: 0 2px 6px -2px rgba(0,0,0,0.4); }
-
-        /* Keyboard focus gets the same lift as hover, so it is as legible as a
-           mouse state rather than a ring on a flat button. */
-        .cta:focus-visible {
-          outline: 2px solid var(--accent);
-          outline-offset: 3px;
-          border-color: rgba(255,255,255,0.18);
-          box-shadow: 0 10px 24px -8px rgba(0,0,0,0.55);
-          transform: translateY(-2px);
-        }
-        .cta.primary:focus-visible {
-          outline-color: var(--cta-ink, #ffffff);
-          outline-offset: 2px;
-          box-shadow: 0 14px 30px -10px rgba(0,0,0,0.6),
-                      0 3px 8px -3px rgba(0,0,0,0.4);
-        }
-
-        /* The lift is the only thing that genuinely moves. Drop it when motion is
-           unwelcome; colour and shadow still carry the state. */
+        .cta:active { background: rgba(255,255,255,0.06); }
+        .cta:focus-visible { outline: 2px solid var(--pf-accent); outline-offset: 3px; }
         @media (prefers-reduced-motion: reduce) {
-          .cta:hover, .cta:active, .cta:focus-visible { transform: none; }
+          .cta, .cta::after { transition: none; }
+          .cta:hover::after { left: -100%; }
         }
 
-        /* THE fixed column — 24px, never flexes, never shrinks. */
+        /* The icon and the label are centred AS A GROUP — there is no fixed
+           icon gutter. A reserved column exists to align glyphs down a stack of
+           buttons, and there is no stack any more; holding the column would
+           strand a short label off-centre for a symmetry nobody can see. */
         .cta-icon {
-          flex: 0 0 var(--cta-icon-col);
-          width: var(--cta-icon-col);
-          height: var(--cta-icon-col);
+          flex: 0 0 auto;
           display: flex; align-items: center; justify-content: center;
-          /* Generic glyphs (website, email, location, phone, link) wear the
-             tenant's accent rather than plain white. With one branded icon in a
-             row of white ones the colour looked like an accident; this makes it
-             a rule — brand marks in brand colours, everything else in the site's
-             own accent. */
-          color: var(--accent);
+          color: var(--pf-accent);
         }
-        /* Each platform in its own colour, same as the social row. brandColor()
-           returns null for the generic glyphs and for anything unknown, and
-           those keep the accent above. */
         .cta-icon.tinted { color: var(--brand); }
-
         .cta-label {
-          flex: 1 1 auto;
-          /* min-width:0 is what actually permits the ellipsis: a flex item
-             defaults to min-width:auto and would otherwise refuse to shrink
-             below its text. */
           min-width: 0;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          /* plaintext makes each label its own bidi paragraph, so an English
+          /* plaintext makes the label its own bidi paragraph, so an English
              label on an Arabic page keeps its trailing punctuation at the end
-             instead of having it flipped to the front. It also makes the start
-             keyword resolve to the TEXT's direction, which would push an English label
-             away from its icon on an Arabic page — so alignment is pinned to the
-             page direction explicitly rather than left to the start keyword. */
+             instead of having it flipped to the front. */
           unicode-bidi: plaintext;
-          text-align: left;
         }
-        :global(html[dir='rtl']) .cta-label { text-align: right; }
-        /* NO max-width here, deliberately. A hard 16ch cap truncated labels
-           while half the button sat empty, which reads as a rendering fault
-           rather than a design choice. The label now takes the room it has and
-           ellipsises only when the text genuinely does not fit — the admin's
-           22-character cap is what keeps labels sane, and this is the backstop
-           for content saved before that cap existed. */
-        .cta.no-icon .cta-label { text-align: center; }
 
-        /* PRIMARY CTA — a SOLID fill of the tenant's accent, so the first action
-           reads as the action rather than as another ghost button. Fill and
-           foreground both derive from the tenant's own accent (readableInkOn
-           picks the ink), so it stays on-brand for every client and never
-           produces white-on-yellow.
-
-           The fill colour deliberately does NOT change on hover: filter:
-           brightness() would lift the label and icon along with it, washing out
-           dark ink on a light accent — a contrast regression exactly where the
-           user is about to click. The lift lives entirely in the shadow. */
-        .cta.primary {
-          background: var(--cta-bg, #9FA7FF);
-          color: var(--cta-ink, #0a0a0c);
-          border: 1px solid transparent;
-          box-shadow: 0 4px 12px -2px rgba(0,0,0,0.35);
-        }
-        /* On a filled button a brand colour sits on an unpredictable accent —
-           WhatsApp green on a green accent disappears. The primary uses its
-           contrast-checked ink; the secondaries carry the brand colours against
-           the known dark card. */
-        .cta.primary .cta-icon,
-        .cta.primary .cta-icon.tinted { color: var(--cta-ink, #0a0a0c); }
-
-        .setup-hint {
-          padding: 20px;
-          text-align: center;
-          color: rgba(255,255,255,0.5);
-          font-size: 12px;
-          background: rgba(159,167,255,0.06);
-          border: 1px dashed rgba(159,167,255,0.2);
-          border-radius: 12px;
-          margin-top: var(--card-stack-sm);
-        }
-        .setup-hint a { color: var(--accent); text-decoration: underline; }
-
+        /* On the same 20px rhythm as everything inside the card — the footer is
+           the last block in the stack, not a separate region needing its own
+           number. The client's line is 12px at 80% (the original's), and the
+           legal links below it are quieter still: they are a platform
+           obligation and must be reachable, but they are not the client's
+           words and should not read as loudly as the line that is. */
         .footer {
-          margin-top: 32px;
+          margin-top: var(--pf-stack);
           text-align: center;
-          font-size: 11px;
-          color: rgba(255,255,255,0.3);
-          display: flex; flex-direction: column; gap: 6px;
+          font-size: 12px; font-weight: 500;
+          opacity: 0.8;
+          display: flex; flex-direction: column; gap: 8px;
         }
-        .footer-credit a { color: rgba(255,255,255,0.55); }
-        .footer-credit a:hover { color: #fff; }
-        .footer-credit { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-        .footer-legal-link { color: rgba(255,255,255,0.55); font: inherit; background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
-        .footer-legal-link:hover { color: #fff; }
-        .footer-sep { color: rgba(255,255,255,0.35); user-select: none; }
+        .footer-credit { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 11px; }
+        .footer-legal-link { color: var(--pf-ink-faint); font: inherit; background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+        .footer-legal-link:hover { color: var(--pf-ink); }
+        .footer-legal-link:focus-visible { outline: 2px solid var(--pf-accent); outline-offset: 2px; border-radius: 2px; }
+        .footer-sep { color: var(--pf-ink-faint); user-select: none; }
 
-        /* Mobile spacing tightens */
+        /* The card is 330px wide and does not change on a phone -- it already
+           fits a 375px viewport with margin, so the old shrink-the-padding rule
+           was correcting for a width this design no longer has. Only the page's
+           own breathing room comes in. */
         @media (max-width: 480px) {
-          .page { padding: 24px 12px; }
-          .card { padding: 16px; border-radius: var(--card-radius, 20px); }
-          .name-block h1 { font-size: 22px; }
-          .banner-text { font-size: 28px; }
+          .page { padding: 30px 12px 32px; }
         }
       `}</style>
     </>
   );
 }
 
-function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
-  // Lightbox holds the active project's whole image set + its details, so we can
-  // navigate the slideshow and show project info without the old dropdown.
-  const [lightbox, setLightbox] = useState(null); // { images, index, title, desc, meta, url } | null
-  const [imgLoaded, setImgLoaded] = useState(false); // stage image load state (spinner + fade-in)
+// =========================================================
+// LIGHTBOX — one piece of the client's work, full size.
+//
+// Moved out of ProjectsModal on 2026-08-28 with its behaviour unchanged. It
+// moved because the card itself now opens a piece: the work is ON the page —
+// the slider is the pieces — so the route to a full-size image no longer runs
+// through a grid inside a modal. Two callers, one implementation.
+//
+// It owns no data. `piece` is already resolved to { images, title, desc, meta,
+// url } by whoever opens it, so this component never has to know what a project
+// row looks like.
+// =========================================================
+function Lightbox({ piece, t, lang, onClose }) {
+  const [index, setIndex] = useState(0);
+  const [imgLoaded, setImgLoaded] = useState(false); // spinner + fade-in per slide
   const touchStartX = useRef(null);
-  const stepLightbox = useCallback((delta) => {
-    setLightbox(lb => (lb ? { ...lb, index: (lb.index + delta + lb.images.length) % lb.images.length } : lb));
-  }, []);
-  function onLbTouchStart(e) { touchStartX.current = e.touches[0].clientX; }
-  function onLbTouchEnd(e) {
-    if (touchStartX.current == null || !lightbox || lightbox.images.length < 2) return;
+  const images = piece.images;
+
+  const step = useCallback((delta) => {
+    setIndex(i => (i + delta + images.length) % images.length);
+  }, [images.length]);
+
+  function onTouchStart(e) { touchStartX.current = e.touches[0].clientX; }
+  function onTouchEnd(e) {
+    if (touchStartX.current == null || images.length < 2) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
-    if (Math.abs(dx) > 40) stepLightbox(dx < 0 ? 1 : -1); // swipe left -> next, right -> prev
+    if (Math.abs(dx) > 40) step(dx < 0 ? 1 : -1); // swipe left -> next, right -> prev
     touchStartX.current = null;
   }
 
   useEffect(() => {
     function onKey(e) {
-      if (e.key === 'Escape') {
-        if (lightbox) setLightbox(null);
-        else onClose();
-        return;
-      }
-      // Arrow nav only inside the lightbox and only when there's more than one image.
-      // Physical mapping (Left = previous, Right = next) matches the button positions
-      // in both LTR and RTL, so it stays predictable.
-      if (!lightbox || lightbox.images.length < 2) return;
-      if (e.key === 'ArrowLeft') stepLightbox(-1);
-      else if (e.key === 'ArrowRight') stepLightbox(1);
+      if (e.key === 'Escape') { onClose(); return; }
+      // Arrow nav only when there is more than one image. Physical mapping
+      // (Left = previous, Right = next) matches the button positions in both
+      // LTR and RTL, so it stays predictable.
+      if (images.length < 2) return;
+      if (e.key === 'ArrowLeft') step(-1);
+      else if (e.key === 'ArrowRight') step(1);
     }
     document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden'; // scroll-lock the page behind the modal
+    // RESTORE, do not clear. This used to set overflow back to '' on unmount,
+    // which was correct only while the lightbox was the sole thing locking the
+    // page. It can now open above a modal that is also locked, and clearing
+    // would let the page scroll behind something still open.
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
     };
-  }, [onClose, lightbox, stepLightbox]);
+  }, [onClose, step, images.length]);
 
-  // Whenever the visible slide changes: show the spinner again for the new image,
-  // and warm the browser cache for the immediate next/previous images so stepping
-  // feels instant — without eagerly fetching the entire set.
+  // Whenever the visible slide changes: show the spinner again for the new
+  // image, and warm the browser cache for the immediate next/previous images so
+  // stepping feels instant — without eagerly fetching the entire set.
   useEffect(() => {
-    if (!lightbox) return;
     setImgLoaded(false);
-    if (lightbox.images.length < 2) return;
-    const { images, index } = lightbox;
+    if (images.length < 2) return;
     [(index + 1) % images.length, (index - 1 + images.length) % images.length]
       .forEach(i => { const im = new Image(); im.src = images[i]; });
-  }, [lightbox]);
-
-  // Clicking a project opens its slideshow directly (no dropdown step). Prefer the
-  // gallery images[]; fall back to the single cover_image; if it has neither but has
-  // an external link, just open that. Logs project_view exactly like before.
-  function openProject(p, title, desc) {
-    onOpenProject?.(p.id);
-    const images = (p.images && p.images.length) ? p.images
-      : (p.cover_image ? [p.cover_image] : []);
-    if (!images.length) {
-      // No images to show — if there's an external link, honor it; otherwise no-op.
-      const dest = safeUrl(p.external_url);
-      if (dest) window.open(dest, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    const meta = [p.client, p.year, p.role].filter(Boolean).join('  ·  ');
-    setLightbox({ images, index: 0, title, desc: desc || '', meta, url: p.external_url || null });
-  }
+  }, [index, images]);
 
   return (
     <>
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
-        <div className="modal-head">
-          <h2>{t('portfolio_title')}</h2>
-          <button className="modal-close" onClick={onClose} aria-label={t('close')}>×</button>
-        </div>
-        <div className="modal-body">
-          {projects.length === 0 ? (
-            <p className="modal-empty">{t('no_projects')}</p>
-          ) : (
-            <div className="grid">
-              {projects.map(p => {
-                const title = pick(p.title, lang) || pick(p.title, 'en');
-                const desc = pick(p.description, lang) || pick(p.description, 'en');
-                const count = (p.images && p.images.length) || (p.cover_image ? 1 : 0);
-                return (
-                  <article key={p.id} className="pcard">
-                    <button type="button" className="pcard-trigger" onClick={() => openProject(p, title, desc)} aria-label={title}>
-                      {p.cover_image && (
-                        <div className="pcard-cover">
-                          <img src={p.cover_image} alt={title} loading="lazy" decoding="async" />
-                          {count > 1 && <span className="pcard-badge" dir="ltr">{count}</span>}
-                        </div>
-                      )}
-                      <div className="pcard-meta">
-                        <h3>{title}</h3>
-                        {desc && <p>{desc}</p>}
-                      </div>
-                    </button>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </div>
+    <div
+      className="lightbox"
+      dir={lang === 'ar' ? 'rtl' : 'ltr'}
+      onClick={() => onClose()}
+    >
+      <button
+        className="lb-close"
+        onClick={(e) => { e.stopPropagation(); onClose(); }}
+        aria-label={t('close')}
+      >×</button>
+
+      <div
+        className="lb-stage"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
+        {images.length > 1 && (
+          <>
+            <button
+              className="lb-nav lb-prev"
+              onClick={(e) => { e.stopPropagation(); step(-1); }}
+              aria-label={lang === 'ar' ? 'السابق' : 'Previous'}
+            >‹</button>
+            <button
+              className="lb-nav lb-next"
+              onClick={(e) => { e.stopPropagation(); step(1); }}
+              aria-label={lang === 'ar' ? 'التالي' : 'Next'}
+            >›</button>
+          </>
+        )}
+        {!imgLoaded && <div className="lb-spinner" aria-hidden="true" />}
+        <img
+          key={index}
+          className={imgLoaded ? 'loaded' : ''}
+          src={images[index]}
+          alt={piece.title || ''}
+          decoding="async"
+          /* the visitor is staring straight at it — jump the queue */
+          fetchPriority="high"
+          onLoad={() => setImgLoaded(true)}
+          onClick={(e) => e.stopPropagation()}
+        />
       </div>
-    </div>
-      {lightbox && (
-        <div
-          className="lightbox"
-          dir={lang === 'ar' ? 'rtl' : 'ltr'}
-          onClick={() => setLightbox(null)}
-        >
-          <button
-            className="lb-close"
-            onClick={(e) => { e.stopPropagation(); setLightbox(null); }}
-            aria-label={t('close')}
-          >×</button>
 
-          <div
-            className="lb-stage"
-            onTouchStart={onLbTouchStart}
-            onTouchEnd={onLbTouchEnd}
-          >
-            {lightbox.images.length > 1 && (
-              <>
-                <button
-                  className="lb-nav lb-prev"
-                  onClick={(e) => { e.stopPropagation(); stepLightbox(-1); }}
-                  aria-label={lang === 'ar' ? 'السابق' : 'Previous'}
-                >‹</button>
-                <button
-                  className="lb-nav lb-next"
-                  onClick={(e) => { e.stopPropagation(); stepLightbox(1); }}
-                  aria-label={lang === 'ar' ? 'التالي' : 'Next'}
-                >›</button>
-              </>
+      {(piece.title || piece.desc || piece.meta || piece.url || images.length > 1) && (
+        <div className="lb-info" onClick={(e) => e.stopPropagation()}>
+          <div className="lb-info-top">
+            <div className="lb-info-heading">
+              {piece.title && <h3 className="lb-title">{piece.title}</h3>}
+              {piece.meta && <span className="lb-meta">{piece.meta}</span>}
+            </div>
+            {images.length > 1 && (
+              <span className="lb-count" dir="ltr">{index + 1} / {images.length}</span>
             )}
-            {!imgLoaded && <div className="lb-spinner" aria-hidden="true" />}
-            <img
-              key={lightbox.index}
-              className={imgLoaded ? 'loaded' : ''}
-              src={lightbox.images[lightbox.index]}
-              alt={lightbox.title || ''}
-              decoding="async"
-              /* the visitor is staring straight at it — jump the queue */
-              fetchPriority="high"
-              onLoad={() => setImgLoaded(true)}
-              onClick={(e) => e.stopPropagation()}
-            />
           </div>
-
-          {(lightbox.title || lightbox.desc || lightbox.meta || lightbox.url || lightbox.images.length > 1) && (
-            <div className="lb-info" onClick={(e) => e.stopPropagation()}>
-              <div className="lb-info-top">
-                <div className="lb-info-heading">
-                  {lightbox.title && <h3 className="lb-title">{lightbox.title}</h3>}
-                  {lightbox.meta && <span className="lb-meta">{lightbox.meta}</span>}
-                </div>
-                {lightbox.images.length > 1 && (
-                  <span className="lb-count" dir="ltr">{lightbox.index + 1} / {lightbox.images.length}</span>
-                )}
-              </div>
-              {lightbox.desc && <p className="lb-desc">{lightbox.desc}</p>}
-              {safeUrl(lightbox.url) && (
-                <div className="lb-actions">
-                  <a
-                    className="lb-link"
-                    href={safeUrl(lightbox.url)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >{t('view_project')} ↗</a>
-                </div>
-              )}
+          {piece.desc && <p className="lb-desc">{piece.desc}</p>}
+          {safeUrl(piece.url) && (
+            <div className="lb-actions">
+              <a
+                className="lb-link"
+                href={safeUrl(piece.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >{t('view_project')} ↗</a>
             </div>
           )}
         </div>
       )}
+    </div>
       <style jsx>{`
-        .modal-bg {
-          position: fixed; inset: 0;
-          background: rgba(0,0,0,0.7);
-          backdrop-filter: blur(8px);
-          z-index: 100;
-          display: flex; align-items: flex-start; justify-content: center;
-          padding: 40px 20px;
-          overflow-y: auto;
-          animation: fade 0.2s ease;
-        }
-        .modal {
-          width: 100%; max-width: 880px;
-          background: var(--bg-secondary);
-          border: 1px solid var(--border-strong);
-          border-radius: 20px;
-          overflow: hidden;
-          box-shadow: 0 30px 80px rgba(0,0,0,0.5);
-          animation: slideUp 0.3s ease;
-        }
-        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .modal-head {
-          display: flex; justify-content: space-between; align-items: center;
-          padding: 20px 24px;
-          border-bottom: 1px solid var(--border);
-        }
-        .modal-head h2 { font-size: 18px; font-weight: 700; color: #fff; }
-        .modal-close {
-          width: 36px; height: 36px;
-          background: var(--bg-elevated); border: 1px solid var(--border);
-          border-radius: 50%; font-size: 20px; color: var(--text-secondary);
-          cursor: pointer; display: flex; align-items: center; justify-content: center;
-          font-family: inherit;
-        }
-        .modal-close:hover { color: #fff; }
-        .modal-body { padding: 24px; }
-        .modal-empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-        .grid { display: flex; flex-direction: column; gap: 12px; }
-        .pcard { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: var(--transition); }
-        .pcard:hover { border-color: var(--border-strong); box-shadow: 0 8px 30px rgba(0,0,0,0.22); }
-        .pcard-trigger:active .pcard-meta h3 { opacity: 0.8; }
-        .pcard-trigger { display: block; width: 100%; padding: 0; text-align: inherit; background: none; border: none; cursor: pointer; font-family: inherit; }
-        .pcard-cover { position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; background: var(--bg-primary); }
-        .pcard-badge { position: absolute; top: 8px; inset-inline-end: 8px; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
-        .pcard-cover img { width: 100%; height: 100%; object-fit: cover; transition: var(--transition-slow); }
-        .pcard:hover .pcard-cover img { transform: scale(1.02); }
-        .pcard-meta { padding: 16px 20px; }
-        .pcard-meta h3 { font-size: 16px; font-weight: 600; color: #fff; }
-        .pcard-meta p { font-size: 13px; color: var(--text-tertiary); margin-top: 4px; }
         .lightbox {
           position: fixed; inset: 0; z-index: 200;
           background: rgba(8,10,14,0.88);
@@ -1546,6 +1491,112 @@ function ProjectsModal({ projects, t, lang, onClose, onOpenProject }) {
           .lb-nav { width: 44px; height: 44px; }
           .lb-title { font-size: 14px; }
         }
+      `}</style>
+    </>
+  );
+}
+
+
+function ProjectsModal({ projects, t, lang, onClose, onOpenPiece }) {
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden'; // scroll-lock the page behind the modal
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose]);
+
+  return (
+    <>
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} dir={lang === 'ar' ? 'rtl' : 'ltr'}>
+        <div className="modal-head">
+          <h2>{t('portfolio_title')}</h2>
+          <button className="modal-close" onClick={onClose} aria-label={t('close')}>×</button>
+        </div>
+        <div className="modal-body">
+          {projects.length === 0 ? (
+            <p className="modal-empty">{t('no_projects')}</p>
+          ) : (
+            <div className="grid">
+              {projects.map(p => {
+                const title = pick(p.title, lang) || pick(p.title, 'en');
+                const desc = pick(p.description, lang) || pick(p.description, 'en');
+                const count = (p.images && p.images.length) || (p.cover_image ? 1 : 0);
+                return (
+                  <article key={p.id} className="pcard">
+                    <button type="button" className="pcard-trigger" onClick={() => onOpenPiece(p, title, desc)} aria-label={title}>
+                      {p.cover_image && (
+                        <div className="pcard-cover">
+                          <img src={p.cover_image} alt={title} loading="lazy" decoding="async" />
+                          {count > 1 && <span className="pcard-badge" dir="ltr">{count}</span>}
+                        </div>
+                      )}
+                      <div className="pcard-meta">
+                        <h3>{title}</h3>
+                        {desc && <p>{desc}</p>}
+                      </div>
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+      <style jsx>{`
+        .modal-bg {
+          position: fixed; inset: 0;
+          background: rgba(0,0,0,0.7);
+          backdrop-filter: blur(8px);
+          z-index: 100;
+          display: flex; align-items: flex-start; justify-content: center;
+          padding: 40px 20px;
+          overflow-y: auto;
+          animation: fade 0.2s ease;
+        }
+        .modal {
+          width: 100%; max-width: 880px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-strong);
+          border-radius: 20px;
+          overflow: hidden;
+          box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+          animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .modal-head {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 20px 24px;
+          border-bottom: 1px solid var(--border);
+        }
+        .modal-head h2 { font-size: 18px; font-weight: 700; color: #fff; }
+        .modal-close {
+          width: 36px; height: 36px;
+          background: var(--bg-elevated); border: 1px solid var(--border);
+          border-radius: 50%; font-size: 20px; color: var(--text-secondary);
+          cursor: pointer; display: flex; align-items: center; justify-content: center;
+          font-family: inherit;
+        }
+        .modal-close:hover { color: #fff; }
+        .modal-body { padding: 24px; }
+        .modal-empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .grid { display: flex; flex-direction: column; gap: 12px; }
+        .pcard { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: var(--transition); }
+        .pcard:hover { border-color: var(--border-strong); box-shadow: 0 8px 30px rgba(0,0,0,0.22); }
+        .pcard-trigger:active .pcard-meta h3 { opacity: 0.8; }
+        .pcard-trigger { display: block; width: 100%; padding: 0; text-align: inherit; background: none; border: none; cursor: pointer; font-family: inherit; }
+        .pcard-cover { position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; background: var(--bg-primary); }
+        .pcard-badge { position: absolute; top: 8px; inset-inline-end: 8px; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+        .pcard-cover img { width: 100%; height: 100%; object-fit: cover; transition: var(--transition-slow); }
+        .pcard:hover .pcard-cover img { transform: scale(1.02); }
+        .pcard-meta { padding: 16px 20px; }
+        .pcard-meta h3 { font-size: 16px; font-weight: 600; color: #fff; }
+        .pcard-meta p { font-size: 13px; color: var(--text-tertiary); margin-top: 4px; }
         @media (min-width: 640px) { .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } }
       `}</style>
     </>

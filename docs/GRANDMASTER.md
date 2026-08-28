@@ -46,7 +46,22 @@ return to, at https://enchanting-palmier-b208ed.netlify.app/, with its card
 width, radius, font, gradient and structure measured off the running page.
 **Read it before touching `pages/index.js`.**
 
-### The current plan, decided 2026-08-28
+### Where this stands, 2026-08-28
+
+**The portfolio's look is done and verified in a browser** against the reference
+below, on real tenant data, in both languages, at phone and desktop width. The
+measured spec and every decision taken are recorded in
+`design/original-portfolio-reference.md`. The headline change: **the image band
+is now the client's work**, not a separate "banners" feature, and the card ends
+on exactly one button.
+
+**The admin has not been touched, and it is now the job.** It is being rebuilt
+as a clean slate, one control at a time, and only for what the design turned out
+to need. Until then the editor still offers settings the public page no longer
+renders — a ticker, extra buttons, a background colour, a corner radius, a font.
+Nothing was deleted from the database.
+
+### The plan this follows, decided 2026-08-28
 
 **Finalise the portfolio's look FIRST, then build admin controls for whatever
 turned out to be customisable.** The previous order — adding a control and
@@ -112,6 +127,26 @@ history:
 `architecture/published-snapshot.md` · `architecture/renderer-migration.md` ·
 `architecture/renderer-contracts.md` · `design/design.md` §6 ·
 `design/next-step.md` · `ux/designakum-design-system-final.md` §7
+
+**Added to this list 2026-08-28**, because a session lost time to the
+contradiction before spotting it:
+
+`design/public-portfolio-hierarchy.md` · `design/public-portfolio-feature-decisions.md`
+· `design/credibility-line.md`
+
+These three are marked **approved** and describe a **different page entirely**:
+work-first, no image band, no stat row, bio after the work, the action below it.
+They were written for `PortfolioRenderer`, which was deleted on 2026-08-27, and
+they contradict `design/original-portfolio-reference.md` — the actual target —
+on nearly every point.
+
+**The live data settles it.** Six of the seven published tenants have NO pieces
+at all. "The work is the page" would render an empty page for everyone except
+f9designer. Read them for their principles, which are good, and not for their
+layout, which is for a product that was not built.
+
+Where they were RIGHT, and it was taken: one call to action, no ticker, no
+custom fields, no visibility toggles, sections appear from content.
 
 ### What has never been verified by a human
 

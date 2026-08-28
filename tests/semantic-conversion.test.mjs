@@ -642,8 +642,21 @@ test('FOCUS-1: every outline focus indicator uses one colour token', () => {
       if (entry.isDirectory()) { if (!/node_modules|\.next/.test(full)) walk(full); continue; }
       if (!/\.js$/.test(entry.name)) continue;
       const body = readFileSync(full, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      // A file may paint the ring through its OWN alias, but only if the alias
+      // is provably the same colour — declared as `--x: var(--accent…)` in this
+      // same file. pages/index.js does exactly that: the public portfolio
+      // carries its own --pf-* token layer, and --pf-accent is defined as
+      // var(--accent, #9FA7FF).
+      //
+      // This is not a hole. The rule being enforced is ONE FOCUS COLOUR, and an
+      // alias that resolves to --accent is that colour. A --pf-* name pointed at
+      // anything else still fails, because the declaration is what is matched,
+      // not the prefix.
+      const aliases = new Set(
+        [...body.matchAll(/(--[a-z0-9-]+)\s*:\s*var\(\s*--accent\s*[,)]/g)].map((m) => m[1]),
+      );
       for (const m of body.matchAll(/outline:\s*[0-9]+px solid var\((--[a-z0-9-]+)\)/g)) {
-        if (m[1] !== '--accent' && m[1] !== '--border-focus') {
+        if (m[1] !== '--accent' && m[1] !== '--border-focus' && !aliases.has(m[1])) {
           offenders.push(`${full.replace(join(HERE, '..') + '/', '')} :: ${m[1]}`);
         }
       }

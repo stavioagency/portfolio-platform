@@ -18,15 +18,23 @@ export default function Document() {
             files are fetched anonymously, and a hint whose CORS mode does not
             match the request it is warming opens a second, useless connection.
 
-            One request for all four families. The css2 API wants them in
+            One request for all five families. The css2 API wants them in
             alphabetical order. Weights and display:swap are unchanged from
             the four separate URLs — 77 @font-face rules either way — so
-            nothing about how any page looks changes. */}
+            nothing about how any page looks changes.
+
+            TAJAWAL was added on 2026-08-28 for the public portfolio, which is
+            the only surface that uses it. It costs no extra REQUEST — the
+            families share one stylesheet — and no extra FONT FILE anywhere it
+            is not used, because a face is only fetched when something on the
+            page is actually set in it. The admin pages pay for the @font-face
+            rules and nothing else. Three weights, matching the original the
+            portfolio is being returned to: 400 / 500 / 700. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Reem+Kufi:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Reem+Kufi:wght@400;500;600;700&family=Tajawal:wght@400;500;700&display=swap"
         />
       </Head>
       <body>

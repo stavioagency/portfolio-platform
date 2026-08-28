@@ -164,13 +164,18 @@ test('the guard actually scans the tree it claims to', () => {
 
 test('the three legitimate declaration forms are all recognised', () => {
   // PortfolioRenderer declares --pf-* as style-object keys and pages/index.js
-  // sets --card-radius through setProperty. Both are real mechanisms, and a
-  // guard that only understood CSS syntax would report them as bugs — which is
-  // how a guard gets weakened by the first person it inconveniences.
+  // sets --accent through setProperty. Both are real mechanisms, and a guard
+  // that only understood CSS syntax would report them as bugs — which is how a
+  // guard gets weakened by the first person it inconveniences.
   const local = locallyDeclared(code(join(ROOT, 'components', 'portfolio', 'PortfolioRenderer.js')));
   for (const token of ['--pf-accent', '--pf-heading', '--pf-pad', '--pf-gap']) {
     assert.ok(local.has(token), `${token} is set by PortfolioRenderer but not recognised as local`);
   }
+  // This was --card-radius until 2026-08-28, when the public portfolio stopped
+  // letting a tenant set its corner radius (a presentation control, not a
+  // content one) and the setProperty call went with it. --accent is the one
+  // value a tenant still supplies at runtime, so it is what the runtime form is
+  // now pinned against. The mechanism being proved is unchanged.
   const index = locallyDeclared(code(join(ROOT, 'pages', 'index.js')));
-  assert.ok(index.has('--card-radius'), 'setProperty() declarations are not recognised');
+  assert.ok(index.has('--accent'), 'setProperty() declarations are not recognised');
 });

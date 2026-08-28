@@ -58,6 +58,25 @@ load with `undefined` credentials. Build with placeholder credentials instead:
 NEXT_PUBLIC_SUPABASE_URL="https://placeholder.supabase.co" NEXT_PUBLIC_SUPABASE_ANON_KEY="x" npx next build
 ```
 
+### It poisons a running dev server. Delete `.next` afterwards.
+
+`next build` and `next dev` share `.next/`, and those placeholder credentials are
+inlined into the client bundle — `NEXT_PUBLIC_*` is a compile-time substitution, not a
+runtime lookup. Run the build while a preview is open and the next page load reaches for
+`placeholder.supabase.co`, which does not resolve. The page then renders its "could not
+load, try again" screen and every portfolio looks broken.
+
+It costs about ten minutes to diagnose, because nothing about the symptom points at the
+build. The tell is `ERR_NAME_NOT_RESOLVED` in the browser console with
+`placeholder.supabase.co` as the host.
+
+```bash
+rm -rf .next
+```
+
+Then restart the dev server. Do this every time you build with placeholders while
+developing.
+
 Placeholders are sufficient because no page does server-side data fetching — tenant
 resolution is entirely client-side. Never "fix" this failure by committing a
 `.env.local`, hardcoding a fallback URL into `lib/supabase.js`, or adding real
