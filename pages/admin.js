@@ -1805,15 +1805,6 @@ function ProfileEditor({ t, lang: uiLang }) {
   }
   function patchSeo(key, val) { patch({ seo: { ...profile.seo, [key]: setLangValue(profile.seo?.[key], lang, val) } }); }
 
-  function addCustomField() { patch({ custom_fields: [...(profile.custom_fields || []), { id: newId(), label: emptyBilingual(), value: emptyBilingual() }] }); }
-  function updateCustomField(id, updates) { patch({ custom_fields: profile.custom_fields.map(f => f.id === id ? { ...f, ...updates } : f) }); }
-  async function removeCustomField(id) { if (!(await confirm(removeDialog(t)))) return; patch({ custom_fields: profile.custom_fields.filter(f => f.id !== id) }); }
-  function moveCustomField(id, dir) {
-    const arr = [...profile.custom_fields]; const i = arr.findIndex(f => f.id === id); const j = i + dir;
-    if (j < 0 || j >= arr.length) return;
-    [arr[i], arr[j]] = [arr[j], arr[i]]; patch({ custom_fields: arr });
-  }
-  function toggleSection(key) { patch({ sections: { ...profile.sections, [key]: !profile.sections[key] } }); }
 
 
   return (
@@ -1879,46 +1870,20 @@ function ProfileEditor({ t, lang: uiLang }) {
         <ImageUpload value={profile.seo?.og_image} onUpload={uploadOgImage} onClear={() => patch({ seo: { ...profile.seo, og_image: '' } })} aspect={1.91} hint={t('seo_share_hint')} t={t} />
       </Field>
 
-      <h2>{t('custom_fields_title')}</h2>
-      <p className="hint">{t('custom_fields_sub')}</p>
-      {profile.custom_fields?.map((f, i) => (
-        <div key={f.id} className="card-row">
-          <div className="row-head">
-            <span className="row-tag">{t('item_field')}</span>
-            <div className="row-actions">
-              <button type="button" className="x-small" aria-label={t('move_up')} disabled={i === 0} onClick={() => moveCustomField(f.id, -1)}>↑</button>
-              <button type="button" className="x-small" aria-label={t('move_down')} disabled={i === profile.custom_fields.length - 1} onClick={() => moveCustomField(f.id, 1)}>↓</button>
-              <button type="button" className="x-small" aria-label={t('remove')} onClick={() => removeCustomField(f.id)}>×</button>
-            </div>
-          </div>
-          <div className="row-grid-2">
-            <Field id={`cf-l-${f.id}`} label={t('custom_field_label')}>
-              <input id={`cf-l-${f.id}`} value={pick(f.label, lang)} onChange={(e) => updateCustomField(f.id, { label: setLangValue(f.label, lang, e.target.value) })} />
-            </Field>
-            <Field id={`cf-v-${f.id}`} label={t('custom_field_value')}>
-              <input id={`cf-v-${f.id}`} value={pick(f.value, lang)} onChange={(e) => updateCustomField(f.id, { value: setLangValue(f.value, lang, e.target.value) })} />
-            </Field>
-          </div>
-        </div>
-      ))}
-      <Button variant="secondary" size="sm" onClick={addCustomField}>+ {t('add_custom_field')}</Button>
+      {/* CUSTOM FIELDS AND THE SECTION TOGGLES WERE EDITED HERE (2026-08-28).
 
-      <h2>{t('sections_title')}</h2>
-      <p className="hint">{t('sections_sub')}</p>
-      <div style={{ maxWidth: 500 }}>
-        {[
-          ['bio', t('section_bio')],
-          ['custom_fields', t('section_custom_fields')],
-          ['projects', t('section_projects')],
-          ['links', t('section_links')],
-          ['lang_switcher', t('section_lang_switcher')],
-        ].map(([k, label]) => (
-          <div key={k} className="toggle-row">
-            <span>{label}</span>
-            <button type="button" className={`switch ${profile.sections[k] ? 'on' : ''}`} onClick={() => toggleSection(k)} aria-pressed={!!profile.sections[k]} />
-          </div>
-        ))}
-      </div>
+          Custom fields were arbitrary key/value pairs rendered onto the public
+          page. That asks the client to invent structure, which is the product's
+          job — and not one of the seven clients had ever added a single one.
+
+          The toggles let a client hide their bio, their links, their work, the
+          language switch. Every one was a question the product should answer
+          instead of ask: a section appears when it has content and does not
+          when it has none. They were also doing damage — `projects` was set to
+          false on the only two workspaces that HAVE work, which is most of why
+          the portfolio read as a link card.
+
+          Both columns stay in the database, unread. */}
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
       <AdminStyles />

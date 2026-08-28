@@ -70,7 +70,6 @@ export default function Home({ slug = null } = {}) {
   // in, and two owners of one lightbox is two lightboxes.
   const [openPiece, setOpenPiece] = useState(null);
   const [legalModal, setLegalModal] = useState(null); // 'privacy' | 'terms' | null
-  const [aboutOpen, setAboutOpen] = useState(false);
   const [pageUrl, setPageUrl] = useState('');
   // Resolved tenant id for analytics stamping. Always set once the page renders —
   // an unresolved tenant 404s before this is ever used.
@@ -451,8 +450,6 @@ export default function Home({ slug = null } = {}) {
     return b.action === 'open_projects' || b.href;
   });
   const allLinks = profile.custom_links || [];
-  const customFields = profile.custom_fields || [];
-  const sections = profile.sections || {};
   // THE TICKER IS GONE. A marquee across the top of the page, scrolling
   // forever: it moves continuously, it communicates none of the four things
   // motion may communicate (design.md §5), it cannot be read at a glance, and
@@ -466,10 +463,15 @@ export default function Home({ slug = null } = {}) {
   const footer = profile.footer || {};
   const customFooterText = pick(footer.text, lang) || pick(footer.text, 'en') || pick(footer.text, 'ar');
   const footerColor = footer.color || 'rgba(255,255,255,0.3)';
-  const showBio = sections.bio !== false && bio;
-  const showCustomFields = sections.custom_fields !== false && customFields.length > 0;
-  const showAbout = showBio || showCustomFields;
-  const showLinks = sections.links !== false; // honor toggle
+  // THE VISIBILITY TOGGLES ARE GONE. sections.bio, .custom_fields, .links,
+  // .projects and .lang_switcher let a client hide parts of their own page, and
+  // every one was a question the product should answer instead of ask: a
+  // section appears when it has content and does not when it has none.
+  //
+  // They were also doing damage. sections.projects was false on the only two
+  // workspaces that HAVE work, which is most of why the page read as a link
+  // card rather than a portfolio. profile.sections stays in the database,
+  // unread.
   // THE SWITCH APPEARS ONLY IF THERE IS SOMETHING TO SWITCH TO.
   //
   // It used to be a section toggle, on by default, which meant five of the
@@ -488,9 +490,7 @@ export default function Home({ slug = null } = {}) {
   const shareImage = seo.og_image || avatarSrc;
 
   // Top social icons (first 3 with icon + href), only if section enabled
-  const socialIcons = showLinks
-    ? allLinks.filter(l => l.icon && l.href)
-    : [];
+  const socialIcons = allLinks.filter(l => l.icon && l.href);
 
   const initial = (name || '?').trim()[0] || '?';
 
@@ -657,39 +657,7 @@ export default function Home({ slug = null } = {}) {
           <div className="name-block">
             <h1>{name}</h1>
             {tagline && <p>{tagline}</p>}
-            {showAbout && (
-              <button className="about-toggle" onClick={() => setAboutOpen(o => !o)}>
-                <span>{aboutOpen ? '↑' : '↓'}</span>
-                {aboutOpen ? t('about_hide') : t('about_show')}
-              </button>
-            )}
           </div>
-
-          {/* ABOUT (collapsible: bio + custom fields) */}
-          {aboutOpen && (
-            <div className="about-section">
-              {showBio && (
-                <div className="bio-block">
-                  <p>{bio}</p>
-                </div>
-              )}
-              {showCustomFields && (
-                <div className="cf-grid">
-                  {customFields.map(f => {
-                    const fl = pick(f.label, lang) || pick(f.label, 'en');
-                    const fv = pick(f.value, lang) || pick(f.value, 'en');
-                    if (!fl && !fv) return null;
-                    return (
-                      <div key={f.id} className="cf-row">
-                        {fl && <span className="cf-label">{fl}</span>}
-                        {fv && <span className="cf-value">{fv}</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* THE WORK — the client's pieces, in the order they chose.
               This is the single biggest element on the card, and it is the one
@@ -805,6 +773,22 @@ export default function Home({ slug = null } = {}) {
               )}
             </div>
           )}
+
+          {/* THE INTRODUCTION. Visible, not behind a toggle, and AFTER the
+              work rather than before it.
+
+              It was a collapsible "About" the visitor had to open. Hiding the
+              one sentence that explains who somebody is, to save four lines,
+              spends effort to lose meaning. And a stranger judges a creative by
+              the work first and becomes curious about the person second, which
+              is the order the card now follows — words placed before the work
+              ask to be read by someone who has not yet decided to care.
+
+              CUSTOM FIELDS went with the toggle. Arbitrary key/value pairs on a
+              public page ask the client to invent structure, which is the
+              product's job, and not one of the seven had ever added one.
+              profile.custom_fields is untouched in the database. */}
+          {bio && <p className="bio">{bio}</p>}
 
           {/* THE ONE ACTION */}
           {action && (() => {
@@ -1036,32 +1020,17 @@ export default function Home({ slug = null } = {}) {
           color: var(--pf-ink-faint);
           margin-top: 4px;
         }
-        .about-toggle {
-          margin-top: 8px;
-          padding: 4px 12px;
-          font-size: 11px;
-          color: rgba(255,255,255,0.6);
-          background: none;
-          border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 999px;
-          cursor: pointer;
-          font-family: inherit;
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          transition: var(--transition);
+        /* The introduction. Muted and small: it is the third thing a visitor
+           reads, after the work and the figures, and it is prose rather than a
+           label so it gets line-height instead of weight. */
+        .bio {
+          margin-top: var(--card-stack);
+          font-size: 13px;
+          line-height: 1.7;
+          color: var(--pf-ink-dim);
+          text-align: start;
+          overflow-wrap: anywhere;
         }
-        .about-toggle:hover { color: #fff; border-color: rgba(255,255,255,0.25); }
-
-        .about-section { margin-top: var(--card-stack); animation: aboutIn 0.25s ease; }
-        @keyframes aboutIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-
-        .bio-block { padding: 12px 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; margin-bottom: var(--card-stack-sm); }
-        .bio-block p { font-size: 13px; line-height: 1.6; color: rgba(255,255,255,0.75); text-align: start; }
-        .cf-grid { display: flex; flex-direction: column; gap: 1px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden; }
-        .cf-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(20,20,28,0.6); font-size: 12px; }
-        .cf-label { color: rgba(255,255,255,0.5); }
-        .cf-value { color: rgba(255,255,255,0.92); font-weight: 500; text-align: end; }
 
         /* ---- THE WORK ------------------------------------------------------
            A FIXED HEIGHT BAND, not an aspect ratio. Every piece is drawn into
