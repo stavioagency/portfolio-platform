@@ -124,7 +124,9 @@ const OPERATOR_PINNED = new Set([
   'كل عميل هو مساحة وموقع واحد. اضغط عليه لإدارته دون تبديل مساحة العمل النشطة.',
   'سجّل دخوله من قبل',
   'جرّب بحثًا أو تصفية أخرى.',
-  // components/CredentialsHandoff.js — the owner hands credentials to a client
+  // These three were components/CredentialsHandoff.js, deleted on 2026-08-28.
+  // Kept in the allow-list only until the next sweep confirms nothing else
+  // uses them; they are owner-facing strings and harmless either way.
   'اختر طريقة التسليم',
   'لم يصل شيء إلى العنوان الجديد بعد — اختر طريقة تسليم',
   'لم يُرسل بريد — اختر طريقة تسليم من الأسفل',

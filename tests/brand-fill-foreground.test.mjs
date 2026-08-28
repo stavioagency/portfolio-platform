@@ -145,10 +145,11 @@ test('the sweep reaches the tree, and the decorative exemption is real', () => {
   const files = sources();
   assert.ok(files.length >= 18, `only ${files.length} in-scope files walked`);
   const filled = filledRules();
-  // Was 8 while components/studio and components/shell existed; they carried
-  // several brand-filled rules and were deleted with the Studio/Console shells.
-  // Six is what the shipped product actually has.
-  assert.ok(filled.length >= 6, `only ${filled.length} brand-filled rules found — scan is broken`);
+  // Was 8 while components/studio and components/shell existed; 6 after those
+  // were deleted with the Studio/Console shells; 5 since 2026-08-28, when
+  // components/CredentialsHandoff.js went with the credentials handover. Five
+  // is what the shipped product actually has.
+  assert.ok(filled.length >= 5, `only ${filled.length} brand-filled rules found — scan is broken`);
   // The OwnerBar exemption that used to be checked here is gone with
   // components/studio/. Nothing in the product now fills with the brand and
   // renders text inside it without an ink, which is what this test is for.

@@ -152,7 +152,9 @@ test('the guard actually scans the tree it claims to', () => {
   // A scanner that silently matches nothing passes every assertion above. These
   // pin the corpus so a broken walk or a bad regex fails loudly instead.
   const files = [...sources('pages'), ...sources('components')];
-  assert.ok(files.length >= 30, `only ${files.length} source files found — the walk is broken`);
+  // 29 since 2026-08-28: CredentialsHandoff was deleted with the credentials
+  // handover. A tripwire for a broken walk, not a coverage target.
+  assert.ok(files.length >= 29, `only ${files.length} source files found — the walk is broken`);
   assert.ok(DECLARED.size >= 100, `only ${DECLARED.size} tokens parsed from globals.css`);
 
   const refs = files.reduce(

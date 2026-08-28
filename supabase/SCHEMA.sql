@@ -45,7 +45,8 @@
 -- EDGE FUNCTIONS — ELEVEN, all ACTIVE. verify_jwt is NOT uniform:
 --   VERIFY_JWT ON (owner-gated; each re-checks is_platform_owner() against the
 --   caller's own JWT and refuses to act on a platform owner):
---     invite-client          creates a workspace + account + password, emails it
+--     [invite-client]        DELETED 2026-08-28. Clients sign themselves up;
+--                            free access is granted by email (section-u).
 --     reset-client-password  rotates a client's password, returns it to the owner
 --     client-recovery        onboarding recovery — update_email rewrites the
 --                            address on the EXISTING auth user; send_welcome
@@ -88,7 +89,8 @@
 --     credentials, which is what puts it in the admin's Pending handover queue.
 --     Does NOT affect public site resolution.
 --   created_via text NOT NULL DEFAULT 'owner' CHECK ('owner' | 'self_signup')
---     How the workspace came to exist. 'owner' = invite-client; 'self_signup' =
+--     How the workspace came to exist. 'owner' = the deleted invite-client
+--     flow, kept for the rows that still carry it; 'self_signup' =
 --     registered at /signup and verified their own email.
 --   published_snapshot jsonb NULL — the portfolio a visitor sees, serialised at
 --     publish time. NULL = never published. Written by publish_tenant(); a

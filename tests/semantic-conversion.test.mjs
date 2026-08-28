@@ -386,11 +386,13 @@ test('DS-4 changed nothing outside its four files', () => {
 // the whole change — --tap-min is 44px, so every one of these resolves to the
 // value it replaced.
 //
-// The sixth 44px in the tree is NOT a tap target and is deliberately excluded:
-// components/CredentialsHandoff.js draws a 44px circle, where the number is a
-// coincidence of geometry rather than a touch affordance. Converting it would
-// couple an avatar's diameter to the accessibility floor, so that one is pinned
-// as EXCLUDED below rather than simply left out.
+// There was a sixth 44px in the tree that was NOT a tap target and was
+// deliberately excluded: a 44px avatar circle in components/CredentialsHandoff.js,
+// where the number was a coincidence of geometry rather than a touch
+// affordance. That file was deleted on 2026-08-28, so the exclusion has no
+// subject — but the reasoning is kept because the next coincidental 44px will
+// need it: converting one would couple a decorative diameter to the
+// accessibility floor.
 
 const TAP_TARGETS = [
   { file: 'Button', decl: '.md { min-height: var(--tap-min);' },
@@ -443,21 +445,17 @@ test('SAFE-1: no approved site still declares a literal 44px', () => {
   }
 });
 
-test('SAFE-1: the decorative 44px circle is NOT pulled into the token', () => {
-  // components/CredentialsHandoff.js sizes an avatar circle at 44x44. It is not
-  // a touch target, and this test is written as "must not use --tap-min" rather
-  // than "must stay 44px" on purpose: the circle is free to become any size,
-  // but it must never be coupled to the accessibility floor. That is what stops
-  // a future pass from "finishing the job" across every 44px in the tree.
-  const src = readFileSync(join(HERE, '..', 'components', 'CredentialsHandoff.js'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.equal(
-    /var\(--tap-min\)/.test(src),
-    false,
-    'CredentialsHandoff adopted --tap-min. Its 44px circle is decorative geometry, '
-    + 'not a tap target — the two must not share a token',
-  );
-});
+// SAFE-1's decorative-circle pin stood here. It named the 44x44 avatar in
+// components/CredentialsHandoff.js, which was deleted on 2026-08-28 with the
+// credentials handover.
+//
+// THE RULE IT PROTECTED IS NOT GONE, and is worth restating because it is the
+// kind that gets "finished" by a well-meaning later pass: a 44px measurement is
+// not automatically a tap target. Decorative geometry that happens to be 44px
+// must never be coupled to --tap-min, because then it cannot change size
+// without moving the accessibility floor with it. The count below is what
+// enforces the same thing from the other direction — it fails if anything new
+// adopts the token.
 
 test('SAFE-1: exactly five declarations consume --tap-min, product-wide', () => {
   // Guards the other direction from the per-file counts: a sixth consumer

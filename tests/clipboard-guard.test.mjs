@@ -3,10 +3,18 @@
 // absent. A write that is neither awaited nor caught floats an unhandled rejection
 // and lets the caller report a copy that never happened.
 //
-// CredentialsHandoff.copy() is the project's established shape for this: await the
-// write inside try/catch, and confirm to the user only on success. This guard holds
-// every clipboard write in the repository to that shape. It asserts a property of
-// each call site, not where any call site happens to sit in a file.
+// The required shape: await the write inside try/catch, and confirm to the user
+// only on success. This guard holds every clipboard write in the repository to
+// that shape. It asserts a property of each call site, not where any call site
+// happens to sit in a file.
+//
+// THERE ARE CURRENTLY NO CALL SITES. Every one of them was in the credentials
+// handover — copying a generated password to send to a client — and that went
+// away on 2026-08-28 when clients started signing themselves up. The guard is
+// deliberately kept rather than deleted: it costs nothing while the count is
+// zero, and it arms itself the moment somebody adds a copy button. What it
+// cannot do while empty is prove it still works, so the scanner is checked
+// against a sample below instead of against the tree.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,10 +45,19 @@ function callSites() {
   return sites;
 }
 
-test('the scanner actually finds the known clipboard writes', () => {
-  const sites = callSites();
-  assert.ok(sites.length >= 2, `expected at least 2 clipboard writes, found ${sites.length}`);
-  assert.ok(sites.some((s) => s.file.includes('CredentialsHandoff')), 'missed the CredentialsHandoff write');
+test('the scanner still works, and still recognises a bad write', () => {
+  // With no real call sites left, a scanner that silently matched nothing would
+  // pass every assertion below forever. Run it over a sample instead.
+  const good = 'try { await navigator.clipboard.writeText(x); ok(); } catch (e) { fail(e); }';
+  const bad = 'navigator.clipboard.writeText(x); ok();';
+  const find = (src) => [...src.matchAll(/\.writeText\s*\(/g)].map((m) => ({
+    before: src.slice(0, m.index),
+    after: src.slice(m.index, m.index + 240),
+  }));
+  assert.equal(find(good).length, 1, 'the scanner no longer finds a clipboard write at all');
+  assert.match(find(good)[0].before, /await\s+[\w.?]*$/, 'a correctly awaited write reads as un-awaited');
+  assert.doesNotMatch(find(bad)[0].before, /await\s+[\w.?]*$/, 'an un-awaited write reads as awaited');
+  assert.match(find(good)[0].after, /catch\s*\(/, 'a guarded write reads as unguarded');
 });
 
 test('every clipboard write is awaited', () => {

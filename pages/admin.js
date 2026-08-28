@@ -19,8 +19,6 @@ import {
 } from '../lib/auth-link';
 import { parseLoginIdentifier } from '../lib/resolve-login';
 import { compressImage, fileExtension, MAX_AVATAR_DIMENSION } from '../lib/image-compress';
-import { portfolioUrl, workspaceLabel, credentialsText, whatsappMessage, credentialsFilename } from '../lib/credentials';
-import { rememberCredentials, recallCredentials, forgetCredentials, clearAllCredentials } from '../lib/handoff-store';
 import { hasPublicContent } from '../lib/profile-content';
 import { planFromQuery } from '../lib/signup-intent';
 import {
@@ -45,7 +43,6 @@ import {
 import PreviewPane from '../components/PreviewPane';
 import BrandGlyph from '../components/ui/BrandGlyph';
 import ThemePreview from '../components/ThemePreview';
-import CredentialsHandoff from '../components/CredentialsHandoff';
 import PlanPicker from '../components/billing/PlanPicker';
 
 // A recovery link lands as `#...type=recovery...` and supabase-js STRIPS that hash
@@ -965,10 +962,9 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
     setActiveTab(tab);
     setSidebarOpen(false); // auto-close drawer on mobile after picking a tab
   }
-  // Issued passwords are held in memory for the session (lib/handoff-store.js).
-  // Signing out must drop them, or the next person at this browser inherits
-  // every credential set the previous operator had open.
-  async function signOut() { clearAllCredentials(); await supabase.auth.signOut(); }
+  // Nothing is held in memory to clear any more: no password is ever issued to
+  // this session. The store that held them went with the handoff flow.
+  async function signOut() { await supabase.auth.signOut(); }
 
   // Which workspaces may this admin edit? Exposed via context so the Create-Tenant
   // flow can refresh the list after onboarding.
@@ -3470,183 +3466,20 @@ function TenantAdminSection({ lang, part = 'settings' }) {
   const ar = lang === 'ar';
   const t = getTranslator(lang);
 
-  // Invite a NEW client login (owner-only, via the invite-client Edge Function).
-  const [invEmail, setInvEmail] = useState('');
-  const [invUser, setInvUser] = useState('');
-  const [invBusy, setInvBusy] = useState(false);
-  const [invMsg, setInvMsg] = useState('');
-  const [invErr, setInvErr] = useState('');
-  // The workspace this invite will create. Slug is derived from the name until the
-  // owner edits it, so the common case is two fields, not four.
-  const [invName, setInvName] = useState('');
-  const [invSlug, setInvSlug] = useState('');
-  const [invSlugTouched, setInvSlugTouched] = useState(false);
-  const invSlugPreview = normalizeSlug(invSlug || invName);
-  // The client's language, chosen by the owner at creation. This used to be
-  // hardcoded 'ar' here, which made invite-client's whole language decision a
-  // formality: the tenant's default_lang is THE ONLY signal it has (there is no
-  // account yet to carry admin_lang or lang), so every invited client was
-  // Arabic no matter who they were, and nothing in the UI could change it —
-  // the Account tab's language control writes profile.default_lang, a
-  // different column governing the public site.
+  // THE OWNER-SIDE INVITE FLOW WAS DELETED HERE (2026-08-28).
   //
-  // It decides more than the email: invite-client seeds the new account's
-  // `lang` from it, so it is also the language the client's dashboard opens in
-  // on their first sign-in, and the fallback for a later client-recovery send.
+  // It created the client's workspace, called the invite-client Edge Function
+  // to make their auth account with a generated password, and held that
+  // password in memory to show once in a handoff modal — with a WhatsApp
+  // message, a copy button and a PDF, because the owner had to relay it by
+  // hand.
   //
-  // Defaults to the language the owner is working in, which is right far more
-  // often than a fixed value and is still one visible dropdown away from wrong.
-  const [invLang, setInvLang] = useState(lang === 'en' ? 'en' : 'ar');
-  // Credentials to hand to the client. Held only in memory, shown once.
-  const [invCreds, setInvCreds] = useState(null);
-  // Inviting a client CREATES THAT CLIENT'S OWN WORKSPACE. It used to attach them to
-  // whichever workspace happened to be selected in the switcher, which meant an
-  // invite silently added someone to an unrelated client's site and no new workspace
-  // ever appeared — the owner reasonably assumed something was broken.
+  // None of it was reachable: it rendered only under part="onboard", and the
+  // component's one call site passes part="settings".
   //
-  // A client is a separate site, so onboarding one is: make their workspace, then
-  // give them a login to it. Those are one action, not two.
-  async function inviteClient(e) {
-    e.preventDefault();
-    setInvErr(''); setInvMsg('');
-
-    const s = normalizeSlug(invSlug || invName);
-    if (!s) { setInvErr(ar ? 'أدخل معرّفًا صالحًا للمساحة' : 'Enter a valid workspace slug'); return; }
-    if (RESERVED_SLUGS.includes(s)) {
-      setInvErr(ar ? 'هذا المعرّف محجوز، اختر غيره' : 'That slug is reserved — pick another');
-      return;
-    }
-
-    setInvBusy(true);
-    let created = null; // the workspace THIS call made, for rollback
-    try {
-      // 1) The client's own workspace.
-      const { data: tRow, error: tErr } = await supabase.from('tenants')
-        .insert({ slug: s, name: invName.trim() || s, default_lang: invLang, status: 'active' })
-        .select().single();
-      if (tErr) {
-        // A duplicate slug is the common case and the message is cryptic.
-        const dup = String(tErr.message || '').toLowerCase().includes('duplicate');
-        setInvErr(dup
-          ? (ar ? 'هذا المعرّف مستخدم بالفعل' : 'That slug is already taken')
-          : (tErr.message || String(tErr)));
-        return;
-      }
-      created = tRow;
-
-      // 2) Its profile row. The Section F trigger has already enrolled every
-      //    platform owner on this tenant, so this write is permitted.
-      const { error: pErr } = await supabase.from('profile')
-        //    Same choice, deliberately: this column is the PUBLIC site's default
-        //    language, which is a different question from the tenant's, but not
-        //    one the owner should have to answer twice at creation. Both were
-        //    hardcoded 'ar' before. The client can change this one themselves in
-        //    Account → Default language, which writes here and nowhere else.
-        .insert({ tenant_id: tRow.id, default_lang: invLang });
-      if (pErr) { setInvErr(pErr.message || String(pErr)); return; }
-
-      // 3) The client's login, scoped to the workspace we just made.
-      //    supabase.functions.invoke attaches the owner's session JWT; the function
-      //    verifies is_platform_owner server-side before doing anything.
-      //    No redirect_to any more: the function creates the account WITH a password
-      //    and returns it, instead of emailing a one-time link.
-      const { data, error } = await supabase.functions.invoke('invite-client', {
-        body: {
-          tenant_id: tRow.id,
-          email: invEmail.trim(),
-          username: invUser.trim(),
-        },
-      });
-      if (error) {
-        // The function returns BOTH a machine code ("invite_failed") and a
-        // `detail` carrying the real reason from Supabase. Showing only the code
-        // made every failure read as an unexplained "invite_failed" — including
-        // the email rate limit, which is the most common cause and the one an
-        // owner can actually act on. Prefer detail, fall back to the code.
-        let msg = error.message;
-        try {
-          const b = await error.context?.json?.();
-          if (b?.detail) msg = `${b.error || 'invite_failed'}: ${b.detail}`;
-          else if (b?.error) msg = b.error;
-        } catch (_) {}
-        if (/email_taken|username_taken/i.test(String(msg))) {
-          setInvErr(await explainTakenIdentity(msg, invEmail.trim(), ar));
-          return;
-        }
-        setInvErr(msg || (ar ? 'فشلت الدعوة' : 'Invite failed'));
-        return;
-      }
-      if (data?.error) {
-        // "Taken" is the failure that used to strand an onboarding. Find out WHO
-        // holds the address: if it is an account with no workspace, the fix is
-        // one click away in Unattached logins rather than a dead end.
-        if (/email_taken|username_taken/i.test(String(data.error))) {
-          setInvErr(await explainTakenIdentity(data.error, invEmail.trim(), ar));
-          return;
-        }
-        setInvErr(data.detail ? `${data.error}: ${data.detail}` : data.error);
-        return;
-      }
-
-      created = null; // succeeded — do not roll back
-
-      // The password is shown ONCE, here. It is not stored and not emailed, so if
-      // this is dismissed without copying it the only way back is a reset.
-      // Held in the session store as well as local state: this component lives
-      // inside the "Add client" panel, so closing that panel used to destroy the
-      // only copy of the password in existence. See lib/handoff-store.js.
-      const issued = {
-        tenantId: tRow.id,
-        workspace: workspaceLabel(tRow),
-        createdAt: tRow.created_at || null,
-        // The client's public address, so the handoff message can point at the
-        // site as well as the dashboard.
-        url: portfolioUrl(typeof window !== 'undefined' ? window.location.origin : '', tRow.slug),
-        signInUrl: adminRedirectUrl(),
-        email: data?.email || invEmail.trim(),
-        username: data?.username || invUser.trim(),
-        password: data?.temp_password || '',
-        // The function reports whether it actually delivered. It never fails the
-        // request over email, so this can be false while everything else succeeded.
-        emailed: data?.emailed === true,
-        emailError: data?.email_error || null,
-        // invite-client does not return the account id, and the handoff modal
-        // needs one to let you correct a mistyped address on the spot. Resolve it
-        // from the address we just used. Best-effort: if it fails the modal simply
-        // shows the email as read-only and the fix moves to the pending row.
-        userId: await resolveUserId(data?.email || invEmail.trim()),
-      };
-      rememberCredentials(tRow.id, issued);
-      setInvCreds(issued);
-      setInvEmail(''); setInvUser(''); setInvName(''); setInvSlug('');
-      setInvMsg('');
-      await reloadTenants();
-      setTenant(tRow); // land the owner on the workspace they just made
-      try { localStorage.setItem('admin_selected_tenant', String(tRow.id)); } catch (_) {}
-    } catch (err) {
-      console.error('[invite] failed:', err);
-      setInvErr(ar ? 'فشلت الدعوة' : 'Invite failed');
-    } finally {
-      // KEEP a workspace whose invite failed, and say so.
-      //
-      // This used to roll the workspace back, which was right while a separate
-      // "create workspace" form existed. It is now the ONLY way to create one, so
-      // deleting it whenever the email step fails — the step that fails most often
-      // right now — would mean no workspace could be created at all until email is
-      // fixed. Better to state plainly what exists and what did not happen; "Delete
-      // workspace" in settings undoes it in one click.
-      if (created) {
-        setInvErr((prev) => `${prev} — ${ar
-          ? `لكن مساحة «${created.slug}» أُنشئت بنجاح. أصلح البريد ثم أعد الدعوة، أو احذف المساحة من إعداداتها.`
-          : `The workspace "${created.slug}" WAS created. Fix email then invite again, or delete it in Workspace settings.`}`);
-        await reloadTenants();
-        setTenant(created);
-        try { localStorage.setItem('admin_selected_tenant', String(created.id)); } catch (_) {}
-      }
-      setInvBusy(false);
-    }
-  }
-
+  // It is also no longer the product. The owner types an email in /console,
+  // the client signs themselves up, and they choose their own password. See
+  // supabase/sections/section-u-free-access-invites.sql.
   // Workspace settings for the ACTIVE tenant: rename, change slug, suspend/reactivate.
   // Suspending sets status='disabled' — the public resolver then 404s that tenant's
   // domain instead of falling back to another tenant's portfolio.
@@ -3866,104 +3699,21 @@ function TenantAdminSection({ lang, part = 'settings' }) {
           NOT on Account — Account is about YOUR login, and stacking a client's
           workspace controls above your own password change is what made this
           screen unreadable. */}
-      {isOwner && part === 'settings' && (
-      <>
-      {tenant && (
-        <>
-          <h2>{ar ? 'إعدادات المساحة' : 'Workspace settings'} <span className="meta">· {tenant.status === 'disabled' ? (ar ? 'معلّقة' : 'suspended') : (ar ? 'نشطة' : 'active')}</span></h2>
-          <form onSubmit={saveWorkspace} style={{ maxWidth: 500 }}>
-            <Field id="ws-name" label={ar ? 'الاسم' : 'Name'}>
-              <input id="ws-name" type="text" value={wsName} onChange={(e) => setWsName(e.target.value)} />
-            </Field>
-            <Field id="ws-slug" label={ar ? 'المعرّف (slug)' : 'Slug'}>
-              <input id="ws-slug" type="text" dir="ltr" value={wsSlug} onChange={(e) => setWsSlug(e.target.value)} />
-            </Field>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
-              <Button type="submit" loading={wsBusy}>{ar ? 'حفظ' : 'Save'}</Button>
-              <Button variant="secondary" size="sm" onClick={toggleStatus} disabled={wsBusy}>
-                {tenant.status === 'disabled' ? (ar ? 'إعادة التفعيل' : 'Reactivate') : (ar ? 'تعليق المساحة' : 'Suspend workspace')}
-              </Button>
-              {/* type="button": this sits inside the settings form, and a bare button
-                  would submit it — saving the workspace instead of deleting it. */}
-              <Button type="button" variant="danger" size="sm" onClick={deleteWorkspace} disabled={wsBusy}>
-                {ar ? 'حذف المساحة' : 'Delete workspace'}
-              </Button>
-            </div>
-          </form>
-          <p className="hint">{ar
-            ? 'التعليق يوقف الموقع مؤقتًا ويمكن التراجع عنه. الحذف نهائي ويشمل المشاريع والنطاقات والإحصائيات، ويحرّر بريد الحساب لإعادة استخدامه.'
-            : 'Suspending takes the site offline and is reversible. Deleting is permanent — projects, domains and analytics — and frees the account email for reuse.'}</p>
-          {wsErr && <div className="ts-err">{wsErr}</div>}
-          {wsMsg && <div className="ts-ok">{wsMsg} ✓</div>}
-        </>
-      )}
+      {/* THE OWNER'S BLOCKS THAT USED TO BE HERE ARE GONE (2026-08-28).
 
-      </>
-      )}
+          Two of them: a client's workspace settings, and an "add a client"
+          onboarding form that created their auth account with a generated
+          password and showed it once for the owner to relay by hand.
 
-      {/* Onboarding: shown on its own, inside the Clients screen's modal. */}
-      {isOwner && part === 'onboard' && (
-      <>
-      <h2>{ar ? 'إضافة عميل' : 'Add a client'}</h2>
-      <p className="hint">{ar
-        ? 'ينشئ مساحة عمل خاصة بهذا العميل وحسابًا بكلمة مرور. ستظهر لك كلمة المرور مرة واحدة لترسلها له — لا يُرسَل أي بريد.'
-        : "Creates this client's own workspace and an account with a password. You'll be shown the password once to pass on — no email is sent."}</p>
-      <form onSubmit={inviteClient} style={{ maxWidth: 500 }}>
-        <Field id="inv-name" label={ar ? 'اسم العميل / المساحة' : 'Client / workspace name'}>
-          <input
-            id="inv-name" type="text" value={invName}
-            onChange={(e) => { setInvName(e.target.value); if (!invSlugTouched) setInvSlug(''); }}
-            placeholder={ar ? 'أكمي ستوديو' : 'Acme Studio'}
-          />
-        </Field>
-        <Field id="inv-slug" label={ar ? 'المعرّف (رابط الموقع)' : 'Slug (site address)'}>
-          <input
-            id="inv-slug" type="text" dir="ltr"
-            value={invSlug || (invSlugTouched ? '' : invSlugPreview)}
-            onChange={(e) => { setInvSlugTouched(true); setInvSlug(e.target.value); }}
-            placeholder="acme-studio"
-          />
-        </Field>
-        {invSlugPreview && (
-          <p className="hint" dir="ltr" style={{ marginTop: -4 }}>/{invSlugPreview}</p>
-        )}
-        <Field id="inv-lang" label={ar ? 'لغة العميل' : "Client's language"}>
-          <select id="inv-lang" value={invLang} onChange={(e) => setInvLang(e.target.value)}>
-            <option value="ar">العربية (Arabic)</option>
-            <option value="en">English</option>
-          </select>
-        </Field>
-        <p className="hint" style={{ marginTop: -4 }}>{ar
-          ? 'لغة لوحة التحكم عند أول دخول للعميل، ولغة موقعه، ولغة أي بريد نرسله له لاحقًا. يستطيع تغييرها بنفسه بعد الدخول.'
-          : "The language their dashboard opens in, their site's default, and any email we send them later. They can change it themselves after signing in."}</p>
-        <Field id="inv-email" label={ar ? 'البريد الإلكتروني' : 'Email'}>
-          <input id="inv-email" type="email" dir="ltr" value={invEmail} onChange={(e) => setInvEmail(e.target.value)} placeholder="client@email.com" />
-        </Field>
-        <Field id="inv-user" label={ar ? 'اسم المستخدم' : 'Username'}>
-          <input id="inv-user" type="text" dir="ltr" value={invUser} onChange={(e) => setInvUser(e.target.value)} placeholder="client" />
-        </Field>
-        {invErr && <div className="ts-err">{invErr}</div>}
-        {invMsg && <div className="ts-ok">{invMsg} ✓</div>}
-        <Button type="submit" loading={invBusy} style={{ marginTop: 12 }}>
-          {ar ? 'إنشاء المساحة والحساب' : 'Create workspace & account'}
-        </Button>
-      </form>
+          BOTH WERE ALREADY UNREACHABLE. The only call site passes
+          part="settings", so the part="onboard" branch could never render; and
+          lib/admin-nav.js gives the `domains` tab to clients only, so an owner
+          could not reach the other one either. They were dead the moment the
+          owner screens moved to /console.
 
-      {invCreds && (
-        <CredentialsHandoff
-          creds={invCreds}
-          lang={lang}
-          title={ar ? 'المساحة جاهزة 🎉' : 'Workspace ready 🎉'}
-          intro={ar
-            ? 'سلّم هذه البيانات للعميل بأي طريقة تناسبك. ستبقى المساحة في «بانتظار التسليم» حتى تؤكد وصولها.'
-            : 'Hand these to the client any way you like. The workspace stays in Pending handoff until you confirm they have them.'}
-          onUpdateEmail={makeEmailUpdater(invCreds, setInvCreds, ar)}
-          onClose={() => setInvCreds(null)}
-        />
-      )}
-
-      </>
-      )}
+          What replaced the onboarding: the owner types an email in /console and
+          the client signs themselves up (section-u). Nobody generates a
+          password, and nobody hands one over. */}
 
 
       {(part === 'settings' || part === 'domains') && (
@@ -4304,33 +4054,7 @@ function ClientHome({ lang, onNavigate }) {
 // Everything they did is in /console: the roster, subscription state, reset
 // password, change the login email, grant or revoke free access, create a
 // client, and delete one outright. The Edge Functions and billing helpers they
-// called are unchanged and shared -- TenantAdminSection below still uses them
-// for the per-workspace invite flow.
-
-function makeEmailUpdater(creds, setCreds, ar) {
-  return async (email) => {
-    if (!creds?.userId) {
-      return { error: ar ? 'تعذّر تحديد الحساب.' : 'Could not identify the account.' };
-    }
-    try {
-      const { data, error } = await supabase.functions.invoke('client-recovery', {
-        body: { action: 'update_email', user_id: creds.userId, email },
-      });
-      const failed = error || data?.error;
-      if (failed) return { error: recoveryError(failed, data, ar) };
-      // Reflect it immediately — the modal is still open and showing the old one.
-      // emailed goes false because the automatic send went to the OLD address;
-      // nothing has reached this one yet.
-      const next = { ...creds, email, emailed: false, emailError: null };
-      rememberCredentials(creds.tenantId, next);
-      setCreds(next);
-      return {};
-    } catch (err) {
-      console.error('[handoff] email update failed:', err);
-      return { error: ar ? 'تعذّر تحديث البريد.' : 'Could not update the email.' };
-    }
-  };
-}
+// called are unchanged and shared.
 
 // Park the addresses of accounts a delete has just stranded, one call each.
 //

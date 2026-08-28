@@ -19,9 +19,13 @@
 // design choice: the codebase had already decided, 20+ times over.
 //
 // WHAT THIS DOES NOT DO: it does not require an RTL override on elements that
-// cannot render Arabic. components/CredentialsHandoff.js letter-spaces a
-// monospace <code dir="ltr"> holding a username and password — Latin by
-// construction, explicitly direction-pinned, and correctly exempt.
+// cannot render Arabic — one explicitly pinned dir="ltr" is Latin by
+// construction. The single exemption was components/CredentialsHandoff.js,
+// which letter-spaced a monospace <code dir="ltr"> holding a username and a
+// password. That file went with the credentials handover on 2026-08-28, so
+// LTR_PINNED is now EMPTY. The mechanism is kept because the next
+// direction-pinned Latin element will need it; an empty set can excuse nothing,
+// which is a stronger guarantee than the exemption ever was.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -38,7 +42,7 @@ const OUT_OF_SCOPE = /^(pages\/index\.js|pages\/\[slug\]\.js|pages\/_document\.j
 
 // Elements that are direction-pinned to LTR cannot render Arabic, so the rule
 // does not apply to them. Recorded explicitly rather than silently skipped.
-const LTR_PINNED = new Set(['components/CredentialsHandoff.js :: .ch-row code.mono']);
+const LTR_PINNED = new Set();
 
 function sources() {
   const out = [];
@@ -103,22 +107,19 @@ test('no element that can render Arabic is letter-spaced or uppercased without a
   );
 });
 
-test('the LTR-pinned exemption is real, not a blanket skip', () => {
-  // The one exemption must keep earning itself: the element has to still be
-  // direction-pinned to ltr. If that attribute disappears the element can render
-  // Arabic, and the exemption must be reconsidered rather than silently held.
-  const src = readFileSync(join(ROOT, 'components/CredentialsHandoff.js'), 'utf8');
-  const codeEls = [...src.matchAll(/<code\b[^>]*>/g)].map((m) => m[0]);
-  assert.ok(codeEls.length > 0, 'CredentialsHandoff no longer renders a <code> element');
-  // EVERY one, not merely one of them. An earlier draft asserted only that some
-  // <code> carried dir="ltr", which a mutation survived: removing the pin from
-  // the letter-spaced element still left a sibling matching.
-  const unpinned = codeEls.filter((el) => !/dir="ltr"/.test(el));
-  assert.deepEqual(
-    unpinned,
-    [],
-    'a <code> element in CredentialsHandoff is no longer pinned to dir="ltr". It can '
-    + 'now render Arabic, so the letter-spacing exemption in LTR_PINNED no longer holds',
+test('the exemption list is empty, and every future entry must earn its place', () => {
+  // The test that stood here read CredentialsHandoff's <code dir="ltr"> to prove
+  // the one exemption pointed at something real rather than being a blanket
+  // skip. That file is gone. The replacement pins the stronger property: while
+  // the list is empty, no selector anywhere is excused from the rule.
+  //
+  // An entry added later must name a real, direction-pinned element — the same
+  // bar the deleted test enforced, restated so it is not lost with the file.
+  assert.equal(
+    LTR_PINNED.size,
+    0,
+    'an exemption was added to LTR_PINNED. It must name an element that is still '
+    + 'explicitly dir="ltr", or it is excusing Arabic from the rule',
   );
 });
 
@@ -132,5 +133,9 @@ test('the sweep actually reaches the tree it claims to check', () => {
     const src = code(f);
     return rules(src).some((r) => !IS_RTL_SELECTOR.test(r.sel) && (TRACKS.test(r.body) || UPPERCASES.test(r.body)));
   });
-  assert.ok(tracked.length >= 3, `only ${tracked.length} files found setting tracking/uppercase`);
+  // Was 3 until components/CredentialsHandoff.js was deleted on 2026-08-28 —
+  // it letter-spaced the monospace credential block. The number is a
+  // broken-scan tripwire, not a target: it moves when files legitimately go,
+  // and it must never be lowered to make a real regression pass.
+  assert.ok(tracked.length >= 2, `only ${tracked.length} files found setting tracking/uppercase`);
 });

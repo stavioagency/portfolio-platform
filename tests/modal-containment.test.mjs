@@ -18,8 +18,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { translations } from '../lib/translations.js';
 
+// CredentialsHandoff was here and was one of the canonical surfaces. It went
+// with the credentials handover on 2026-08-28 — the owner no longer issues a
+// password, so there is nothing to hand over and no modal to hand it over in.
+// The contract it demonstrated is unchanged and still enforced on every surface
+// below; there is simply one fewer surface.
 const SURFACES = [
-  { name: 'CredentialsHandoff', file: 'components/CredentialsHandoff.js', component: null, container: 'modalRef', canonical: true },
   { name: 'SetPasswordGate',    file: 'pages/admin.js', component: 'SetPasswordGate',  container: 'panelRef',  canonical: false },
   { name: 'IconPickerModal',    file: 'pages/admin.js', component: 'IconPickerModal',  container: 'pickerRef', canonical: true },
   { name: 'CropperModal',       file: 'pages/admin.js', component: 'CropperModal',     container: 'cmRef',     canonical: true },
@@ -113,7 +117,7 @@ test('every copy of FOCUSABLE is identical to ConfirmDialog\'s', () => {
   const canonical = read('components/ui/ConfirmDialog.js');
   assert.ok(canonical, 'ConfirmDialog no longer defines FOCUSABLE');
   assert.match(canonical, /button:not\(\[disabled\]\)/, 'canonical selector stopped excluding disabled buttons');
-  for (const f of ['components/CredentialsHandoff.js', 'pages/admin.js']) {
+  for (const f of ['pages/admin.js']) {
     assert.equal(read(f), canonical, `${f}: FOCUSABLE has drifted from ConfirmDialog`);
   }
 });
@@ -134,16 +138,15 @@ test('IconPickerModal captures its opener before autoFocus and restores it', () 
 });
 
 test('DS-17/18/19 contracts were not displaced', () => {
-  const ch = readFileSync('components/CredentialsHandoff.js', 'utf8');
-  assert.match(ch, /addEventListener\('keydown', onKey, true\)/, 'CH capture-phase Escape lost');
-  assert.match(ch, /removeEventListener\('keydown', onKey, true\)/, 'CH capture flag lost on removal');
-  assert.match(ch, /prevOverflow/, 'CH prevOverflow lost');
-  assert.match(ch, /opener\.isConnected/, 'CH opener restoration lost');
+  // The four CredentialsHandoff pins that stood here (capture-phase Escape and
+  // its matching removal, prevOverflow, opener restoration) named a file that
+  // no longer exists. Their CONTRACTS are not gone: the sweep above asserts
+  // every one of them across every remaining contained surface, which is where
+  // the enforcement always actually lived. These were extra pins on one
+  // example, and the example was deleted.
+  //
+  // The DS-17 clipboard pin went the same way — see tests/clipboard-guard.
   const admin = readFileSync('pages/admin.js', 'utf8');
-  // DS-17's guarded clipboard write went to /console with the credentials
-  // handoff. Still pinned, just where it now lives.
-  assert.match(readFileSync('pages/console/index.js', 'utf8'),
-    /await navigator\.clipboard\.writeText/, 'DS-17 clipboard guard lost');
   // The DS-17 stacking-order pin and the DS-18 mount-scoped-focus pin both named
   // ClientPanel, which was deleted with the owner screens on 2026-08-27. The
   // contracts they protected are still enforced for every REMAINING surface by

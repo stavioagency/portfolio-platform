@@ -174,11 +174,11 @@ function Console() {
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [creds, setCreds] = useState(null);
   const [busy, setBusy] = useState('');
   const [view, setView] = useState('clients');   // clients | archived
   const [archived, setArchived] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [invites, setInvites] = useState([]);
   // Same stored preference the admin writes, so the operator does not switch
   // language twice. Read after mount: the server cannot know it.
   const [lang, setLang] = useState('ar');
@@ -220,18 +220,23 @@ function Console() {
   }
 
   async function load() {
-    const [{ data: tenants }, { data: subs }, { data: members }] = await Promise.all([
+    const [{ data: tenants }, { data: subs }, { data: members }, { data: invites }] = await Promise.all([
       supabase.from('tenants').select('id, slug, name, status, created_at').order('created_at', { ascending: false }),
       supabase.from('subscriptions').select('*'),
       supabase.functions.invoke('client-recovery', { body: { action: 'list_orphans' } }).then(
         (r) => ({ data: r?.data?.members || [] }), () => ({ data: [] }),
       ),
+      // Open invitations — an address owed free access that has not signed up
+      // yet. Claimed ones stay in the table as history and are not listed.
+      supabase.from('free_access_invites').select('*').is('claimed_at', null)
+        .order('created_at', { ascending: false }),
     ]);
     const subByTenant = new Map((subs || []).map((s) => [s.tenant_id, s]));
     const memberByTenant = new Map((members || []).filter((m) => m.tenant_id).map((m) => [m.tenant_id, m]));
     const { data: gone } = await supabase
       .from('deleted_clients').select('*').order('deleted_at', { ascending: false });
     setArchived(gone || []);
+    setInvites(invites || []);
     // Money actually received. `payments` is the ledger the webhook writes; it
     // is not recomputed here, only summed.
     const { data: pays } = await supabase
@@ -411,46 +416,43 @@ function Console() {
     setOpenId(null);
   }
 
-  // Creating a client is two steps, the same two the admin used: insert the
-  // workspace (owner-only by RLS), then invite-client attaches a login to it
-  // and returns credentials once. Nothing is reimplemented.
-  async function createClient(form) {
-    const slug = form.slug.trim().toLowerCase();
-    setBusy('create');
+  // Inviting a client is now ONE insert of ONE address.
+  //
+  // It used to be: create the tenant, call invite-client to make an auth
+  // account with a generated password, then show that password once in a modal
+  // for the owner to relay by WhatsApp or PDF. Everything after "type the
+  // email" existed because the client could not create their own account.
+  // They can, so none of it does.
+  //
+  // The tenant is NOT created here either. The client picks their own name and
+  // portfolio address during signup, and a workspace made in advance would
+  // either force a name on them or sit empty if they never arrived.
+  async function createInvite(email, days) {
+    setBusy('invite');
     try {
-      const { data: tRow, error: tErr } = await supabase.from('tenants')
-        .insert({ slug, name: form.name.trim() || slug, default_lang: form.lang, status: 'active' })
-        .select().single();
-      if (tErr) {
-        toast.error(/duplicate|unique/i.test(tErr.message) ? `"${slug}" is taken.` : tErr.message);
+      const { error } = await supabase.from('free_access_invites')
+        .insert({ email: email.trim().toLowerCase(), days });
+      if (error) {
+        // 23505 is the partial unique index on open invites: this address is
+        // already owed a free month, and saying so is more useful than "insert
+        // failed".
+        toast.error(/duplicate|unique|23505/i.test(error.message) ? t('inviteExists') : error.message);
         return false;
       }
-      const { data, error } = await supabase.functions.invoke('invite-client', {
-        body: { tenant_id: tRow.id, email: form.email.trim(), username: form.username.trim() },
-      });
-      if (error || data?.error) {
-        let msg = data?.error || error?.message;
-        try { const b = await error?.context?.json?.(); if (b?.detail) msg = `${b.error}: ${b.detail}`; } catch (e) {}
-        // The workspace exists but has no login. Leave it -- deleting it here
-        // could race the invite, and the console can remove it deliberately.
-        toast.error(String(msg));
-        await load();
-        return false;
-      }
-      setCreds({
-        workspace: form.name.trim() || slug,
-        url: `${window.location.origin}/${slug}`,
-        email: data?.email || form.email.trim(),
-        username: data?.username || form.username.trim(),
-        password: data?.temp_password || '',
-      });
-      toast.success(t('created'));
+      toast.success(t('invited'));
       await load();
       return true;
     } catch (e) {
       toast.error(String(e?.message || e));
       return false;
     } finally { setBusy(''); }
+  }
+
+  async function cancelInvite(id) {
+    await run(`inv:${id}`, async () => {
+      const { error } = await supabase.from('free_access_invites').delete().eq('id', id);
+      return error ? error.message : null;
+    }, t('done'));
   }
 
   // ---- render ---------------------------------------------------------------
@@ -498,7 +500,7 @@ function Console() {
                   className={view === 'archived' ? 'on' : ''} onClick={() => setView('archived')}>{t('removed')}</button>
         </div>
         {view === 'clients' && (
-          <Button size="sm" onClick={() => setAdding(true)}>+ {t('addClient')}</Button>
+          <Button size="sm" onClick={() => setAdding(true)}>+ {t('inviteTitle')}</Button>
         )}
         <button type="button" className="lang" onClick={toggleLang} aria-label={ar ? 'Switch to English' : 'التبديل إلى العربية'}>
           {ar ? 'EN' : 'ع'}
@@ -578,14 +580,13 @@ function Console() {
       )}
 
       {adding && (
-        <AddClientPanel
+        <InvitePanel
           t={t} busy={busy}
           onClose={() => setAdding(false)}
-          onCreate={async (form) => { if (await createClient(form)) setAdding(false); }}
+          onCreate={async (email, days) => { if (await createInvite(email, days)) setAdding(false); }}
         />
       )}
 
-      {creds && <CredentialsPanel t={t} creds={creds} onClose={() => setCreds(null)} />}
 
       {open && (
         <ManagePanel
@@ -808,100 +809,68 @@ function ManagePanel({ row, busy, t, ar, lang, onClose, onResetPassword, onChang
 }
 
 
-function AddClientPanel({ t, busy, onClose, onCreate }) {
-  const [f, setF] = useState({ name: '', slug: '', email: '', username: '', lang: 'ar' });
-  // The address is derived from the name until it is edited, so the common case
-  // is two fields rather than four. Same rule the admin's invite used.
-  const [slugTouched, setSlugTouched] = useState(false);
-  const slug = (slugTouched ? f.slug : f.name).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+function InvitePanel({ t, busy, onClose, onCreate }) {
+  const [email, setEmail] = useState('');
+  const [days, setDays] = useState('30');
 
   return (
-    <div className="bg" onClick={onClose} role="presentation">
-      <div className="panel" role="dialog" aria-modal="true" aria-label={t('addTitle')} onClick={(e) => e.stopPropagation()}>
+    <div className="bg" onClick={onClose}>
+      <div className="panel" role="dialog" aria-modal="true" aria-label={t('inviteTitle')} onClick={(e) => e.stopPropagation()}>
         <div className="ph">
-          <b>{t('addTitle')}</b>
+          <b>{t('inviteTitle')}</b>
           <button type="button" className="x" onClick={onClose} aria-label={t('cancel')}>×</button>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); onCreate({ ...f, slug }); }}>
-          {/* Explicit htmlFor/id rather than wrapping: the association is then
-              visible without knowing what <Input> renders, which is what
-              tests/label-association.test.mjs checks and what a screen reader
-              relies on. */}
-          <label htmlFor="nc-name">{t('fName')}</label>
-          <Input id="nc-name" value={f.name} onChange={set('name')} required />
 
-          <label htmlFor="nc-slug">{t('fAddress')}</label>
-          <Input id="nc-slug" value={slug} dir="ltr"
-                 onChange={(e) => { setSlugTouched(true); setF({ ...f, slug: e.target.value }); }} required />
-          <span className="hint" dir="ltr">designakum.site/{slug || '…'}</span>
+        {/* One field, and the panel says why there is only one. The previous
+            version asked for a name, a portfolio address, an email, a username
+            and a language — five decisions taken on the client's behalf before
+            they had seen the product. They choose all of that themselves now. */}
+        <p>{t('inviteDesc')}</p>
 
-          <label htmlFor="nc-email">{t('fEmail')}</label>
-          <Input id="nc-email" type="email" value={f.email} onChange={set('email')} dir="ltr" required />
+        <form
+          onSubmit={(e) => { e.preventDefault(); onCreate(email, days === '' ? null : Number(days)); }}
+        >
+          {/* htmlFor/id rather than wrapping, because Input is a component
+              and not a raw control: wrapping one names nothing to a screen
+              reader, which tests/label-association.test.mjs exists to catch. */}
+          <label className="fld" htmlFor="inv-email">
+            <span>{t('inviteEmail')}</span>
+            <Input
+              id="inv-email"
+              type="email"
+              required
+              dir="ltr"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="client@email.com"
+            />
+          </label>
 
-          <label htmlFor="nc-username">{t('fUsername')}</label>
-          <Input id="nc-username" value={f.username} onChange={set('username')} dir="ltr" required />
-
-          <label htmlFor="nc-lang">{t('fLang')}</label>
-          <div>
-            <select id="nc-lang" value={f.lang} onChange={set('lang')}>
-              <option value="ar">العربية</option>
-              <option value="en">English</option>
+          <label className="fld" htmlFor="inv-days">
+            <span>{t('grantDays')}</span>
+            <select id="inv-days" value={days} onChange={(e) => setDays(e.target.value)}>
+              <option value="30">{t('days30')}</option>
+              <option value="90">{t('days90')}</option>
+              <option value="">{t('daysForever')}</option>
             </select>
-          </div>
-          <div className="row">
-            <Button type="submit" loading={busy === 'create'}>{t('create')}</Button>
-            <Button type="button" variant="ghost" onClick={onClose}>{t('cancel')}</Button>
-          </div>
+          </label>
+
+          <Button type="submit" loading={busy === 'invite'}>{t('inviteSend')}</Button>
         </form>
       </div>
+
       <style jsx>{`
         .bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: flex-end; z-index: 60; }
         .panel { inline-size: min(440px, 100%); block-size: 100%; overflow-y: auto; background: var(--bg-primary);
-                 border-inline-start: 1px solid var(--border); padding: var(--space-5); }
-        .ph { display: flex; align-items: center; justify-content: space-between; margin-block-end: var(--space-4); }
+                 border-inline-start: 1px solid var(--border); padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+        .ph { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
         .ph b { font-size: var(--text-xl); }
         .x { inline-size: 44px; block-size: 44px; border: none; background: none; color: var(--text-secondary); font-size: 22px; cursor: pointer; }
-        form { display: flex; flex-direction: column; gap: var(--space-2); }
-        label { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); }
-        .hint { font-size: var(--text-sm); color: var(--text-tertiary); margin-block-end: var(--space-2); }
-        form > :global(*) { width: 100%; }
-        select { padding: 10px 14px; min-height: 44px; background: var(--bg-secondary); border: 1px solid var(--border);
-                 border-radius: var(--radius-md); color: var(--text-primary); font: inherit; }
-        .row { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
-      `}</style>
-    </div>
-  );
-}
-
-// Shown ONCE. The password is not stored anywhere -- GoTrue keeps only a hash --
-// so if this is dismissed without copying, the only way back is a reset.
-function CredentialsPanel({ t, creds, onClose }) {
-  const [copied, setCopied] = useState(false);
-  const block = `${creds.workspace}\n${creds.url}\n${creds.email}\n${creds.username}\n${creds.password}`;
-  return (
-    <div className="bg" role="presentation">
-      <div className="panel" role="dialog" aria-modal="true" aria-label={t('credsTitle')}>
-        <b>{t('credsTitle')}</b>
-        <p>{t('credsNote')}</p>
-        <pre dir="ltr">{block}</pre>
-        <div className="row">
-          <Button size="sm" variant="secondary" onClick={async () => {
-            try { await navigator.clipboard.writeText(block); setCopied(true); } catch (e) { /* no clipboard */ }
-          }}>{copied ? t('copied') : t('copy')}</Button>
-          <Button size="sm" onClick={onClose}>{t('done')}</Button>
-        </div>
-      </div>
-      <style jsx>{`
-        .bg { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: grid; place-items: center; z-index: 70; padding: var(--space-4); }
-        .panel { inline-size: min(460px, 100%); background: var(--bg-primary); border: 1px solid var(--border);
-                 border-radius: var(--radius-lg); padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
-        b { font-size: var(--text-xl); }
-        p { margin: 0; font-size: var(--text-sm); color: var(--text-tertiary); line-height: 1.5; }
-        pre { margin: 0; padding: var(--space-4); background: var(--bg-secondary); border: 1px solid var(--border);
-              border-radius: var(--radius-md); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-              font-size: var(--text-sm); white-space: pre-wrap; word-break: break-all; color: var(--text-primary); }
-        .row { display: flex; gap: var(--space-2); }
+        .x:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+        p { margin: 0; font-size: var(--text-sm); color: var(--text-tertiary); line-height: 1.6; }
+        form { display: flex; flex-direction: column; gap: var(--space-4); align-items: flex-start; }
+        .fld { display: flex; flex-direction: column; gap: var(--space-2); inline-size: 100%; font-size: var(--text-sm); color: var(--text-secondary); }
+        .fld select { min-height: 40px; }
       `}</style>
     </div>
   );

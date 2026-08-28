@@ -17,12 +17,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-// ClientPanel was the second surface here until 2026-08-27, when the owner
-// screens moved to /console and it went with them. The RULE it demonstrated is
-// unchanged and still enforced below against every surface that remains.
-const SURFACES = [
-  { file: 'components/CredentialsHandoff.js', name: 'CredentialsHandoff', focusCall: 'modalRef.current?.focus()' },
-];
+// THIS LIST IS EMPTY, AND THAT IS NOT AN OVERSIGHT.
+//
+// ClientPanel left on 2026-08-27 with the owner screens; CredentialsHandoff
+// left on 2026-08-28 with the credentials handover, when clients started
+// signing themselves up and no password was ever issued again. Neither rule
+// changed — both surfaces did.
+//
+// The file is kept rather than deleted because the contract is still the one
+// any future overlay must meet, and re-deriving it from scratch is exactly the
+// cost this repository's guards exist to avoid. Add a surface here and every
+// assertion below arms itself.
+//
+// The hazard of an empty list is that every sweep passes vacuously, so the last
+// test checks the PARSER against a sample instead of against the tree.
+const SURFACES = [];
 
 // Return the source of the useEffect that encloses `needle`, plus its dependency array.
 function enclosingEffect(src, needle) {
@@ -78,11 +87,30 @@ test('focus is handed back only to a node still in the document', () => {
   }
 });
 
-test('DS-17 nested-overlay invariants are still in place', () => {
-  const ch = readFileSync('components/CredentialsHandoff.js', 'utf8');
-  assert.match(ch, /addEventListener\('keydown', onKey, true\)/, 'capture-phase Escape lost');
-  assert.match(ch, /removeEventListener\('keydown', onKey, true\)/, 'capture flag lost on removal');
-  assert.match(ch, /prevOverflow/, 'prevOverflow scroll-lock lost');
-  // The admin.js half of this pin was ClientPanel's scroll lock, deleted with
-  // the owner screens. CredentialsHandoff above still carries it.
+// The DS-17 nested-overlay pins that stood here named ClientPanel and then
+// CredentialsHandoff, and both files are gone. tests/modal-containment.test.mjs
+// enforces the same invariants across every surface that still exists, which is
+// where the enforcement always actually lived.
+
+test('the parser still works, so an empty list is not silent coverage', () => {
+  // With no surfaces left, every sweep above iterates nothing and passes. That
+  // is honest only if the machinery would still catch a real regression, so it
+  // is exercised here against a correct sample and three broken ones.
+  const good = `useEffect(() => {
+    const opener = document.activeElement;
+    modalRef.current?.focus();
+    return () => { if (opener && opener.isConnected) opener.focus(); };
+  }, []);`;
+  const eff = enclosingEffect(good, 'modalRef.current?.focus()');
+  assert.ok(eff, 'the parser no longer finds the effect enclosing a focus call');
+  assert.equal(eff.deps, '[]', 'mount-scoped deps are no longer read correctly');
+  assert.match(eff.body, /document\.activeElement/, 'opener capture is no longer detected');
+  assert.match(eff.body.slice(eff.body.indexOf('return () =>')), /isConnected/,
+    'the attached-opener check is no longer detected');
+
+  const rescoped = good.replace('}, []);', '}, [onClose]);');
+  assert.equal(enclosingEffect(rescoped, 'modalRef.current?.focus()').deps, '[onClose]',
+    'a re-rendering dependency would not be caught');
+  assert.equal(enclosingEffect(good, 'somethingElse.focus()'), null,
+    'the parser matches a focus call that is not there');
 });

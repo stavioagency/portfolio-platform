@@ -259,9 +259,15 @@ test('the pre-existing aria-label precedent is still intact', () => {
   // screens moved to /console on 2026-08-27. Its replacement there carries its
   // own aria-label; this file scans admin.js and components/, so it is checked
   // by the tree-wide sweep above rather than pinned by name here.
-  const email = inputTagContaining('components/CredentialsHandoff.js', 'value={draftEmail}');
-  assert.ok(email && /aria-label=\{ar \? 'بريد العميل' : 'Client email'\}/.test(email),
-    'the CredentialsHandoff client-email aria-label precedent was altered');
+  // The last of the two is now gone as well: CredentialsHandoff's client-email
+  // field was deleted on 2026-08-28 with the credentials handover. BOTH named
+  // precedents have therefore left the tree, and neither rule went with them —
+  // an icon-only or placeholder-only control still needs an accessible name,
+  // and the tree-wide sweep above is what has always enforced that. What is
+  // lost is only the pair of worked examples, recorded here so the convention
+  // is still legible: aria-label={ar ? 'بريد العميل' : 'Client email'}, taken
+  // from the translation layer and never from the placeholder.
+  assert.ok(true);
 });
 
 test('no placeholder-only input remains in admin.js', () => {
