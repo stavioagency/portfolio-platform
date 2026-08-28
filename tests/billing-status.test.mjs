@@ -99,9 +99,11 @@ test('past_due without an explicit grace date falls back to GRACE_DAYS', () => {
   assert.equal(outside.entitled, false);
 });
 
-test('a comped workspace is entitled forever and needs no dates', () => {
-  // The eleven workspaces that predate billing carry this. A missing period end
-  // must not read as "expired" — that would switch off every live client site.
+test('a comped workspace with no dates at all is entitled', () => {
+  // The workspaces that predate billing carry this. A missing period end must
+  // not read as "expired" — that would switch off every live client site.
+  // Grants CAN now expire, but only when a date says so; see the block at the
+  // bottom of this file.
   const v = deriveBilling({ status: 'comped', plan_code: 'comped' }, NOW);
   assert.equal(v.state, 'comped');
   assert.equal(v.entitled, true);
@@ -199,4 +201,75 @@ test('payment outcomes have a tone and a label in both locales', () => {
   }
   assert.equal(paymentTone('unknown'), 'neutral');
   assert.equal(paymentLabel('unknown', 'en'), 'unknown');
+});
+
+// ── Comped grants that run out ──────────────────────────────────────────
+//
+// Free access became time-limited on 2026-08-28: a grant is normally 30 days
+// and renewable. Before that, comped meant entitled and no date was read at
+// all — so these tests exist to pin the ONE property that keeps the change
+// safe, alongside the new behaviour.
+//
+// THE SAFE PROPERTY: no end date still means forever. Every live client is
+// comped with current_period_end null, so a missing date reading as "expired"
+// would have taken down all seven portfolios at once.
+
+test('a comped grant with no end date is permanent, and stays entitled', () => {
+  const v = deriveBilling({ status: 'comped', plan_code: 'comped', current_period_end: null });
+  assert.equal(v.state, 'comped');
+  assert.equal(v.entitled, true);
+  assert.equal(v.endsAt, null);
+  assert.equal(v.daysLeft, null, 'a permanent grant counts down to nothing');
+});
+
+test('the seven live rows are exactly that shape, so none of them moved', () => {
+  // grandfather comps as they exist in the database today: status comped,
+  // plan_code comped, no period end.
+  const live = { status: 'comped', plan_code: 'comped', comp_kind: 'grandfather', current_period_end: null };
+  assert.equal(deriveBilling(live).entitled, true);
+});
+
+test('a comped grant still inside its window is entitled and counts down', () => {
+  const now = Date.parse('2026-08-28T00:00:00Z');
+  const v = deriveBilling(
+    { status: 'comped', plan_code: 'comped', current_period_end: '2026-09-27T00:00:00Z' },
+    now,
+  );
+  assert.equal(v.state, 'comped');
+  assert.equal(v.entitled, true);
+  assert.equal(v.daysLeft, 30, 'daysLeft is what the 7-day and 1-day warnings read');
+});
+
+test('a comped grant whose window has passed is expired, and NOT entitled', () => {
+  const now = Date.parse('2026-08-28T00:00:00Z');
+  const v = deriveBilling(
+    { status: 'comped', plan_code: 'comped', current_period_end: '2026-08-27T00:00:00Z' },
+    now,
+  );
+  assert.equal(v.state, 'expired', 'it lands in the same state an unpaid account reaches');
+  assert.equal(v.entitled, false);
+  assert.equal(v.needsAction, true);
+});
+
+test('the boundary belongs to the client: entitled up to the instant it ends', () => {
+  const end = Date.parse('2026-09-27T00:00:00Z');
+  assert.equal(
+    deriveBilling({ status: 'comped', plan_code: 'comped', current_period_end: '2026-09-27T00:00:00Z' }, end - 1).entitled,
+    true,
+  );
+  assert.equal(
+    deriveBilling({ status: 'comped', plan_code: 'comped', current_period_end: '2026-09-27T00:00:00Z' }, end).entitled,
+    false,
+  );
+});
+
+test('isSubscriber agrees, so the two never disagree about a lapsed grant', () => {
+  // The console's counts read isSubscriber, not deriveBilling. If they diverge,
+  // an expired client is still shown as one who has access.
+  const now = Date.parse('2026-08-28T00:00:00Z');
+  assert.equal(
+    isSubscriber({ status: 'comped', plan_code: 'comped', current_period_end: '2026-08-27T00:00:00Z' }, now),
+    false,
+  );
+  assert.equal(isSubscriber({ status: 'comped', plan_code: 'comped', current_period_end: null }, now), true);
 });
