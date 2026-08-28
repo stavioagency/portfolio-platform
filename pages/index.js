@@ -966,6 +966,14 @@ export default function Home({ slug = null } = {}) {
           --pf-ink-faint: rgba(255,255,255,0.50);
 
           --pf-accent: var(--accent, #9FA7FF);
+          /* The accent, bounded into a band that is legible on this dark card.
+             The mark's ring is 2px of it: a near-black accent drew an invisible
+             ring, and the client had no way to know why their logo had no
+             outline. Clamping the lightness keeps their hue and guarantees the
+             ring is there. Falls back to the raw accent where relative colour
+             syntax is missing. */
+          --pf-accent-ink: var(--pf-accent);
+          --pf-accent-ink: oklch(from var(--pf-accent) clamp(0.55, l, 0.88) c h);
 
           min-height: 100vh;
           font-family: ${PF_FONT};
@@ -1049,7 +1057,7 @@ export default function Home({ slug = null } = {}) {
         .brand-logo {
           width: 55px; height: 55px;
           border-radius: 50%;
-          border: 2px solid var(--pf-accent);
+          border: 2px solid var(--pf-accent-ink);
           padding: 2px;
           display: flex; align-items: center; justify-content: center;
           font-size: 22px; font-weight: 700;

@@ -1973,6 +1973,7 @@ function CardEditor({ t, lang: uiLang }) {
   const confirm = useConfirm();
   const [profile, setProfile] = useState({
     bilingual: false,
+    appearance: {},
     banners: [], stats: [], cta_buttons: [], brand_logo: '', favicon_url: '', availability: null,
     rating: null, client_count: null, hours: null,
     top_ticker: { enabled: false, text: emptyBilingual(), bg_color: '#9FA7FF', text_color: '#0a0a0c', speed: 'medium' },
@@ -1992,6 +1993,7 @@ function CardEditor({ t, lang: uiLang }) {
     const { data } = await loadProfile(tenant);
     if (data) setProfile({
       bilingual: data.bilingual === true,
+      appearance: data.appearance || {},
       banners: data.banners || [],
       stats: data.stats || [],
       cta_buttons: data.cta_buttons || [],
@@ -2095,6 +2097,23 @@ function CardEditor({ t, lang: uiLang }) {
       ))}
       {(profile.banners?.length || 0) < 5 && <Button variant="secondary" size="sm" onClick={addBanner}>+ {t('banner_add')}</Button>}
 
+      <h2>{t('colour_title')} <span className="meta">· {t('colour_sub')}</span></h2>
+      <ColourPicker
+        value={profile.appearance?.tokens?.accent || profile.appearance?.accent_color || DEFAULT_ACCENT}
+        onChange={(hex) => patch({
+          // Written to BOTH keys the public page reads. tokens.accent wins
+          // there, and accent_color is the older field several rows still
+          // carry — leaving it stale would mean the two disagreed the moment
+          // anything else read the older one.
+          appearance: {
+            ...(profile.appearance || {}),
+            accent_color: hex,
+            tokens: { ...(profile.appearance?.tokens || {}), accent: hex },
+          },
+        })}
+        t={t}
+      />
+
       <h2>{t('facts_title')} <span className="meta">· {t('facts_sub')}</span></h2>
       <QuickFacts profile={profile} patch={patch} t={t} lang={lang} />
 
@@ -2191,6 +2210,67 @@ function StatRow({ stat, lang, onChange, onRemove, onUp, onDown, canUp, canDown,
 // number with no label field beside it; availability is derived from working
 // hours and is never typed at all.
 // ---------------------------------------------------------------------------
+
+// The colour a portfolio is built around. Six because six is enough to find
+// something you like and few enough to choose from at a glance; the free picker
+// sits beside them for anyone who has a brand colour to match.
+//
+// SAFE TO LEAVE OPEN, which it was not before. The accent used to set the page
+// background, the surfaces and the text ramp directly, which is how a client
+// turned their whole site lilac. It now reaches two things, and both bound it:
+// the page glow takes its HUE at a fixed lightness, and the mark's ring is
+// clamped into a visible band. There is no value here that produces a bad page.
+const ACCENT_PRESETS = ['#9FA7FF', '#5B8DEF', '#4FB477', '#E8A33D', '#D9556F', '#B07CD6'];
+const DEFAULT_ACCENT = '#9FA7FF';
+
+function ColourPicker({ value, onChange, t }) {
+  const current = String(value || DEFAULT_ACCENT).toLowerCase();
+  return (
+    <div className="card-row" style={{ maxWidth: 640 }}>
+      <div className="swatches">
+        {ACCENT_PRESETS.map((hex) => (
+          <button
+            key={hex}
+            type="button"
+            className={`swatch ${current === hex.toLowerCase() ? 'on' : ''}`}
+            style={{ '--sw': hex }}
+            onClick={() => onChange(hex)}
+            aria-label={hex}
+            aria-pressed={current === hex.toLowerCase()}
+          />
+        ))}
+      </div>
+
+      <Field id="accent-hex" label={t('colour_own')}>
+        <div className="hexrow">
+          <input
+            id="accent-hex"
+            type="color"
+            value={/^#[0-9a-f]{6}$/i.test(current) ? current : DEFAULT_ACCENT}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          <span className="hexval" dir="ltr">{current}</span>
+        </div>
+      </Field>
+
+      <style jsx>{`
+        .swatches { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
+        .swatch {
+          inline-size: 40px; block-size: 40px; border-radius: 50%;
+          background: var(--sw); border: 2px solid transparent; cursor: pointer;
+          box-shadow: 0 0 0 1px var(--border);
+        }
+        /* The chosen one gets a ring OUTSIDE itself, so the colour it is
+           offering is never covered by the indicator for having chosen it. */
+        .swatch.on { box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--text-primary); }
+        .swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+        .hexrow { display: flex; align-items: center; gap: var(--space-3); }
+        .hexrow input { inline-size: 48px; block-size: 40px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: none; cursor: pointer; }
+        .hexval { font-family: var(--font-mono, monospace); font-size: var(--text-sm); color: var(--text-tertiary); text-transform: uppercase; }
+      `}</style>
+    </div>
+  );
+}
 
 // 5.0 down to 3.0. Below 3 nobody advertises, and a list running to 1.0 is one
 // where a mis-click is a disaster. One decimal, because "4.9" is the thing
