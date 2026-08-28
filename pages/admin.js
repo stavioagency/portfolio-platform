@@ -2463,15 +2463,8 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
       console.error(err); toast.error(t('save_failed'));
     } finally { setSaving(false); }
   }
-  async function uploadCover(file) {
-    const img = await compressImage(file);
-    const path = tenantStoragePath(tenant, `project-${data.id}-cover-${Date.now()}.${fileExtension(img)}`);
-    if (!path) { toast.error(t('upload_failed')); return; }
-    const { error } = await supabase.storage.from('media').upload(path, img, { upsert: true });
-    if (error) { console.error(error); toast.error(t('upload_failed')); return; }
-    const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
-    patch({ cover_image: urlData.publicUrl });
-  }
+  // uploadCover was here. There is no cover field to upload into: the first
+  // image in the set is the cover, kept in step by syncCover() below.
   async function uploadGalleryImage(file) {
     const img = await compressImage(file);
     const path = tenantStoragePath(tenant, `project-${data.id}-${Date.now()}.${fileExtension(img)}`);
@@ -2479,9 +2472,17 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
     const { error } = await supabase.storage.from('media').upload(path, img);
     if (error) { console.error(error); toast.error(t('upload_failed')); return; }
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path);
-    patch({ images: [...(data.images || []), urlData.publicUrl] });
+    patch(syncCover([...(data.images || []), urlData.publicUrl]));
   }
-  function removeImage(idx) { patch({ images: data.images.filter((_, i) => i !== idx) }); }
+  // cover_image is no longer a field anyone edits, but the portfolio still
+  // reads it — so it is kept equal to the first image on every change. That is
+  // what makes "the first image is the cover" true rather than merely stated,
+  // and it means an existing project whose cover was some seventh picture
+  // quietly starts agreeing with its own set the next time it is saved.
+  function syncCover(images) {
+    return { images, cover_image: images[0] || '' };
+  }
+  function removeImage(idx) { patch(syncCover(data.images.filter((_, i) => i !== idx))); }
 
   const displayTitle = pick(data.title, lang) || pick(data.title, 'en') || pick(data.title, 'ar') || t('project_fallback');
 
@@ -2490,39 +2491,27 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
       <button onClick={onBack} className="back-btn">← {t('back')}</button>
       <h1>{displayTitle}</h1>
 
-      <h2>{t('basics')}</h2>
+      {/* A NAME AND ITS IMAGES. That is the whole of a piece of work now.
+          It had eight fields, and the live data says what they were worth:
+          `client`, `year` and `role` are NULL on every project of every client
+          — nobody has ever filled one in; `description` and `full_description`
+          both existed and read as each other ("الشعارات" -> "الشعارات
+          المصممة"); `external_url` was used once, by one client; and
+          `cover_image` was a second upload for the picture that is simply the
+          first one.
+
+          All six columns are still in the database and the portfolio still
+          reads cover_image, so nothing that exists stops rendering. They are
+          not asked for. */}
       <Field id="p-title" label={t('project_title')}>
         <input id="p-title" value={pick(data.title, lang)} onChange={(e) => bilingualPatch('title', e.target.value)} />
       </Field>
-      <Field id="p-desc" label={t('project_description')}>
-        <input id="p-desc" value={pick(data.description, lang)} onChange={(e) => bilingualPatch('description', e.target.value)} placeholder={lang === 'ar' ? 'ملخص قصير' : 'Short summary'} />
-      </Field>
-      <Field id="p-full" label={t('full_description')}>
-        <textarea id="p-full" rows={5} value={pick(data.full_description, lang)} onChange={(e) => bilingualPatch('full_description', e.target.value)} />
-      </Field>
-
-      <h2>{t('project_info')} <span className="meta">· {t('optional')}</span></h2>
-      <div className="row-grid-3" style={{ maxWidth: 560 }}>
-        <Field id="p-client" label={t('project_client')}>
-          <input id="p-client" value={data.client || ''} onChange={(e) => patch({ client: e.target.value })} />
-        </Field>
-        <Field id="p-year" label={t('project_year')}>
-          <input id="p-year" dir="ltr" value={data.year || ''} onChange={(e) => patch({ year: e.target.value })} />
-        </Field>
-        <Field id="p-role" label={t('project_role')}>
-          <input id="p-role" value={data.role || ''} onChange={(e) => patch({ role: e.target.value })} />
-        </Field>
-      </div>
-
-      <h2>{t('cover_image')}</h2>
-      <ImageUpload value={data.cover_image} onUpload={uploadCover} onClear={() => patch({ cover_image: '' })} aspect={1} hint={t('img_hint_cover')} t={t} />
-
-      <h2>{t('external_link')}</h2>
-      <Field id="p-ext" label="">
-        <input id="p-ext" type="url" dir="ltr" value={data.external_url || ''} onChange={(e) => patch({ external_url: e.target.value })} placeholder="https://..." />
-      </Field>
 
       <h2>{t('project_images')}</h2>
+      {/* THE FIRST IMAGE IS THE COVER, so there is no cover to choose. It was
+          a separate upload of the same picture, and a client who set one and
+          not the other got a card showing something that was not in the set. */}
+      <p className="hint">{t('images_first_is_cover')}</p>
       <MultiImageUpload images={data.images || []} onUpload={uploadGalleryImage} onRemove={removeImage} hint={t('img_hint_gallery')} t={t} />
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty}

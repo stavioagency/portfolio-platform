@@ -105,12 +105,13 @@ test('the Field labelling convention is still the norm in admin.js', () => {
   const src = readFileSync('pages/admin.js', 'utf8');
   // Field is the project's explicit-association component; it renders
   // <label htmlFor={id}> against a matching input id.
-  // A moving floor, and the reason it moves is recorded each time: >= 40 while
-  // admin.js held the two owner screens; they moved to /console on 2026-08-27.
-  // >= 25 since 2026-08-28, when the editor went from ten tabs to five and the
-  // Appearance and Overview screens were deleted outright. The guard is about
-  // the CONVENTION still being the norm, not about a particular count.
-  assert.ok((src.match(/<Field\b/g) || []).length >= 25, 'the Field convention has been dismantled');
+  // A moving floor, and the reason it moves is recorded each time:
+  //   >= 40  while admin.js held the two owner screens (they left 2026-08-27)
+  //   >= 25  after the editor went from ten tabs to five, 2026-08-28
+  //   >= 20  after a piece of work stopped having eight fields and started
+  //          having a name and its images, same day
+  // The guard is about the CONVENTION still being the norm, not about a count.
+  assert.ok((src.match(/<Field\b/g) || []).length >= 20, 'the Field convention has been dismantled');
   assert.match(readFileSync('pages/admin.js', 'utf8'), /<label htmlFor=\{id\}>/,
     'Field no longer renders an htmlFor label');
 
