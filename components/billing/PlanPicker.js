@@ -17,6 +17,7 @@ import {
   monthlyEquivalent,
   savingsPercent,
 } from '../../lib/billing-plans';
+import Money from '../ui/Money';
 
 export default function PlanPicker({
   plans,
@@ -61,7 +62,7 @@ export default function PlanPicker({
                 )}
               </span>
               <span className="pp-price">
-                <span className="pp-amount">{formatAmount(plan.amount, lang)}</span>
+                <span className="pp-amount"><Money minor={plan.amount} lang={lang} /></span>
                 <span className="pp-interval">{formatInterval(plan, lang)}</span>
               </span>
               {showPerMonth && (

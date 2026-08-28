@@ -37,7 +37,7 @@ import { strandedByDeleting, releaseReport, releaseMessage } from '../lib/accoun
 import { deletionBlock, deletionBlockMessage, deletionUnknownMessage } from '../lib/workspace-deletion';
 import { deleteTenantStorage } from '../lib/storage-cleanup';
 import {
-  Button, Card, CardHeader, PageHeader, Badge, EmptyState, Icon, Skeleton,
+  Button, Card, CardHeader, PageHeader, Badge, EmptyState, Icon, Skeleton, Money,
   ToastProvider, useToast, ConfirmProvider, useConfirm,
 } from '../components/ui';
 import PreviewPane from '../components/PreviewPane';
@@ -4099,7 +4099,7 @@ function BillingEditor({ t, lang }) {
                 <div className="bl-plan-name">{planName(sub.plan_code, lang)}</div>
                 {currentPlan && (
                   <div className="bl-plan-price">
-                    {formatAmount(currentPlan.amount, lang)} · {formatInterval(currentPlan, lang)}
+                    <Money minor={currentPlan.amount} lang={lang} /> · {formatInterval(currentPlan, lang)}
                   </div>
                 )}
               </div>
@@ -4227,7 +4227,7 @@ function BillingEditor({ t, lang }) {
                   {/* Charged in the BILLING currency, so it is rendered in that
                       currency — showing a USD debit as riyals would not match
                       their statement. */}
-                  <td className="bl-amount">{formatAmount(p.amount, lang, p.currency || BILLING_CURRENCY)}</td>
+                  <td className="bl-amount"><Money minor={p.amount} lang={lang} currency={p.currency || BILLING_CURRENCY} /></td>
                   <td><Badge tone={paymentTone(p.status)}>{paymentLabel(p.status, lang)}</Badge></td>
                 </tr>
               ))}

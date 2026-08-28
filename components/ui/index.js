@@ -5,6 +5,8 @@ export { default as Button } from './Button';
 export { default as Card, CardHeader } from './Card';
 export { default as PageHeader } from './PageHeader';
 export { default as Badge } from './Badge';
+export { default as Riyal } from './Riyal';
+export { default as Money } from './Money';
 export { default as Icon, ICON_NAMES } from './Icon';
 export { default as Input, Hint } from './Input';
 export { default as EmptyState } from './EmptyState';

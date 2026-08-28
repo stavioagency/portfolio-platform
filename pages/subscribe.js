@@ -30,7 +30,7 @@ import { getTranslator, resolveLang } from '../lib/translations';
 import {
   getPlan, formatAmount, formatInterval, planName, formatBillingNote,
 } from '../lib/billing-plans';
-import { Button, Card, Badge } from '../components/ui';
+import { Button, Card, Badge, Money } from '../components/ui';
 import { edgeErrorCode } from '../lib/billing-errors';
 
 export default function Subscribe() {
@@ -253,7 +253,7 @@ export default function Subscribe() {
                 )}
                 <div className="co-line">
                   <span>{planName(plan.code, lang)}</span>
-                  <span className="co-num">{formatAmount(plan.amount, lang)}</span>
+                  <span className="co-num"><Money minor={plan.amount} lang={lang} /></span>
                 </div>
                 <div className="co-line co-muted-line">
                   <span>{formatInterval(plan, lang)}</span>
@@ -261,7 +261,7 @@ export default function Subscribe() {
                 </div>
                 <div className="co-total">
                   <span>{t('checkout_total_today')}</span>
-                  <span className="co-num co-total-num">{formatAmount(plan.amount, lang)}</span>
+                  <span className="co-num co-total-num"><Money minor={plan.amount} lang={lang} /></span>
                 </div>
                 {/* PayPal cannot charge SAR. Saying so here, next to the total,
                     is the difference between an informed customer and a

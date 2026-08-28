@@ -19,7 +19,7 @@ import Head from 'next/head';
 import { supabase } from '../../lib/supabase';
 import { deriveBilling, statusLabel, formatBillingDate } from '../../lib/billing-status';
 import { formatAmount, DISPLAY_CURRENCY } from '../../lib/billing-plans';
-import { Button, Badge, Input, EmptyState, Icon, Skeleton, ToastProvider, useToast, ConfirmProvider, useConfirm } from '../../components/ui';
+import { Button, Badge, Input, EmptyState, Icon, Skeleton, Money, ToastProvider, useToast, ConfirmProvider, useConfirm } from '../../components/ui';
 
 
 // Bilingual, like everything else the operator sees. Arabic follows the
@@ -289,7 +289,7 @@ function Console() {
   // figure in the currency the market is quoted in, with LATIN digits in both
   // languages (Intl.NumberFormat('ar') would render ١٢, which this product does
   // not use anywhere).
-  const fmtMoney = (minor) => formatAmount(minor, lang, money.currency);
+  const fmtMoney = (minor) => <Money minor={minor} lang={lang} currency={money.currency} />;
 
   // ---- actions. Each one calls exactly what /admin calls. -------------------
 
