@@ -8,6 +8,7 @@ import { getTranslator, resolveLang, isLang } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon, brandColor } from '../lib/brand-icons';
 import { navGroups } from '../lib/admin-nav';
+import { isOpen } from '../lib/working-hours';
 import { passwordPolicyError, PASSWORD_MIN, PASSWORD_MAX_CHARS } from '../lib/password-policy';
 import { isPwnedPassword } from '../lib/pwned-password';
 import { GUIDE_STEPS, nextStep } from '../lib/onboarding-guide';
@@ -1872,6 +1873,7 @@ function CardEditor({ t, lang }) {
   const confirm = useConfirm();
   const [profile, setProfile] = useState({
     banners: [], stats: [], cta_buttons: [], brand_logo: '', favicon_url: '', availability: null,
+    rating: null, client_count: null, hours: null,
     top_ticker: { enabled: false, text: emptyBilingual(), bg_color: '#9FA7FF', text_color: '#0a0a0c', speed: 'medium' },
     footer: { text: emptyBilingual(), color: 'rgba(var(--on-bg),0.3)' },
   });
@@ -1894,6 +1896,13 @@ function CardEditor({ t, lang }) {
       // undefined key would be dropped rather than clearing the column when
       // the client turns availability off.
       availability: data.availability || null,
+      // The three quick facts. null rather than undefined for the same reason
+      // availability is: persistProfile writes the object as-is, and an
+      // undefined key is dropped by the client rather than clearing the column,
+      // so a client who removes their rating would find it still there.
+      rating: data.rating ?? null,
+      client_count: data.client_count ?? null,
+      hours: data.hours || null,
       top_ticker: {
         enabled: data.top_ticker?.enabled || false,
         text: data.top_ticker?.text || emptyBilingual(),
@@ -1940,10 +1949,6 @@ function CardEditor({ t, lang }) {
   function moveBanner(id, dir) { const a = [...profile.banners]; const i = a.findIndex(b => b.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ banners: a }); }
   async function uploadBannerImage(bannerId, file) { const url = await uploadAsset(`banner-${bannerId}`, file); if (url) updateBanner(bannerId, { image_url: url }); }
 
-  function addStat() { if ((profile.stats?.length || 0) >= 3) return; patch({ stats: [...(profile.stats || []), { id: newId(), label: emptyBilingual(), value: emptyBilingual() }] }); }
-  function updateStat(id, u) { patch({ stats: profile.stats.map(s => s.id === id ? { ...s, ...u } : s) }); }
-  async function removeStat(id) { if (!(await confirm(removeDialog(t)))) return; patch({ stats: profile.stats.filter(s => s.id !== id) }); }
-  function moveStat(id, dir) { const a = [...profile.stats]; const i = a.findIndex(s => s.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ stats: a }); }
 
   function addButton() { patch({ cta_buttons: [...(profile.cta_buttons || []), { id: newId(), icon: 'whatsapp', label: emptyBilingual(), action: 'link', href: '' }] }); }
   function updateButton(id, u) { patch({ cta_buttons: profile.cta_buttons.map(b => b.id === id ? { ...b, ...u } : b) }); }
@@ -2005,19 +2010,8 @@ function CardEditor({ t, lang }) {
       ))}
       {(profile.banners?.length || 0) < 5 && <Button variant="secondary" size="sm" onClick={addBanner}>+ {t('banner_add')}</Button>}
 
-      <h2>{t('avail_title')} <span className="meta">· {t('avail_sub')}</span></h2>
-      <AvailabilityRow
-        value={profile.availability}
-        lang={lang}
-        t={t}
-        onChange={(availability) => patch({ availability })}
-      />
-
-      <h2>{t('stats_title')} <span className="meta">· {t('stats_sub')} · {(profile.stats?.length || 0)}/3</span></h2>
-      {profile.stats?.map((s, i) => (
-        <StatRow key={s.id} stat={s} lang={lang} onChange={(u) => updateStat(s.id, u)} onRemove={() => removeStat(s.id)} onUp={() => moveStat(s.id, -1)} onDown={() => moveStat(s.id, 1)} canUp={i > 0} canDown={i < profile.stats.length - 1} t={t} />
-      ))}
-      {(profile.stats?.length || 0) < 3 && <Button variant="secondary" size="sm" onClick={addStat}>+ {t('stat_add')}</Button>}
+      <h2>{t('facts_title')} <span className="meta">· {t('facts_sub')}</span></h2>
+      <QuickFacts profile={profile} patch={patch} t={t} lang={lang} />
 
       <h2>{t('buttons_title')} <span className="meta">· {t('buttons_sub')}</span></h2>
       {profile.cta_buttons?.map((b, i) => (
@@ -2086,25 +2080,164 @@ function BannerRow({ banner, lang, onChange, onRemove, onUp, onDown, canUp, canD
   );
 }
 
-function StatRow({ stat, lang, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
+// ---------------------------------------------------------------------------
+// QUICK FACTS — the three things under the client's work.
+//
+// This replaces three free-text {value,label} rows and a manual availability
+// switch. What the clients typed into those rows is the whole argument for the
+// change: every one of them used a slot for "am I available", by hand, and
+// nothing ever expired it. One of them said "no" and had said "no" for months.
+//
+// So each slot has ONE meaning and a control that cannot be misused:
+//   * the rating is CHOSEN from a list, so it cannot become a sentence;
+//   * the client count is a number, and there is no label to write beside it;
+//   * availability is derived from working hours and is never typed at all.
+//
+// The labels are gone from the portfolio -- the icon says what the number is --
+// so there is nothing here to translate, and this whole block is the same in
+// both languages. That is most of why it is short.
+// ---------------------------------------------------------------------------
+
+// 5.0 down to 3.0. Below 3 nobody advertises, and a list that runs to 1.0 is a
+// list where a mis-click is a disaster. One decimal, because "4.9" is the thing
+// people write and "4" beside a neighbour's "4.9" reads as a different unit.
+const RATING_CHOICES = Array.from({ length: 21 }, (_, i) => Number((5 - i * 0.1).toFixed(1)));
+
+function QuickFacts({ profile, patch, t, lang }) {
+  const hours = profile.hours || null;
+  const days = Array.isArray(hours?.days) ? hours.days : [];
+  const enabled = !!hours && hours.enabled !== false;
+  const openNow = enabled && isOpen(hours);
+
+  const setHours = (u) => patch({
+    hours: { enabled: true, days: [], from: '09:00', to: '17:00', ...(hours || {}), ...u },
+  });
+  const toggleDay = (d) => setHours({
+    days: days.includes(d) ? days.filter((x) => x !== d) : [...days, d].sort((a, b) => a - b),
+  });
+
+  const dayLabels = [
+    t('day_sun'), t('day_mon'), t('day_tue'), t('day_wed'),
+    t('day_thu'), t('day_fri'), t('day_sat'),
+  ];
+
   return (
-    <div className="card-row">
-      <div className="row-head">
-        <span className="row-tag">{t('item_stat')}</span>
-        <div className="row-actions">
-          <button type="button" className="x-small" disabled={!canUp} onClick={onUp} aria-label={t('move_up')}>↑</button>
-          <button type="button" className="x-small" disabled={!canDown} onClick={onDown} aria-label={t('move_down')}>↓</button>
-          <button type="button" className="x-small" onClick={onRemove} aria-label={t('remove')}>×</button>
-        </div>
-      </div>
+    <div className="card-row" style={{ maxWidth: 640 }}>
       <div className="row-grid-2">
-        <Field id={`s-l-${stat.id}`} label={t('stat_label')}>
-          <input id={`s-l-${stat.id}`} value={pick(stat.label, lang)} onChange={(e) => onChange({ label: setLangValue(stat.label, lang, e.target.value) })} placeholder={lang === 'ar' ? 'تقييم العملاء' : 'Client rating'} />
+        <Field id="fact-rating" label={t('fact_rating')} hint={t('fact_rating_hint')}>
+          <select
+            id="fact-rating"
+            value={profile.rating ?? ''}
+            onChange={(e) => patch({ rating: e.target.value === '' ? null : Number(e.target.value) })}
+          >
+            <option value="">{t('fact_none')}</option>
+            {RATING_CHOICES.map((v) => (
+              <option key={v} value={v}>{`\u2605 ${v.toFixed(1)}`}</option>
+            ))}
+          </select>
         </Field>
-        <Field id={`s-v-${stat.id}`} label={t('stat_value')}>
-          <input id={`s-v-${stat.id}`} value={pick(stat.value, lang)} onChange={(e) => onChange({ value: setLangValue(stat.value, lang, e.target.value) })} placeholder="4.9" />
+
+        <Field id="fact-clients" label={t('fact_clients')} hint={t('fact_clients_hint')}>
+          {/* A number input and nothing else. There is deliberately no label
+              field beside it: the portfolio draws a person mark, and a client
+              who can write the word can write a sentence, which is how the old
+              strip ended up three lines tall. */}
+          <input
+            id="fact-clients"
+            type="number"
+            min="0"
+            max="999999"
+            step="1"
+            inputMode="numeric"
+            dir="ltr"
+            value={profile.client_count ?? ''}
+            placeholder={t('fact_none')}
+            onChange={(e) => {
+              const v = e.target.value;
+              patch({ client_count: v === '' ? null : Math.max(0, Math.floor(Number(v) || 0)) });
+            }}
+          />
         </Field>
       </div>
+
+      <h3 className="facts-sub">{t('hours_title')} <span className="meta">· {t('hours_sub')}</span></h3>
+
+      <label className="hours-toggle">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => (e.target.checked
+            ? setHours({ enabled: true })
+            : patch({ hours: hours ? { ...hours, enabled: false } : null }))}
+        />
+        <span>{t('hours_on')}</span>
+      </label>
+
+      {enabled && (
+        <>
+          <div className="days-label">{t('hours_days')}</div>
+          {/* Buttons rather than checkboxes: seven labelled inputs in a row is a
+              lot of chrome for a choice that reads as a set of pills. */}
+          <div className="days">
+            {dayLabels.map((label, d) => (
+              <button
+                key={d}
+                type="button"
+                className={`day ${days.includes(d) ? 'on' : ''}`}
+                aria-pressed={days.includes(d)}
+                onClick={() => toggleDay(d)}
+              >{label}</button>
+            ))}
+          </div>
+
+          <div className="row-grid-2">
+            <Field id="hours-from" label={t('hours_from')}>
+              <input id="hours-from" type="time" dir="ltr" value={hours?.from || '09:00'} onChange={(e) => setHours({ from: e.target.value })} />
+            </Field>
+            <Field id="hours-to" label={t('hours_to')}>
+              <input id="hours-to" type="time" dir="ltr" value={hours?.to || '17:00'} onChange={(e) => setHours({ to: e.target.value })} />
+            </Field>
+          </div>
+
+          {/* The answer, right now, from the same function the portfolio uses.
+              A schedule you cannot check is a schedule you get wrong. */}
+          <div className={`hours-now ${openNow ? 'on' : ''}`}>
+            <span className="hours-dot" aria-hidden="true" />
+            {days.length === 0
+              ? t('hours_no_days')
+              : `${openNow ? t('hours_now_open') : t('hours_now_closed')} · ${t('hours_tz_note')}`}
+          </div>
+        </>
+      )}
+
+      <style jsx>{`
+        .facts-sub { font-size: var(--text-md); font-weight: 600; color: var(--text-primary); margin-top: var(--space-4); }
+        .facts-sub .meta { font-weight: 400; color: var(--text-tertiary); font-size: var(--text-sm); }
+        .hours-toggle { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); cursor: pointer; font-size: var(--text-md); }
+        .days-label { font-size: var(--text-sm); color: var(--text-tertiary); margin-top: var(--space-3); }
+        .days { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+        .day {
+          padding: var(--space-2) var(--space-3);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-sm);
+          background: var(--bg-secondary);
+          color: var(--text-secondary);
+          font: inherit;
+          font-size: var(--text-sm);
+          cursor: pointer;
+        }
+        .day.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+        .day:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .hours-now {
+          display: flex; align-items: center; gap: var(--space-2);
+          margin-top: var(--space-3);
+          font-size: var(--text-sm);
+          color: var(--text-tertiary);
+        }
+        .hours-dot { inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
+        .hours-now.on { color: var(--text-primary); }
+        .hours-now.on .hours-dot { background: var(--success, #34C759); }
+      `}</style>
     </div>
   );
 }
