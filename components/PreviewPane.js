@@ -18,7 +18,7 @@ const DEVICES = {
 };
 const LOAD_TIMEOUT_MS = 15000;
 
-export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en' }) {
+export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en', pending = false, publishing = false, onPublish = null }) {
   const ar = lang === 'ar';
   const [device, setDevice] = useState('desktop');
   const [status, setStatus] = useState('loading'); // loading | ready | error
@@ -122,7 +122,23 @@ export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en'
             </button>
           ))}
         </div>
-        <span className="pv-url" title={cleanUrl} dir="ltr">{path}</span>
+        {/* WHICH VERSION AM I LOOKING AT. This pane shows the DRAFT, and it
+            used to say only the address — which is the same address the live
+            site has, so the two were indistinguishable. Somebody could fill in
+            three fields, watch them appear here, and reasonably conclude their
+            visitors could see them.
+
+            The state is stated, and the fix sits next to it. Publishing from
+            the sidebar meant the answer to "why is my site not changing" was on
+            a different part of the screen from the question. */}
+        {pending
+          ? <span className="pv-state pending">{ar ? 'مسودة — لم تُنشر بعد' : 'Draft — not published yet'}</span>
+          : <span className="pv-state" title={cleanUrl} dir="ltr">{path}</span>}
+        {pending && onPublish && (
+          <button type="button" className="pv-publish" onClick={onPublish} disabled={publishing}>
+            {publishing ? (ar ? 'جاري النشر…' : 'Publishing…') : (ar ? 'نشر' : 'Publish')}
+          </button>
+        )}
         <div className="pv-actions">
           <button type="button" className="pv-icon" onClick={retry} title={ar ? 'تحديث' : 'Refresh'} aria-label={ar ? 'تحديث' : 'Refresh'}>
             <Icon name="globe" size={15} />
@@ -207,11 +223,25 @@ export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en'
         .pv-dev.on { background: var(--bg-hover); color: var(--text-primary); }
         .pv-dev:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-        .pv-url {
+        .pv-state {
           flex: 1; min-inline-size: 0;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
           text-align: center; font-size: var(--text-xs); color: var(--text-muted);
         }
+        /* Amber, which design.md reserves for something time-bounded AND
+           actionable. Unpublished changes are exactly that: they sit there
+           until somebody publishes them, and the button to do it is right
+           beside this. */
+        .pv-state.pending { color: var(--warning-ink, #E8A33D); font-weight: 600; }
+        .pv-publish {
+          flex-shrink: 0;
+          padding: 5px 12px; min-block-size: 30px;
+          border: none; border-radius: var(--radius-sm);
+          background: var(--accent); color: var(--accent-fg);
+          font: inherit; font-size: var(--text-xs); font-weight: 700; cursor: pointer;
+        }
+        .pv-publish:disabled { opacity: 0.6; cursor: default; }
+        .pv-publish:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         .pv-actions { display: inline-flex; gap: 4px; }
         .pv-icon {
           display: inline-flex; align-items: center; justify-content: center;

@@ -925,6 +925,11 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   // every moment the answer can have moved. Not polled: a client editing for
   // ten minutes does not need this asked twenty times.
   const [pending, setPending] = useState(false);
+  // Declared HERE rather than beside the other preview state further down: the
+  // effect below reads previewToken, and a const referenced above its own
+  // declaration is a temporal-dead-zone ReferenceError, not a hoist.
+  const [previewToken, setPreviewToken] = useState(0);
+  const refreshPreview = useCallback(() => setPreviewToken(n => n + 1), []);
   const checkPending = useCallback(async () => {
     if (!tenant?.id) { setPending(false); return; }
     try {
@@ -932,7 +937,12 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
       setPending(data === true);
     } catch (e) { /* a failed check must never block editing */ }
   }, [tenant?.id]);
-  useEffect(() => { checkPending(); }, [checkPending, activeTab]);
+  // Re-checked on every tab change AND every preview refresh. The preview
+  // refreshes when a save completes (SaveBar drives it through PreviewContext),
+  // so this is also "after a save" without either side knowing about the other
+  // — which is the moment the answer actually changes, and the moment somebody
+  // looks at the pane expecting it to have.
+  useEffect(() => { checkPending(); }, [checkPending, activeTab, previewToken]);
   async function publishSite() {
     if (!tenant?.id || publishing) return;
     setPublishing(true);
@@ -1092,10 +1102,10 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   // both /admin and the public routes, so its own origin is always correct.
   const [previewOrigin, setPreviewOrigin] = useState('');
   useEffect(() => { setPreviewOrigin(window.location.origin); }, []);
-  const [previewToken, setPreviewToken] = useState(0);
-  const refreshPreview = useCallback(() => setPreviewToken(n => n + 1), []);
   const [previewOpen, setPreviewOpen] = useState(false); // tablet toggle only
-  const PREVIEW_TABS = { profile: true, card: true, appearance: true };
+  // `profile` and `appearance` were merged away on 2026-08-28; `card` is what
+  // is left, and it is the tab whose every control changes the preview.
+  const PREVIEW_TABS = { card: true };
   const showPreview = !!PREVIEW_TABS[activeTab];
 
   return (
@@ -1261,7 +1271,15 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
           {showPreview && previewOrigin && (
             <aside className="work-preview" aria-label={ar ? 'معاينة الموقع المباشرة' : 'Live website preview'}>
-              <PreviewPane origin={previewOrigin} slug={tenant?.slug || null} reloadToken={previewToken} lang={lang} />
+              <PreviewPane
+                origin={previewOrigin}
+                slug={tenant?.slug || null}
+                reloadToken={previewToken}
+                lang={lang}
+                pending={pending}
+                publishing={publishing}
+                onPublish={publishSite}
+              />
             </aside>
           )}
         </div>
