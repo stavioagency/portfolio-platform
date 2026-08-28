@@ -39,6 +39,17 @@ function getVisitorId() {
   return id;
 }
 
+// The five gradients a TEXT banner can use. Back with the banner band itself —
+// a client who has no image yet still needs the largest block on their card to
+// look deliberate rather than empty.
+const BANNER_BGS = {
+  purple: 'linear-gradient(135deg, #7a72d6, #9FA7FF)',
+  blue:   'linear-gradient(135deg, #3b82f6, #06b6d4)',
+  sunset: 'linear-gradient(135deg, #ec4899, #f97316)',
+  forest: 'linear-gradient(135deg, #10b981, #3b82f6)',
+  dark:   'linear-gradient(135deg, #1f2937, #374151)',
+};
+
 // The portfolio is set in Tajawal, which is the original's font and the only
 // one this page uses. It was four client-selectable stacks and a three-value
 // radius scale; both were presentation controls and both are gone -- see the
@@ -256,7 +267,7 @@ export default function Home({ slug = null } = {}) {
 
   // Preload only the active + next slide (avoids fetching the whole set at once)
   useEffect(() => {
-    const count = projects.length;
+    const count = profile?.banners?.length || 0;
     if (!count) return;
     setLoadedSlides(prev => {
       const n = new Set(prev);
@@ -264,7 +275,7 @@ export default function Home({ slug = null } = {}) {
       n.add((workIdx + 1) % count);
       return n;
     });
-  }, [workIdx, projects.length]);
+  }, [workIdx, profile?.banners?.length]);
 
   // A centred spinner on an empty page tells a visitor nothing except that
   // something is missing. This is the same card, at the same width, in the same
@@ -401,26 +412,20 @@ export default function Home({ slug = null } = {}) {
   const name = pick(profile.name, lang);
   const tagline = pick(profile.tagline, lang);
   const bio = pick(profile.bio, lang);
-  // THE WORK. What used to be a separate "banners" array — promotional images
-  // sitting above the portfolio, which a visitor read as the client's work when
-  // it was not — is now the client's actual pieces. One image list, and it is
-  // the one that was always the point.
+  // THE BAND SHOWS BANNERS, and this reverses the change earlier today that
+  // made it show the client's pieces instead.
   //
-  // A piece needs something to show: its cover, or the first image of its set.
-  // One with neither cannot lead the card and is left to the lightbox.
+  // That change had an argument behind it — an image above the work reads as
+  // the work — but it made the band depend on a client having uploaded
+  // projects, and Feras wants it back as something he puts an image into
+  // directly. His decision about his own product beats the argument.
   //
-  // NO sections.projects CHECK. The visibility toggles are being retired — a
-  // section appears when it has content and does not when it has none — and
-  // that toggle in particular was doing real damage: it was set to false on the
-  // two workspaces that actually have pieces, which is most of why the page
-  // reads as a link card rather than a portfolio.
-  const pieces = projects
-    .map(p => ({
-      raw: p,
-      cover: p.cover_image || (Array.isArray(p.images) ? p.images[0] : null) || null,
-      title: pick(p.title, lang) || pick(p.title, 'en') || '',
-    }))
-    .filter(p => !!p.cover);
+  // The pieces are still reachable: a client can add a button whose action is
+  // open_projects, which opens the same modal it always did.
+  const slides = (profile.banners || []).filter(b => {
+    if (b.type === 'image') return !!b.image_url;
+    return pick(b.text, 'en') || pick(b.text, 'ar');
+  });
   // THE STRIP — three defined facts, not three free-text boxes.
   //
   // It was an array of {value, label} pairs the client typed by hand, and what
@@ -659,69 +664,68 @@ export default function Home({ slug = null } = {}) {
             {tagline && <p>{tagline}</p>}
           </div>
 
-          {/* THE WORK — the client's pieces, in the order they chose.
-              This is the single biggest element on the card, and it is the one
-              thing a visitor is here to judge. Tapping it opens the piece. */}
-          {pieces.length > 0 && (
+          {/* THE BANNER BAND. A fixed 170px strip, the largest thing on the
+              card, and the client puts exactly what they want into it. */}
+          {slides.length > 0 && (
             <div className="work-frame">
-              {pieces.map((pc, i) => (
+              {slides.map((b, i) => (
                 <div
-                  key={pc.raw.id}
+                  key={b.id || i}
                   className={`work-slide ${i === workIdx ? 'active' : ''}`}
+                  style={b.type === 'image' ? undefined : { background: BANNER_BGS[b.bg || 'purple'] }}
                   aria-hidden={i !== workIdx}
                 >
                   {/* A real <img> rather than a CSS background-image. This is
                       the biggest thing on the card and usually the LCP element,
                       and a background-image cannot carry a priority hint, cannot
                       be decoded off the main thread, and is invisible to the
-                      preload scanner. Slides beyond the active+next pair
-                      render no <img> at all. */}
-                  {loadedSlides.has(i) && (
+                      preload scanner. Slides beyond the active+next pair render
+                      no <img> at all. */}
+                  {b.type === 'image' && loadedSlides.has(i) && (
                     <img
                       className="work-img"
-                      src={pc.cover}
-                      alt={pc.title}
+                      src={b.image_url}
+                      alt=""
                       decoding="async"
                       loading={i === 0 ? 'eager' : 'lazy'}
                       fetchPriority={i === 0 ? 'high' : 'low'}
                     />
                   )}
+                  {b.type === 'text' && (
+                    <div className="banner-content">
+                      <div className="banner-text">{pick(b.text, lang) || pick(b.text, 'en')}</div>
+                      {(pick(b.subtitle, lang) || pick(b.subtitle, 'en')) && (
+                        <div className="banner-sub">{pick(b.subtitle, lang) || pick(b.subtitle, 'en')}</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
 
-              {/* One control over the whole frame, so the target is the image
-                  itself rather than a caption or a corner. */}
-              <button
-                type="button"
-                className="work-open"
-                onClick={() => showPiece(pieces[workIdx].raw)}
-                aria-label={pieces[workIdx].title || t('open_portfolio')}
-              />
-
-              {pieces.length > 1 && (
+              {slides.length > 1 && (
                 <>
                   {/* Physical mapping: left is previous, right is next, in both
-                      directions. The arrows sit where they are pointed. */}
+                      directions. The arrows sit where they point. */}
                   <button
                     type="button"
                     className="work-nav prev"
-                    onClick={() => setWorkIdx(i => (i - 1 + pieces.length) % pieces.length)}
+                    onClick={() => setWorkIdx(i => (i - 1 + slides.length) % slides.length)}
                     aria-label={lang === 'ar' ? 'السابق' : 'Previous'}
                   >‹</button>
                   <button
                     type="button"
                     className="work-nav next"
-                    onClick={() => setWorkIdx(i => (i + 1) % pieces.length)}
+                    onClick={() => setWorkIdx(i => (i + 1) % slides.length)}
                     aria-label={lang === 'ar' ? 'التالي' : 'Next'}
                   >›</button>
                   <div className="work-dots">
-                    {pieces.map((pc, i) => (
+                    {slides.map((b, i) => (
                       <button
-                        key={pc.raw.id}
+                        key={b.id || i}
                         type="button"
                         className={i === workIdx ? 'on' : ''}
                         onClick={() => setWorkIdx(i)}
-                        aria-label={pc.title || `${i + 1}`}
+                        aria-label={`${i + 1}`}
                         aria-current={i === workIdx}
                       />
                     ))}
@@ -1056,16 +1060,17 @@ export default function Home({ slug = null } = {}) {
         }
         .work-slide.active { opacity: 1; }
         .work-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-
-        /* The whole frame is the target. */
-        .work-open {
-          position: absolute; inset: 0;
-          width: 100%; height: 100%;
-          background: none; border: none; padding: 0;
-          cursor: pointer;
-          z-index: 1;
+        /* A TEXT banner. Centred, and set in the Arabic display face rather
+           than the body face — it is the one piece of display type on the card
+           and it is the client's headline, not their prose. */
+        .work-slide { display: flex; align-items: center; justify-content: center; }
+        .banner-content { position: relative; text-align: center; padding: 22px; }
+        .banner-text {
+          font-family: 'Reem Kufi', 'Cairo', ${PF_FONT};
+          font-size: 30px; font-weight: 700; color: var(--pf-ink);
+          line-height: 1.15;
         }
-        .work-open:focus-visible { outline: 2px solid var(--pf-accent); outline-offset: -4px; }
+        .banner-sub { margin-top: 8px; font-size: 13px; color: rgba(255,255,255,0.9); line-height: 1.5; }
 
         /* Hidden until the pointer is over the frame, exactly as the original
            has them. They are navigation for a visitor who is already looking;

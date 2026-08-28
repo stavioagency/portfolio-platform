@@ -191,7 +191,17 @@ function applyLang(lang) {
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
 }
 
-// BANNER_BGS (the five text-banner gradients) went with BannerRow.
+// The five gradients a TEXT banner can use. Named so the client picks a mood
+// rather than a hex value — the one place on the card where they choose a
+// colour, and a short list is what keeps it from producing something worse
+// than the template.
+const BANNER_BGS = {
+  purple: { name: 'Purple', gradient: 'linear-gradient(135deg, #7a72d6, #9FA7FF)' },
+  blue:   { name: 'Blue',   gradient: 'linear-gradient(135deg, #3b82f6, #06b6d4)' },
+  sunset: { name: 'Sunset', gradient: 'linear-gradient(135deg, #ec4899, #f97316)' },
+  forest: { name: 'Forest', gradient: 'linear-gradient(135deg, #10b981, #3b82f6)' },
+  dark:   { name: 'Dark',   gradient: 'linear-gradient(135deg, #1f2937, #374151)' },
+};
 
 const THEME_PRESETS = {
   midnight: { key: 'midnight', tokens: { accent: '#9FA7FF', bg: '#0a0a0c', surface: '#131318', text: '#ffffff', text_muted: 'rgba(255, 255, 255, 0.45)', border: 'rgba(255, 255, 255, 0.06)' } },
@@ -2020,6 +2030,18 @@ function CardEditor({ t, lang: uiLang }) {
   async function uploadBrandLogo(file) { const url = await uploadAsset('brand-logo', file); if (url) patch({ brand_logo: url }); }
   async function uploadFavicon(file)   { const url = await uploadAsset('favicon',    file); if (url) patch({ favicon_url: url }); }
 
+  function addBanner() { if ((profile.banners?.length || 0) >= 5) return; patch({ banners: [...(profile.banners || []), { id: newId(), type: 'text', text: emptyBilingual(), subtitle: emptyBilingual(), bg: 'purple', image_url: '' }] }); }
+  function updateBanner(id, u) { patch({ banners: profile.banners.map(b => b.id === id ? { ...b, ...u } : b) }); }
+  async function removeBanner(id) { if (!(await confirm(removeDialog(t)))) return; patch({ banners: profile.banners.filter(b => b.id !== id) }); }
+  function moveBanner(id, dir) { const a = [...profile.banners]; const i = a.findIndex(b => b.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ banners: a }); }
+  async function uploadBannerImage(bannerId, file) { const url = await uploadAsset(`banner-${bannerId}`, file); if (url) updateBanner(bannerId, { image_url: url }); }
+
+  function addStat() { if ((profile.stats?.length || 0) >= 3) return; patch({ stats: [...(profile.stats || []), { id: newId(), label: emptyBilingual(), value: emptyBilingual() }] }); }
+  function updateStat(id, u) { patch({ stats: profile.stats.map(s => s.id === id ? { ...s, ...u } : s) }); }
+  async function removeStat(id) { if (!(await confirm(removeDialog(t)))) return; patch({ stats: profile.stats.filter(s => s.id !== id) }); }
+  function moveStat(id, dir) { const a = [...profile.stats]; const i = a.findIndex(s => s.id === id); const j = i + dir; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; patch({ stats: a }); }
+
+
 
   return (
     <div className="editor">
@@ -2049,6 +2071,12 @@ function CardEditor({ t, lang: uiLang }) {
           were. They are the same three fields — an icon, a label and a URL —
           and having them in two places is why one client entered four social
           profiles as unlabelled buttons: they found this tab first. */}
+      <h2>{t('banners_title')} <span className="meta">· {t('banners_sub')} · {(profile.banners?.length || 0)}/5</span></h2>
+      {profile.banners?.map((b, i) => (
+        <BannerRow key={b.id} banner={b} lang={lang} onChange={(u) => updateBanner(b.id, u)} onRemove={() => removeBanner(b.id)} onUp={() => moveBanner(b.id, -1)} onDown={() => moveBanner(b.id, 1)} canUp={i > 0} canDown={i < profile.banners.length - 1} uploadImage={(f) => uploadBannerImage(b.id, f)} t={t} />
+      ))}
+      {(profile.banners?.length || 0) < 5 && <Button variant="secondary" size="sm" onClick={addBanner}>+ {t('banner_add')}</Button>}
+
       <h2>{t('facts_title')} <span className="meta">· {t('facts_sub')}</span></h2>
       <QuickFacts profile={profile} patch={patch} t={t} lang={lang} />
 
@@ -2068,10 +2096,74 @@ function CardEditor({ t, lang: uiLang }) {
   );
 }
 
-// BannerRow was here. The banners it edited are not rendered by the portfolio
-// any more — the image band shows the client's WORK now, not a promotional
-// graphic sitting above it — so this was an editor for something that no
-// longer happens.
+function BannerRow({ banner, lang, onChange, onRemove, onUp, onDown, canUp, canDown, uploadImage, t }) {
+  const previewText = pick(banner.text, lang) || pick(banner.text, 'en') || pick(banner.text, 'ar');
+  const previewSub = pick(banner.subtitle, lang) || pick(banner.subtitle, 'en') || pick(banner.subtitle, 'ar');
+  return (
+    <div className="card-row">
+      <div className="row-head">
+        <div className="row-tabs">
+          <button type="button" className={banner.type === 'text' ? 'active' : ''} onClick={() => onChange({ type: 'text' })}>{t('banner_type_text')}</button>
+          <button type="button" className={banner.type === 'image' ? 'active' : ''} onClick={() => onChange({ type: 'image' })}>{t('banner_type_image')}</button>
+        </div>
+        <div className="row-actions">
+          <button type="button" className="x-small" disabled={!canUp} onClick={onUp} aria-label={t('move_up')}>↑</button>
+          <button type="button" className="x-small" disabled={!canDown} onClick={onDown} aria-label={t('move_down')}>↓</button>
+          <button type="button" className="x-small" onClick={onRemove} aria-label={t('remove')}>×</button>
+        </div>
+      </div>
+      {banner.type === 'text' ? (
+        <>
+          <div className="row-grid-2">
+            <Field id={`b-text-${banner.id}`} label={t('banner_text')}>
+              <input id={`b-text-${banner.id}`} value={pick(banner.text, lang)} onChange={(e) => onChange({ text: setLangValue(banner.text, lang, e.target.value) })} placeholder={lang === 'ar' ? 'أهلاً وسهلاً' : 'Welcome'} />
+            </Field>
+            <Field id={`b-sub-${banner.id}`} label={t('banner_subtitle')}>
+              <input id={`b-sub-${banner.id}`} value={pick(banner.subtitle, lang)} onChange={(e) => onChange({ subtitle: setLangValue(banner.subtitle, lang, e.target.value) })} placeholder={t('optional')} />
+            </Field>
+          </div>
+          <Field id={`b-bg-${banner.id}`} label={t('banner_bg')}>
+            <select id={`b-bg-${banner.id}`} value={banner.bg || 'purple'} onChange={(e) => onChange({ bg: e.target.value })}>
+              {Object.entries(BANNER_BGS).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
+            </select>
+          </Field>
+          <div className="banner-preview" style={{ background: BANNER_BGS[banner.bg || 'purple'].gradient }}>
+            <div className="banner-text">{previewText || '...'}</div>
+            {previewSub && <div className="banner-sub">{previewSub}</div>}
+          </div>
+        </>
+      ) : (
+        <Field id={`b-img-${banner.id}`} label={t('banner_upload')}>
+          <ImageUpload value={banner.image_url} onUpload={uploadImage} onClear={() => onChange({ image_url: '' })} aspect={3/2} hint={t('img_hint_banner')} t={t} />
+        </Field>
+      )}
+    </div>
+  );
+}
+
+function StatRow({ stat, lang, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
+  return (
+    <div className="card-row">
+      <div className="row-head">
+        <span className="row-tag">{t('item_stat')}</span>
+        <div className="row-actions">
+          <button type="button" className="x-small" disabled={!canUp} onClick={onUp} aria-label={t('move_up')}>↑</button>
+          <button type="button" className="x-small" disabled={!canDown} onClick={onDown} aria-label={t('move_down')}>↓</button>
+          <button type="button" className="x-small" onClick={onRemove} aria-label={t('remove')}>×</button>
+        </div>
+      </div>
+      <div className="row-grid-2">
+        <Field id={`s-l-${stat.id}`} label={t('stat_label')}>
+          <input id={`s-l-${stat.id}`} value={pick(stat.label, lang)} onChange={(e) => onChange({ label: setLangValue(stat.label, lang, e.target.value) })} placeholder={lang === 'ar' ? 'تقييم العملاء' : 'Client rating'} />
+        </Field>
+        <Field id={`s-v-${stat.id}`} label={t('stat_value')}>
+          <input id={`s-v-${stat.id}`} value={pick(stat.value, lang)} onChange={(e) => onChange({ value: setLangValue(stat.value, lang, e.target.value) })} placeholder="4.9" />
+        </Field>
+      </div>
+    </div>
+  );
+}
+
 
 // ---------------------------------------------------------------------------
 // QUICK FACTS — the three things under the client's work.
