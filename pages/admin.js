@@ -2074,6 +2074,18 @@ function BannerRow({ banner, lang, onChange, onRemove, onUp, onDown, canUp, canD
   );
 }
 
+// Half-star aware, 0-5. Returns a string rather than markup so the public card
+// and this editor cannot drift into two different star systems.
+function renderStars(value) {
+  const v = Math.max(0, Math.min(5, Number(value) || 0));
+  const full = Math.floor(v);
+  const half = v - full >= 0.25 && v - full < 0.75;
+  const rounded = v - full >= 0.75 ? full + 1 : full;
+  return '★'.repeat(half ? full : rounded)
+    + (half ? '⯨' : '')
+    + '☆'.repeat(5 - (half ? full + 1 : rounded));
+}
+
 function StatRow({ stat, lang, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
   return (
     <div className="card-row">
@@ -2085,14 +2097,45 @@ function StatRow({ stat, lang, onChange, onRemove, onUp, onDown, canUp, canDown,
           <button type="button" className="x-small" onClick={onRemove} aria-label={t('remove')}>×</button>
         </div>
       </div>
+      <Field id={`s-k-${stat.id}`} label={t('stat_kind')}>
+        <select
+          id={`s-k-${stat.id}`}
+          value={stat.kind === 'rating' ? 'rating' : 'text'}
+          onChange={(e) => onChange({ kind: e.target.value === 'rating' ? 'rating' : 'text' })}
+        >
+          <option value="text">{t('stat_kind_text')}</option>
+          <option value="rating">{t('stat_kind_rating')}</option>
+        </select>
+      </Field>
+
       <div className="row-grid-2">
         <Field id={`s-l-${stat.id}`} label={t('stat_label')}>
-          <input id={`s-l-${stat.id}`} value={pick(stat.label, lang)} onChange={(e) => onChange({ label: setLangValue(stat.label, lang, e.target.value) })} placeholder={lang === 'ar' ? 'التقييم' : 'Rating'} />
+          <input id={`s-l-${stat.id}`} value={pick(stat.label, lang)} onChange={(e) => onChange({ label: setLangValue(stat.label, lang, e.target.value) })} placeholder={lang === 'ar' ? 'تقييم العملاء' : 'Client rating'} />
         </Field>
-        <Field id={`s-v-${stat.id}`} label={t('stat_value')}>
-          <input id={`s-v-${stat.id}`} value={pick(stat.value, lang)} onChange={(e) => onChange({ value: setLangValue(stat.value, lang, e.target.value) })} placeholder="★ 4.9" />
+        <Field id={`s-v-${stat.id}`} label={stat.kind === 'rating' ? t('stat_rating_value') : t('stat_value')}>
+          {stat.kind === 'rating' ? (
+            // A rating is ONE number, the same in both languages -- a score is
+            // not translated -- so this writes the same value to both rather
+            // than letting the two drift apart.
+            <input
+              id={`s-v-${stat.id}`}
+              type="number" min="0" max="5" step="0.1" inputMode="decimal" dir="ltr"
+              value={pick(stat.value, lang) || ''}
+              onChange={(e) => {
+                const raw = e.target.value;
+                const n = raw === '' ? '' : String(Math.min(5, Math.max(0, Number(raw))));
+                onChange({ value: { ar: n, en: n } });
+              }}
+              placeholder="4.9"
+            />
+          ) : (
+            <input id={`s-v-${stat.id}`} value={pick(stat.value, lang)} onChange={(e) => onChange({ value: setLangValue(stat.value, lang, e.target.value) })} placeholder={lang === 'ar' ? '2+' : '2+'} />
+          )}
         </Field>
       </div>
+      {stat.kind === 'rating' && (
+        <p className="stat-preview" aria-hidden="true">{renderStars(Number(pick(stat.value, lang)) || 0)}</p>
+      )}
     </div>
   );
 }
@@ -2260,7 +2303,7 @@ function ProjectsEditor({ t, lang }) {
       <PageHeader
         eyebrow={t('eyebrow_projects')}
         title={t('nav_projects')}
-        description={t('empty_rows_note')}
+        description={t('projects_sub')}
         action={<Button size="sm" onClick={addProject}>+ {t('add_project')}</Button>}
       />
 
@@ -5306,6 +5349,7 @@ function AdminStyles() {
          a 12px/600 label is assertive). One more RTL guard retired by not
          needing one. */
       .card-row .row-tag { font-size: var(--text-sm); font-weight: 600; color: var(--text-tertiary); }
+      .card-row .stat-preview { margin: var(--space-2) 0 0; font-size: var(--text-xl); letter-spacing: 2px; color: var(--accent); }
       .card-row .row-tabs { direction: ltr; display: inline-flex; gap: 2px; background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 3px; }
       .card-row .row-tabs button { padding: 4px 12px; font-size: 12px; color: var(--text-tertiary); border: none; background: none; border-radius: 5px; cursor: pointer; font-family: inherit; }
       .card-row .row-tabs button.active { background: var(--bg-hover); color: var(--text-primary); }

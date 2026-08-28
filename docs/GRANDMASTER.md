@@ -57,6 +57,13 @@ place rather than dropped, because dropping columns on a live table to tidy up
 is a worse risk than carrying two unused nullable columns. If publishing is ever
 wanted, they are the head start; if not, they cost nothing.
 
+### Proposed, not built
+
+`features/live-availability.md` — auto-updating "available to chat" from
+WhatsApp / Telegram / Discord. Requested 2026-08-28. Written up rather than
+started because two of the three platforms do not expose presence at all; the
+note says what is actually possible and what the decision is.
+
 ### Documents written for the abandoned direction
 
 Still present because they are referenced by tooling or record real decisions,
