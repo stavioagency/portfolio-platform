@@ -2072,6 +2072,22 @@ function CardEditor({ t, lang: uiLang }) {
 // any more — the image band shows the client's WORK now, not a promotional
 // graphic sitting above it — so this was an editor for something that no
 // longer happens.
+
+// ---------------------------------------------------------------------------
+// QUICK FACTS — the three things under the client's work.
+//
+// Each slot has ONE meaning and a control that cannot be misused: the rating is
+// chosen from a list so it cannot become a sentence; the client count is a
+// number with no label field beside it; availability is derived from working
+// hours and is never typed at all.
+// ---------------------------------------------------------------------------
+
+// 5.0 down to 3.0. Below 3 nobody advertises, and a list running to 1.0 is one
+// where a mis-click is a disaster. One decimal, because "4.9" is the thing
+// people write and a bare "4" beside a neighbour's "4.9" reads as a different
+// unit.
+const RATING_CHOICES = Array.from({ length: 21 }, (_, i) => Number((5 - i * 0.1).toFixed(1)));
+
 function QuickFacts({ profile, patch, t, lang }) {
   const hours = profile.hours || null;
   const days = Array.isArray(hours?.days) ? hours.days : [];
@@ -2210,6 +2226,17 @@ function QuickFacts({ profile, patch, t, lang }) {
     </div>
   );
 }
+
+// Where a customer manages the subscription itself — cancelling, changing the
+// funding source, seeing the agreement. PayPal owns all of that; this product
+// deliberately does not reimplement it.
+//
+// IT WAS REFERENCED TWICE IN THE BILLING PANEL AND DECLARED NOWHERE, so both
+// links were a ReferenceError the moment that panel rendered. Found on
+// 2026-08-28 by tests/jsx-components-defined.test.mjs, which was written for
+// exactly this shape after a component deletion swallowed a neighbouring
+// constant.
+const PAYPAL_ACCOUNT_URL = 'https://www.paypal.com/myaccount/autopay/';
 
 // The public CTA gives its label a 16ch column. 22 leaves a little headroom for
 // narrow glyphs while still guaranteeing a label that reads as one line.
