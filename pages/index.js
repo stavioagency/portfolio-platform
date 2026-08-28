@@ -321,6 +321,9 @@ export default function Home({ slug = null } = {}) {
           .skel-page {
             min-height: 100vh;
             font-family: ${PF_FONT};
+            /* The literal, deliberately. The skeleton paints BEFORE the
+               tenant's accent is known, so it uses the default foot — the same
+               one a client who never picks a colour ends up with. */
             background: linear-gradient(#050507 0%, #0a0a14 55%, #6a70ab 100%) fixed;
             display: flex;
             flex-direction: column;
@@ -562,7 +565,15 @@ export default function Home({ slug = null } = {}) {
   // The other buttons are still in the database and still in the editor. What
   // happens to them is an admin question, and the admin is being rebuilt one
   // control at a time.
-  const action = ctas[0] || null;
+  // UP TO THREE, and the editor caps at the same number. It rendered exactly
+  // one while the editor accepted three, so a client could add buttons, save
+  // them, and watch their card ignore two — the worst kind of control, because
+  // nothing tells you it did nothing.
+  //
+  // Three is the cap because one client had six and the card read as a wall.
+  // They are styled identically: which one matters is the client's ordering,
+  // not a hierarchy the product invents for them.
+  const actions = ctas.slice(0, 3);
 
   return (
     <>
@@ -809,7 +820,7 @@ export default function Home({ slug = null } = {}) {
           {bio && <p className="bio">{bio}</p>}
 
           {/* THE ONE ACTION */}
-          {action && (() => {
+          {actions.map((action) => {
             const iconKey = normalizeIcon(action.icon);
             const ic = iconKey && BRAND_ICONS[iconKey];
             const label = pick(action.label, lang) || pick(action.label, 'en');
@@ -819,6 +830,7 @@ export default function Home({ slug = null } = {}) {
             const tint = ic ? brandColor(iconKey, 'dark') : null;
             return (
               <button
+                key={action.id || label}
                 className={`cta ${ic ? '' : 'no-icon'}`}
                 style={tint ? { '--brand': tint } : undefined}
                 onClick={() => onCtaClick(action)}
@@ -832,7 +844,7 @@ export default function Home({ slug = null } = {}) {
                 <span className="cta-label">{label}</span>
               </button>
             );
-          })()}
+          })}
 
           {/* THE SETUP NUDGE IS GONE. It rendered a dashed box pointing at
               /admin into the customer's own published site — the product
@@ -901,7 +913,34 @@ export default function Home({ slug = null } = {}) {
         .page {
           --pf-page-top:  #050507;
           --pf-page-mid:  #0a0a14;
+
+          /* THE GLOW IS THE CLIENT'S COLOUR — ITS HUE, AND NOTHING ELSE.
+             The violet rising from the bottom was identical on every portfolio,
+             which is most of why they all looked like they came from one place.
+             It now follows the accent the client already picked: no new field,
+             no new decision, one existing control reaching the largest surface
+             on the page.
+
+             ONLY THE HUE IS TAKEN. Lightness is pinned at 0.55 and chroma
+             capped at 0.09, so a client cannot make the page brighter or
+             flatter than the design allows — only a different colour. That
+             matters more than it sounds: designakum's accent is literally
+             #ffffff, and inheriting its lightness put a pale glow behind the
+             footer with white text on it. Pinned, white becomes a neutral grey
+             at exactly the brightness the original violet had, and #111111
+             becomes the same grey rather than nothing at all.
+
+             VERIFIED AGAINST THE REFERENCE, not assumed: the default accent
+             #9FA7FF resolves to oklch(0.55 0.09 278.97), and the measured
+             original #6a70ab is oklch(0.55 0.09 278.62). A client who never
+             picks a colour gets the design this card was built from, to within
+             a third of a degree of hue.
+
+             The literal stays as the fallback: a browser without relative
+             colour syntax ignores the second declaration and renders exactly
+             what the original does. */
           --pf-page-foot: #6a70ab;
+          --pf-page-foot: oklch(from var(--pf-accent) 0.55 min(c, 0.09) h);
 
           --pf-card-w:   330px;
           --pf-card-r:   35px;
@@ -1239,6 +1278,8 @@ export default function Home({ slug = null } = {}) {
         .cta {
           width: 100%;
           height: 52px;
+          /* Each button owns the gap ABOVE it, so two sit 20px apart and a card
+             with none pays nothing. */
           margin-top: var(--card-stack);
           display: flex;
           align-items: center;
