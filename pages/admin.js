@@ -2323,7 +2323,7 @@ function ProjectsEditor({ t, lang }) {
         .editor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-5); }
         .project-list { display: flex; flex-direction: column; gap: 6px; }
         .project-row { display: flex; align-items: center; gap: 6px; }
-        .prow-actions { display: flex; flex-direction: column; gap: 2px; }
+        .prow-actions { display: flex; flex-direction: column; gap: var(--space-2); }
         /* surface comes from Card; only the row layout is local */
         .prow-main { flex: 1; display: flex; align-items: center; gap: var(--space-4); }
         .prow-main img, .prow-cover-empty { width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; }
@@ -2659,7 +2659,6 @@ function AppearanceEditor({ t, lang }) {
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
-  const [device, setDevice] = useState('desktop');
   const { tenant } = useTenant();
 
   useEffect(() => { load(); }, []);
@@ -2689,7 +2688,6 @@ function AppearanceEditor({ t, lang }) {
     } finally { setSaving(false); }
   }
 
-  const deviceWidth = device === 'mobile' ? 360 : device === 'tablet' ? 640 : '100%';
 
   return (
     <div className="editor">
@@ -2745,15 +2743,11 @@ function AppearanceEditor({ t, lang }) {
         </select>
       </Field>
 
-      <h2>{t('live_preview')}</h2>
-      <div className="device-toggle">
-        {[['desktop', 'device_desktop'], ['tablet', 'device_tablet'], ['mobile', 'device_mobile']].map(([k, lbl]) => (
-          <button key={k} type="button" className={device === k ? 'active' : ''} onClick={() => setDevice(k)}>{t(lbl)}</button>
-        ))}
-      </div>
-      <div className="preview-shell">
-        <iframe src="/" style={{ width: deviceWidth, maxWidth: '100%', height: 600, border: 'none', borderRadius: 12, background: '#0a0a0c' }} title="preview" />
-      </div>
+      {/* The second preview that used to sit here is gone. It was an
+          <iframe src="/"> pointed at the ROOT, which resolves to no tenant on
+          designakum.site -- so it rendered a 404 next to a working preview and
+          made the screen look broken. The pane beside this editor is the real
+          one, and it is device-switchable already. */}
 
       <SaveBar saving={saving} savedMsg={savedMsg} onSave={save} t={t} dirty={dirty} />
       <AdminStyles />
@@ -2770,16 +2764,12 @@ function AppearanceEditor({ t, lang }) {
         .color-item { display: flex; align-items: center; gap: 10px; padding: 8px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); }
         .color-item input[type="color"] { width: 36px; height: 36px; padding: 2px; border-radius: 6px; cursor: pointer; }
         .color-item label { flex: 1; font-size: 12px; color: var(--text-secondary); }
-        .device-toggle { direction: ltr; display: inline-flex; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; gap: 2px; margin-bottom: var(--space-4); }
-        .device-toggle button { padding: 8px 14px; background: none; border: none; color: var(--text-tertiary); font-size: 12px; border-radius: 6px; cursor: pointer; font-family: inherit; }
-        .device-toggle button.active { background: var(--bg-elevated); color: var(--text-primary); }
         .preview-shell { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; justify-content: center; }
         @media (max-width: 720px) {
           .preset-grid { grid-template-columns: repeat(2, 1fr); }
           .color-grid { grid-template-columns: 1fr; }
           .preview-shell { padding: 8px; }
           .preview-shell :global(iframe) { height: 420px !important; }
-          .device-toggle button { padding: 10px 14px; }
         }
       `}</style>
     </div>
@@ -5319,7 +5309,7 @@ function AdminStyles() {
       .card-row .row-tabs { direction: ltr; display: inline-flex; gap: 2px; background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 3px; }
       .card-row .row-tabs button { padding: 4px 12px; font-size: 12px; color: var(--text-tertiary); border: none; background: none; border-radius: 5px; cursor: pointer; font-family: inherit; }
       .card-row .row-tabs button.active { background: var(--bg-hover); color: var(--text-primary); }
-      .card-row .row-actions { margin-inline-start: auto; display: flex; gap: 4px; }
+      .card-row .row-actions { margin-inline-start: auto; display: flex; gap: var(--space-2); }
       .card-row .x-small, .x-small { width: 36px; height: 36px; border-radius: var(--radius-sm); background: var(--bg-elevated); color: var(--text-tertiary); border: 1px solid var(--border); font-size: var(--text-md); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-family: inherit; transition: color var(--t-ui) var(--ease), border-color var(--t-ui) var(--ease); }
       .card-row .x-small:disabled, .x-small:disabled { opacity: 0.3; cursor: not-allowed; }
       /* §6.3: 44px minimum target in the client portal. */

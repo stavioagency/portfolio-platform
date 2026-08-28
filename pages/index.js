@@ -97,8 +97,56 @@ export default function Home({ slug = null } = {}) {
     supabase.auth.getSession().then(({ data }) => setIsAdmin(!!data.session));
   }, []);
 
+  // True only when the admin's preview pane asked for it.
+  const isPreview = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('preview') === '1';
+
+  // Reads the DRAFT rows for a slug, but only for someone allowed to see them.
+  // RLS does the deciding: the "Tenant admins read profile/projects" policies
+  // added in section-q return nothing to anyone else, so this cannot leak.
+  async function loadDraftForPreview(slugName) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return null;
+      const { data: t } = await supabase
+        .from('tenants').select('id').eq('slug', String(slugName || '').toLowerCase()).maybeSingle();
+      if (!t) return null;
+      const [{ data: prof }, { data: projs }] = await Promise.all([
+        supabase.from('profile').select('*').eq('tenant_id', t.id).maybeSingle(),
+        supabase.from('projects').select('*').eq('tenant_id', t.id).order('display_order', { ascending: true }),
+      ]);
+      if (!prof) return null;
+      return { tenant_id: t.id, profile: prof, projects: projs || [] };
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function loadData() {
     try {
+      // PREVIEW MODE. The admin's preview pane loads this page with ?preview=1.
+      // It must show the DRAFT -- what the client is editing right now -- not the
+      // published snapshot, or "preview" would just be a second window onto the
+      // live site and there would be no way to see a change before publishing it.
+      //
+      // This is not a hole: it reads profile/projects directly, which since
+      // section-q requires an authenticated session that is a tenant admin. An
+      // anonymous visitor adding ?preview=1 gets nothing back and falls through
+      // to the published path below.
+      if (isPreview) {
+        const draft = await loadDraftForPreview(slug);
+        if (draft) {
+          setTenantId(draft.tenant_id);
+          setProfile(draft.profile);
+          setLang(storedLangRef.current || draft.profile?.default_lang || 'ar');
+          setProjects(draft.projects);
+          return;
+        }
+        // Not signed in, or not this client's admin: fall through and show the
+        // published site rather than an error. A preview of someone else's
+        // portfolio is simply the public one.
+      }
+
       // ONE read, server-gated. get_public_portfolio() resolves the tenant,
       // checks status and entitlement inside Postgres, and returns only the
       // PUBLISHED snapshot. The draft tables are no longer readable by anon,
@@ -936,12 +984,19 @@ export default function Home({ slug = null } = {}) {
            balanced whatever the copy does. Padding raised from 14/8 to sit on
            the same rhythm as the buttons below. */
         .stat {
-          padding: 16px 10px;
+          /* Roomier, and it can no longer clip. A two-line label like "We are
+             available to connect." sat tight against the cell edge and read as
+             text cut in half -- the cell had just enough padding for one line.
+             min-height keeps all three cells the same size when only one wraps,
+             and overflow-wrap stops a long unbroken word from pushing out. */
+          padding: 18px 12px;
+          min-block-size: 84px;
           display: flex;
           flex-direction: column;
           justify-content: center;
           text-align: center;
           background: rgba(20,20,28,0.6);
+          overflow-wrap: anywhere;
         }
         /* unicode-bidi on both: a stat is a self-contained string, and without
            it the RTL page reorders neutral characters against the author's
@@ -953,7 +1008,7 @@ export default function Home({ slug = null } = {}) {
           unicode-bidi: plaintext;
         }
         .stat-label {
-          font-size: 11px; color: rgba(255,255,255,0.5); line-height: 1.45;
+          font-size: 11px; color: rgba(255,255,255,0.5); line-height: 1.5;
           unicode-bidi: plaintext;
         }
 

@@ -143,7 +143,17 @@ export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en'
             <Button size="sm" variant="secondary" onClick={retry}>{ar ? 'إعادة المحاولة' : 'Retry'}</Button>
           </div>
         ) : (
-          <div className="pv-frame" style={{ width: DEVICES[device].w * scale }}>
+          <div className={`pv-frame dev-${device}`} style={{ width: DEVICES[device].w * scale }}>
+            {/* A device outline, so "Desktop" and "Mobile" are visibly different
+                things rather than the same rectangle at two widths. The laptop
+                gets a lid and a base; the phone gets a rounded body and a
+                notch. Decoration with a job: it tells you what you are looking
+                at without reading the toggle. */}
+            <div className="pv-chrome" aria-hidden="true">
+              {device === 'desktop'
+                ? <div className="pv-dots"><i /><i /><i /></div>
+                : <div className="pv-notch" />}
+            </div>
             {status === 'loading' && (
               <div className="pv-skel" aria-hidden="true">
                 <Skeleton width="100%" height="100%" radius="0" />
@@ -163,6 +173,7 @@ export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en'
                 opacity: status === 'ready' ? 1 : 0,
               }}
             />
+            {device === 'desktop' && <div className="pv-base" aria-hidden="true" />}
           </div>
         )}
       </div>
@@ -211,7 +222,7 @@ export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en'
         .pv-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
         .pv-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-        .pv-stage {
+        .pv-stage { padding-block-end: 18px;
           position: relative; flex: 1; min-block-size: 0;
           display: flex; align-items: flex-start; justify-content: center;
           padding: var(--space-3);
@@ -221,8 +232,44 @@ export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en'
             linear-gradient(45deg, rgba(var(--on-bg, 255,255,255), 0.02) 25%, transparent 25%, transparent 75%, rgba(var(--on-bg, 255,255,255), 0.02) 75%) 0 0 / 16px 16px,
             var(--bg-secondary);
         }
-        .pv-frame { position: relative; block-size: 100%; overflow: hidden; border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
-        .dev-mobile .pv-frame { border-radius: var(--radius-lg); }
+        /* The frame is now a DEVICE, not a rectangle. Both get a bezel and a
+           title strip; the laptop adds a base below it, the phone a notch. The
+           iframe is unchanged -- this is a border around it. */
+        .pv-frame {
+          position: relative; block-size: 100%; overflow: hidden;
+          border-radius: 10px 10px 0 0;
+          border: 8px solid var(--bg-elevated);
+          border-block-start-width: 26px;
+          box-shadow: var(--shadow-md);
+          background: var(--bg-elevated);
+        }
+        .pv-frame.dev-mobile {
+          border-radius: 30px;
+          border-width: 10px;
+          border-block-start-width: 26px;
+          border-block-end-width: 22px;
+        }
+
+        /* The strip across the top of the bezel. */
+        .pv-chrome {
+          position: absolute; inset-block-start: -26px; inset-inline: -8px;
+          block-size: 26px; display: grid; place-items: center;
+          pointer-events: none;
+        }
+        .dev-mobile .pv-chrome { inset-inline: -10px; }
+        .pv-dots { display: flex; gap: 5px; position: absolute; inset-inline-start: 12px; }
+        .pv-dots i { inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--border-strong); }
+        .pv-notch { inline-size: 44%; max-inline-size: 120px; block-size: 9px; border-radius: 0 0 8px 8px; background: var(--bg-primary); }
+
+        /* The laptop's base. Wider than the screen, like the real thing. */
+        .pv-base {
+          position: absolute; inset-block-end: -10px; inset-inline-start: 50%;
+          transform: translateX(-50%);
+          inline-size: 118%; block-size: 10px;
+          border-radius: 0 0 8px 8px;
+          background: var(--bg-elevated);
+          box-shadow: var(--shadow-sm);
+        }
         .pv-iframe {
           border: none; background: #fff;
           transform-origin: top left;

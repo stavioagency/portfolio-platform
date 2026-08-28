@@ -101,22 +101,27 @@ export default function PageHeader({
         :global(html[dir='rtl']) .pgh-desc { line-height: var(--leading-arabic); }
 
         /* ---- Summary band ------------------------------------------------
-           §6.4: "It contains a single value -> that is a stat, not a card."
-           So these are not cards. They are figures separated by space, each
-           over a hairline -- §6.8's "horizontal rules only, never a full grid"
-           applied to a band rather than a table.
+           These ARE boxed, deliberately, against §6.4's "a single value is a
+           stat, not a card". Shipped as bare figures over a hairline first and
+           it read as four stray rules rather than one band -- the grouping the
+           box provides was doing real work. Reverted on that evidence.
 
-           §6.2: emphasis is a modifier changing exactly two properties, a
-           border colour and an ink colour. Nothing else moves. */
+           §6.2 still holds: emphasis is a modifier changing exactly two
+           properties, the border colour and the ink. Nothing else moves. */
         .pgh-summary {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
           gap: var(--space-5);
           margin-block-start: var(--space-6);
         }
+        /* Boxes, not hairlines. The hairline version read as a stray rule above
+           a number rather than as four related figures, which is the whole job
+           of a summary band. */
         .pgh-stat {
-          border-block-start: 1px solid var(--border-default);
-          padding-block-start: var(--space-3);
+          background: var(--surface-card);
+          border: 1px solid var(--border-default);
+          border-radius: var(--radius-md);
+          padding: var(--space-4);
         }
         .pgh-stat-value {
           font-size: var(--text-2xl);
@@ -130,11 +135,11 @@ export default function PageHeader({
           font-weight: 600;
           color: var(--text-tertiary);
         }
-        .is-danger { border-block-start-color: var(--danger-border); }
+        .is-danger { border-color: var(--danger-border); }
         .is-danger .pgh-stat-value { color: var(--danger-ink); }
-        .is-warning { border-block-start-color: var(--warning-border); }
+        .is-warning { border-color: var(--warning-border); }
         .is-warning .pgh-stat-value { color: var(--warning-ink); }
-        .is-success { border-block-start-color: var(--success-border); }
+        .is-success { border-color: var(--success-border); }
         .is-success .pgh-stat-value { color: var(--success-ink); }
 
         /* §5.5: summary tiles go 4 -> 2, NEVER 4 -> 1. Two figures side by side

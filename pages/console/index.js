@@ -71,11 +71,14 @@ const S = {
     granted: 'Free access granted.', revoked: 'Free access revoked.',
     failDelete: 'Could not delete this client',
     addClient: 'Add client', addTitle: 'New client',
-    fName: 'Name', fAddress: 'Address', fEmail: 'Email', fUsername: 'Username',
+    fName: 'Name', fAddress: 'Portfolio link', fEmail: 'Email', fUsername: 'Username',
     fLang: 'Their language', create: 'Create client',
+    slugHint: 'This becomes their web address.',
     credsTitle: 'Their sign-in details', credsNote: 'Shown once. Copy them now — the password is not stored anywhere.',
     copy: 'Copy', copied: 'Copied', done: 'Done',
     created: 'Client created.',
+    revenue: 'Revenue', paying: 'Paying', freeCount: 'On free access', notPaying: 'Not paying',
+    thisMonth: 'Collected this month', allTime: 'Collected all time',
   },
   ar: {
     clients: 'العملاء', removed: 'المحذوفون',
@@ -122,11 +125,14 @@ const S = {
     granted: 'تم منح الوصول المجاني.', revoked: 'تم سحب الوصول المجاني.',
     failDelete: 'تعذّر حذف هذا العميل',
     addClient: 'إضافة عميل', addTitle: 'عميل جديد',
-    fName: 'الاسم', fAddress: 'العنوان', fEmail: 'البريد', fUsername: 'اسم المستخدم',
+    fName: 'الاسم', fAddress: 'رابط المعرض', fEmail: 'البريد', fUsername: 'اسم المستخدم',
     fLang: 'لغته', create: 'إنشاء العميل',
+    slugHint: 'هذا يصبح عنوان موقعهم.',
     credsTitle: 'بيانات الدخول', credsNote: 'تظهر مرة واحدة. نسخها الآن ضروري — كلمة المرور لا تُحفظ في أي مكان.',
     copy: 'نسخ', copied: 'تم النسخ', done: 'تم',
     created: 'تم إنشاء العميل.',
+    revenue: 'الإيرادات', paying: 'يدفعون', freeCount: 'وصول مجاني', notPaying: 'لا يدفعون',
+    thisMonth: 'المحصّل هذا الشهر', allTime: 'المحصّل الإجمالي',
   },
 };
 
@@ -152,6 +158,7 @@ function Console() {
   const [busy, setBusy] = useState('');
   const [view, setView] = useState('clients');   // clients | archived
   const [archived, setArchived] = useState([]);
+  const [payments, setPayments] = useState([]);
   // Same stored preference the admin writes, so the operator does not switch
   // language twice. Read after mount: the server cannot know it.
   const [lang, setLang] = useState('ar');
@@ -205,6 +212,11 @@ function Console() {
     const { data: gone } = await supabase
       .from('deleted_clients').select('*').order('deleted_at', { ascending: false });
     setArchived(gone || []);
+    // Money actually received. `payments` is the ledger the webhook writes; it
+    // is not recomputed here, only summed.
+    const { data: pays } = await supabase
+      .from('payments').select('amount, currency, status, created_at');
+    setPayments(pays || []);
     setRows((tenants || []).map((t) => ({
       ...t,
       billing: deriveBilling(subByTenant.get(t.id)),
@@ -221,6 +233,25 @@ function Console() {
   }, [rows, q]);
 
   const open = rows.find((r) => r.id === openId) || null;
+
+  // `amount` is stored in minor units (integer), so it is divided once here and
+  // nowhere else. Only succeeded payments count -- a failed charge is not money.
+  const money = useMemo(() => {
+    const ok = payments.filter((p) => ['succeeded', 'completed', 'paid'].includes(String(p.status)));
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const sum = (list) => list.reduce((n, p) => n + (Number(p.amount) || 0), 0) / 100;
+    const cur = ok[0]?.currency || 'USD';
+    return {
+      all: sum(ok),
+      month: sum(ok.filter((p) => new Date(p.created_at).getTime() >= monthStart)),
+      currency: cur,
+      paying: rows.filter((r) => r.billing.entitled && r.billing.state !== 'comped').length,
+      free: rows.filter((r) => r.billing.state === 'comped').length,
+      unpaid: rows.filter((r) => !r.billing.entitled).length,
+    };
+  }, [payments, rows]);
+  const fmtMoney = (n) => `${money.currency} ${n.toFixed(2)}`;
 
   // ---- actions. Each one calls exactly what /admin calls. -------------------
 
@@ -445,6 +476,16 @@ function Console() {
         )}
       </div>
 
+      {view === 'clients' && (
+        <div className="money">
+          <div className="m"><b>{fmtMoney(money.month)}</b><span>{t('thisMonth')}</span></div>
+          <div className="m"><b>{fmtMoney(money.all)}</b><span>{t('allTime')}</span></div>
+          <div className="m"><b>{money.paying}</b><span>{t('paying')}</span></div>
+          <div className="m"><b>{money.free}</b><span>{t('freeCount')}</span></div>
+          <div className="m"><b>{money.unpaid}</b><span>{t('notPaying')}</span></div>
+        </div>
+      )}
+
       {view === 'archived' ? (
         archived.length === 0 ? (
           <EmptyState icon={<Icon name="users" size={24} />} title={t('noneRemoved')} compact />
@@ -543,6 +584,11 @@ function Console() {
                   color: var(--text-primary); font: inherit; }
         .search:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 2px var(--brand-focus); }
         .skel { display: flex; flex-direction: column; gap: var(--space-2); }
+        .money { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-5); }
+        .m { background: var(--surface-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-4); }
+        .m b { display: block; font-size: var(--text-xl); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+        .m span { display: block; margin-top: 2px; font-size: var(--text-sm); color: var(--text-tertiary); }
+        @media (max-width: 860px) { .money { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
         .table { display: flex; flex-direction: column; }
         .tr { display: grid; grid-template-columns: 1.4fr 1.6fr 0.9fr auto; gap: var(--space-3); align-items: center;
               padding: var(--space-3) 0; border-bottom: 1px solid var(--border); }
@@ -720,6 +766,7 @@ function AddClientPanel({ t, busy, onClose, onCreate }) {
           <label htmlFor="nc-slug">{t('fAddress')}</label>
           <Input id="nc-slug" value={slug} dir="ltr"
                  onChange={(e) => { setSlugTouched(true); setF({ ...f, slug: e.target.value }); }} required />
+          <span className="hint" dir="ltr">designakum.site/{slug || '…'}</span>
 
           <label htmlFor="nc-email">{t('fEmail')}</label>
           <Input id="nc-email" type="email" value={f.email} onChange={set('email')} dir="ltr" required />
@@ -749,6 +796,7 @@ function AddClientPanel({ t, busy, onClose, onCreate }) {
         .x { inline-size: 44px; block-size: 44px; border: none; background: none; color: var(--text-secondary); font-size: 22px; cursor: pointer; }
         form { display: flex; flex-direction: column; gap: var(--space-2); }
         label { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); }
+        .hint { font-size: var(--text-sm); color: var(--text-tertiary); margin-block-end: var(--space-2); }
         form > :global(*) { width: 100%; }
         select { padding: 10px 14px; min-height: 44px; background: var(--bg-secondary); border: 1px solid var(--border);
                  border-radius: var(--radius-md); color: var(--text-primary); font: inherit; }
