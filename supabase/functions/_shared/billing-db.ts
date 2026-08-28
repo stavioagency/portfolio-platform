@@ -229,10 +229,17 @@ export const COMP_PLAN_CODE = "comped";
 // their PayPal agreement. The database refusing is the feature.
 //
 // Returns the new row, or null when the tenant already has ANY subscription.
+// `days` is how long the grant lasts. NULL means forever, and that is not a
+// stylistic choice: section-t made both lib/billing-status.js and
+// tenant_has_active_subscription() read an absent current_period_end as
+// permanent and a present one as a deadline. "Forever" therefore has to clear
+// the column rather than set a date far in the future -- a date in 2099 is an
+// expiry to every query that reads it, and a decision nobody remembers making.
 export async function grantComp(
   admin: SupabaseClient,
   tenantId: string,
   kind: "grandfather" | "convertible",
+  days: number | null = null,
 ) {
   const { data, error } = await admin
     .from("subscriptions")
@@ -246,8 +253,11 @@ export async function grantComp(
       environment: null,
       amount: null,
       currency: null,
+      current_period_end: days === null
+        ? null
+        : new Date(Date.now() + days * 86_400_000).toISOString(),
     })
-    .select("tenant_id, status, plan_code, comp_kind, created_at");
+    .select("tenant_id, status, plan_code, comp_kind, current_period_end, created_at");
   // 23505 = unique_violation. The ONLY expected failure, and it means "this
   // tenant already has a subscription" — which the caller reports as a
   // conflict, not an error. Anything else is a real fault and throws.

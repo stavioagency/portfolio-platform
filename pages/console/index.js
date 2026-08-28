@@ -17,7 +17,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { supabase } from '../../lib/supabase';
-import { deriveBilling, statusLabel } from '../../lib/billing-status';
+import { deriveBilling, statusLabel, formatBillingDate } from '../../lib/billing-status';
 import { Button, Badge, Input, EmptyState, Icon, Skeleton, ToastProvider, useToast, ConfirmProvider, useConfirm } from '../../components/ui';
 
 
@@ -47,6 +47,16 @@ const S = {
     freeAccess: 'Free access',
     hasComp: 'This client has complimentary access.',
     grantDesc: 'Give full access with no payment. Reversible.',
+    grantDays: 'For', days30: '30 days', days90: '90 days', daysForever: 'No end date',
+    compUntil: 'Free until {date}', compForever: 'Free with no end date',
+    extend30: 'Add 30 days', makeForever: 'Remove the end date',
+    periodSet: 'Free access updated', expiringSoon: 'Ending soon',
+    inviteTitle: 'Invite a client', inviteEmail: 'Their email',
+    inviteDesc: 'They sign up themselves and get free access. You never handle a password.',
+    inviteSend: 'Create invite', invited: 'Invite created',
+    pending: 'Invited', pendingNone: 'No open invites.',
+    pendingSince: 'invited {date}', pendingCancel: 'Cancel invite',
+    inviteExists: 'That address already has an open invite.',
     grant: 'Grant free access', revoke: 'Revoke free access',
     removeTitle: 'Remove this client',
     removeDesc: 'Deletes their portfolio, their content and their login. Their email becomes free to sign up with again. This cannot be undone.',
@@ -101,6 +111,16 @@ const S = {
     freeAccess: 'الوصول المجاني',
     hasComp: 'هذا العميل لديه وصول مجاني.',
     grantDesc: 'وصول كامل بلا دفع. قابل للتراجع.',
+    grantDays: 'لمدة', days30: '30 يومًا', days90: '90 يومًا', daysForever: 'بدون نهاية',
+    compUntil: 'مجاني حتى {date}', compForever: 'مجاني بدون تاريخ انتهاء',
+    extend30: 'إضافة 30 يومًا', makeForever: 'إزالة تاريخ الانتهاء',
+    periodSet: 'تم تحديث الوصول المجاني', expiringSoon: 'ينتهي قريبًا',
+    inviteTitle: 'دعوة عميل', inviteEmail: 'بريده الإلكتروني',
+    inviteDesc: 'يسجّل بنفسه ويحصل على وصول مجاني. لا تمر كلمة المرور عليك.',
+    inviteSend: 'إنشاء الدعوة', invited: 'تم إنشاء الدعوة',
+    pending: 'مدعوّون', pendingNone: 'لا توجد دعوات مفتوحة.',
+    pendingSince: 'دُعي في {date}', pendingCancel: 'إلغاء الدعوة',
+    inviteExists: 'هذا البريد لديه دعوة مفتوحة بالفعل.',
     grant: 'منح وصول مجاني', revoke: 'سحب الوصول المجاني',
     removeTitle: 'حذف هذا العميل',
     removeDesc: 'يحذف معرضه ومحتواه وحسابه. بريده يصبح متاحًا للتسجيل من جديد. لا يمكن التراجع عن هذا.',
@@ -294,7 +314,7 @@ function Console() {
     }, t('emailChanged'));
   }
 
-  async function grantFree(row) {
+  async function grantFree(row, days = 30) {
     const ok = await confirm({
       title: t('grantTitle'),
       description: t('grantConfirmDesc').replace('{name}', row.name || row.slug),
@@ -303,10 +323,25 @@ function Console() {
     if (!ok) return;
     await run(`comp:${row.id}`, async () => {
       const { data, error } = await supabase.functions.invoke('billing-subscription', {
-        body: { action: 'grant_comp', tenant_id: row.id, comp_kind: 'convertible' },
+        // days null means no end date. 'convertible' rather than 'grandfather'
+        // because a grant made today is meant to become a paying subscription;
+        // the pre-billing seven are the grandfathered ones.
+        body: { action: 'grant_comp', tenant_id: row.id, comp_kind: 'convertible', days },
       });
       return error ? (error.message || 'Could not grant access') : (data?.error || null);
     }, t('granted'));
+  }
+
+  // Renewal. `days` is a number to add, or null to remove the end date
+  // entirely. Extending adds to what is LEFT rather than to today, so renewing
+  // a client who still has twelve days does not quietly take those twelve away.
+  async function setCompPeriod(row, days) {
+    await run(`period:${row.id}`, async () => {
+      const { data, error } = await supabase.functions.invoke('billing-subscription', {
+        body: { action: 'set_comp_period', tenant_id: row.id, days },
+      });
+      return error ? (error.message || 'Could not update free access') : (data?.error || null);
+    }, t('periodSet'));
   }
 
   async function revokeFree(row) {
@@ -558,11 +593,13 @@ function Console() {
           busy={busy}
           t={t}
           ar={ar}
+          lang={lang}
           onClose={() => setOpenId(null)}
           onResetPassword={() => resetPassword(open)}
           onChangeEmail={(email) => changeEmail(open, email)}
-          onGrantFree={() => grantFree(open)}
+          onGrantFree={(days) => grantFree(open, days)}
           onRevokeFree={() => revokeFree(open)}
+          onSetPeriod={(days) => setCompPeriod(open, days)}
           onDelete={() => deleteClient(open)}
         />
       )}
@@ -639,9 +676,10 @@ function accessTone(r) {
   return r.billing.entitled ? 'success' : 'neutral';
 }
 
-function ManagePanel({ row, busy, t, ar, onClose, onResetPassword, onChangeEmail, onGrantFree, onRevokeFree, onDelete }) {
+function ManagePanel({ row, busy, t, ar, lang, onClose, onResetPassword, onChangeEmail, onGrantFree, onRevokeFree, onSetPeriod, onDelete }) {
   const [email, setEmail] = useState(row.member?.email || '');
   const [editing, setEditing] = useState(false);
+  const [grantDays, setGrantDays] = useState('30');
   const comped = row.billing.state === 'comped';
 
   return (
@@ -690,13 +728,38 @@ function ManagePanel({ row, busy, t, ar, onClose, onResetPassword, onChangeEmail
           <h3>{t('freeAccess')}</h3>
           {comped ? (
             <>
-              <p>{t('hasComp')}</p>
-              <Button size="sm" variant="danger" loading={busy === `revoke:${row.id}`} onClick={onRevokeFree}>{t('revoke')}</Button>
+              {/* What the client actually has, stated as a date rather than as
+                  a yes. "This client has complimentary access" was true of a
+                  grant with two days left and of one that never ends, which is
+                  the distinction the whole feature turns on. */}
+              <p>
+                {row.billing.endsAt
+                  ? t('compUntil').replace('{date}', formatBillingDate(row.billing.endsAt, lang))
+                  : t('compForever')}
+              </p>
+              <div className="btn-row">
+                <Button size="sm" variant="secondary" loading={busy === `period:${row.id}`} onClick={() => onSetPeriod(30)}>{t('extend30')}</Button>
+                {row.billing.endsAt && (
+                  <Button size="sm" variant="secondary" loading={busy === `period:${row.id}`} onClick={() => onSetPeriod(null)}>{t('makeForever')}</Button>
+                )}
+                <Button size="sm" variant="danger" loading={busy === `revoke:${row.id}`} onClick={onRevokeFree}>{t('revoke')}</Button>
+              </div>
             </>
           ) : (
             <>
               <p>{t('grantDesc')}</p>
-              <Button size="sm" variant="secondary" loading={busy === `comp:${row.id}`} onClick={onGrantFree}>{t('grant')}</Button>
+              {/* The length is chosen here rather than assumed. 30 days is the
+                  normal grant; "no end date" is what the seven pre-billing
+                  clients carry and stays available for the same reason. */}
+              <label className="grant-len">
+                <span>{t('grantDays')}</span>
+                <select value={grantDays} onChange={(e) => setGrantDays(e.target.value)}>
+                  <option value="30">{t('days30')}</option>
+                  <option value="90">{t('days90')}</option>
+                  <option value="">{t('daysForever')}</option>
+                </select>
+              </label>
+              <Button size="sm" variant="secondary" loading={busy === `comp:${row.id}`} onClick={() => onGrantFree(grantDays === '' ? null : Number(grantDays))}>{t('grant')}</Button>
             </>
           )}
         </section>
@@ -731,6 +794,11 @@ function ManagePanel({ row, busy, t, ar, onClose, onResetPassword, onChangeEmail
         h3 { margin: 0; font-size: var(--text-md); font-weight: 700; }
         p { margin: 0; font-size: var(--text-sm); color: var(--text-tertiary); line-height: 1.5; }
         .row { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+        /* Three actions on one grant — extend, make permanent, revoke — which
+           wrap rather than squeeze on a narrow panel. */
+        .btn-row { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-2); }
+        .grant-len { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); }
+        .grant-len select { min-height: 36px; }
         .links { flex-direction: row; gap: var(--space-2); flex-wrap: wrap; }
         .danger { border-top: 1px solid var(--danger-border); padding-top: var(--space-4); }
         .danger h3 { color: var(--danger-ink); }

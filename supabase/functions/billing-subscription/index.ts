@@ -13,7 +13,7 @@
 // already confirmed, and leaves the rest to BILLING.SUBSCRIPTION.*.
 //
 // Body: { action: 'cancel' | 'change_plan' | 'create_link' | 'set_comp_kind'
-//                  | 'grant_comp',
+//                  | 'grant_comp' | 'set_comp_period',
 //          tenant_id, ... }
 //
 // set_comp_kind is the odd one out and deliberately so: it touches no provider,
@@ -57,6 +57,17 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch { return json({ error: "invalid_json" }, 400); }
 
   const action = String(body.action ?? "");
+
+  // null/absent -> forever. A whole number 1..3650 -> that many days. Anything
+  // else is "invalid" rather than a silent default: a caller that said
+  // something wrong should get an answer about what it said, which is the same
+  // rule normalizeCompKind() already follows.
+  const compDays = (raw: unknown): number | null | "invalid" => {
+    if (raw === undefined || raw === null) return null;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > 3650) return "invalid";
+    return n;
+  };
   const tenantId = String(body.tenant_id ?? "");
   if (!isUuid(tenantId)) return json({ error: "invalid_tenant_id" }, 400);
 
@@ -229,7 +240,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const granted = await grantComp(admin, tenantId, kind);
+    // How long. Absent means forever, which is what every pre-billing client
+    // carries and what "grandfather" means. A number is a deadline in days.
+    const days = compDays(body.days);
+    if (days === "invalid") {
+      return json({ error: "invalid_days", detail: "days must be null or 1..3650" }, 400);
+    }
+
+    const granted = await grantComp(admin, tenantId, kind, days);
     // null means the unique index caught what the read above missed: another
     // grant, or a checkout, landed in between. A conflict, not a fault.
     if (!granted) return json({ error: "already_has_subscription" }, 409);
@@ -243,11 +261,56 @@ Deno.serve(async (req: Request) => {
     console.log(
       `[billing-subscription] comp GRANTED kind=${kind} tenant=${tenantId} by=${who.user.id}`,
     );
-    return json({ ok: true, status: granted.status, comp_kind: granted.comp_kind });
+    return json({
+      ok: true,
+      status: granted.status,
+      comp_kind: granted.comp_kind,
+      current_period_end: granted.current_period_end ?? null,
+    });
   }
 
   const sub = await subscriptionByTenant(admin, tenantId);
   if (!sub) return json({ error: "no_subscription" }, 404);
+
+  // ---------------------------------------------------------------------
+  // set_comp_period — extend a grant, or make it permanent
+  // ---------------------------------------------------------------------
+  //
+  // Renewal, and the only way to move a comp's deadline. Two shapes:
+  //   { days: 30 }   -> extend by 30 days
+  //   { days: null } -> permanent, which CLEARS the date (see grantComp)
+  //
+  // EXTENDING ADDS TO WHAT IS LEFT, not to today, so renewing a client who
+  // still has 12 days gives them 42 rather than quietly taking 12 away. An
+  // ALREADY-EXPIRED grant extends from now instead -- adding to a date in the
+  // past would hand out a renewal that was over before it was granted.
+  if (action === "set_comp_period") {
+    const { data: isOwner, error: ownerErr } = await caller.rpc("is_platform_owner");
+    if (ownerErr) return json({ error: "authz_check_failed", detail: ownerErr.message }, 500);
+    if (isOwner !== true) return json({ error: "forbidden_not_owner" }, 403);
+
+    if (sub.status !== "comped") {
+      return json({ error: "not_comped", status: sub.status }, 409);
+    }
+
+    const days = compDays(body.days);
+    if (days === "invalid") {
+      return json({ error: "invalid_days", detail: "days must be null or 1..3650" }, 400);
+    }
+
+    let nextEnd: string | null = null;
+    if (days !== null) {
+      const current = sub.current_period_end ? Date.parse(sub.current_period_end) : NaN;
+      const base = Number.isFinite(current) && current > Date.now() ? current : Date.now();
+      nextEnd = new Date(base + days * 86_400_000).toISOString();
+    }
+
+    await upsertSubscription(admin, tenantId, { current_period_end: nextEnd });
+    console.log(
+      `[billing-subscription] comp PERIOD set tenant=${tenantId} until=${nextEnd ?? "forever"} by=${who.user.id}`,
+    );
+    return json({ ok: true, current_period_end: nextEnd });
+  }
 
   // A comped workspace has no provider subscription to act on. Refusing here
   // is clearer than letting PayPal 404 on a null id.

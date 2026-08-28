@@ -156,7 +156,36 @@ Deno.serve(async (req: Request) => {
     const { error: profileErr } = await admin.from("profile").insert({ tenant_id: tenant.id });
     if (profileErr) console.warn("[signup-verify] profile not created:", profileErr.message);
 
-    return json({ ok: true, slug: tenant.slug, email, tenant_id: tenant.id, plan, lang });
+    // 6. FREE ACCESS, if the owner invited this address (section-u).
+    //
+    //    This is the one place the "does NOT create a subscription" rule above
+    //    bends, and only for an address the owner typed into the console
+    //    beforehand. Everyone else still reaches the paywall exactly as before:
+    //    no invite, no row, and tenant_has_active_subscription() is false for a
+    //    workspace with no subscription at all.
+    //
+    //    All of the deciding happens inside claim_free_access() -- it matches
+    //    the address, grants the comp with its deadline, activates the tenant
+    //    and consumes the invite in one statement, under a row lock. Doing it
+    //    here in four calls would give this idempotent-by-design function four
+    //    new ways to half-succeed on a second click.
+    //
+    //    NEVER FAILS THE SIGNUP. A workspace that exists without its grant is
+    //    fixable from the console in two clicks; a signup that 500s because a
+    //    perk did not apply strands the customer with a verified address and
+    //    nothing to sign in to.
+    let granted = false;
+    try {
+      const { data: claimed, error: claimErr } = await admin
+        .rpc("claim_free_access", { p_tenant_id: tenant.id, p_email: email });
+      if (claimErr) console.warn("[signup-verify] free access not claimed:", claimErr.message);
+      granted = claimed === true;
+      if (granted) console.log("[signup-verify] free access granted to", tenant.slug);
+    } catch (err) {
+      console.warn("[signup-verify] free access threw:", String(err));
+    }
+
+    return json({ ok: true, slug: tenant.slug, email, tenant_id: tenant.id, plan, lang, granted });
   } catch (err) {
     console.error("[signup-verify] unexpected:", err);
     return json({ error: "verification_failed" }, 500);
