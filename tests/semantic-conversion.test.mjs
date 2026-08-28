@@ -555,19 +555,13 @@ test('FIX-1: .neutral clears AA in BOTH themes', () => {
   }
 });
 
-test('FIX-2: the building state emits a tone Badge actually implements', () => {
-  const src = adminSource();
-  const m = src.match(/if \(!row\.live\) return \{([^}]*)\};/);
-  assert.ok(m, 'the clientStage() building branch is gone or was reshaped');
-  const branch = m[1];
-  assert.match(branch, /tone: 'neutral'/, "the building state should emit tone: 'neutral'");
-  assert.equal(
-    /tone: 'default'/.test(branch),
-    false,
-    "the building state is back on tone: 'default' — Badge has no .default rule, so "
-    + 'the chip renders with no background and no border',
-  );
-});
+// FIX-2's two clientStage() pins were removed on 2026-08-27. They asserted on
+// the `building` badge in the owner's client roster, and clientStage() went to
+// /console with OwnerClientsOverview. The rule they enforced -- a tone must be
+// one Badge actually implements -- is still enforced below, tree-wide, by
+// "'default' is not emitted as a tone anywhere in the product" and by the
+// DS-6 five-tone API test. Nothing is unguarded; there is simply no
+// clientStage() left to point at.
 
 test("FIX-2: 'default' is not emitted as a tone anywhere in the product", () => {
   // The whole-tree check. Badge implements five tones; a sixth name reaching it
@@ -583,14 +577,6 @@ test("FIX-2: 'default' is not emitted as a tone anywhere in the product", () => 
   }
 });
 
-test('FIX-2: the building state keeps its id and both labels', () => {
-  // The fix is one word. If the id or the copy moved with it, something larger
-  // happened than was approved.
-  const src = adminSource();
-  assert.match(src, /id: 'building'/, "id: 'building' was changed");
-  assert.match(src, /'قيد الإعداد'/, 'the Arabic label changed');
-  assert.match(src, /'Building'/, 'the English label changed');
-});
 
 test('DS-6: the Badge tone API is unchanged — exactly five tones', () => {
   const src = uiCode('Badge');

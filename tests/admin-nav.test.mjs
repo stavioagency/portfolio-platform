@@ -17,29 +17,33 @@ const t = (k) => k;                       // identity translator
 const ids = (groups) => groups.flatMap(g => g.items.map(i => i.id));
 const build = (isOwner, ar = false) => navGroups({ isOwner, ar, t });
 
-test('owner sees the Platform group with Clients and Subscribers', () => {
-  const groups = build(true);
-  const platform = groups.find(g => g.id === 'platform');
-  assert.ok(platform, 'owner must get a platform group');
-  assert.deepEqual(platform.items.map(i => i.id), ['clients', 'subscribers']);
+test('no owner-only platform group exists any more', () => {
+  // Sites and Subscribers moved to /console on 2026-08-27. This file is now the
+  // CLIENT's navigation only, and an owner opening /admin is editing ONE
+  // portfolio -- not looking at a list of other people's.
+  for (const isOwner of [true, false, null]) {
+    const groups = navGroups({ isOwner, ar: false, t: (k) => k });
+    assert.equal(groups.some((g) => g.id === 'platform'), false,
+      `isOwner=${isOwner} still gets a platform group`);
+    const ids = groups.flatMap((g) => g.items.map((i) => i.id));
+    assert.equal(ids.includes('clients'), false, 'Sites is still in the admin nav');
+    assert.equal(ids.includes('subscribers'), false, 'Subscribers is still in the admin nav');
+  }
 });
 
-test('billing is a client tab and subscribers is an owner tab — never the reverse', () => {
-  // A client seeing the platform-wide subscriber list would be a data leak, and
-  // an owner seeing "my subscription" would act on whichever workspace happened
-  // to be selected.
-  const client = ids(build(false));
-  assert.ok(client.includes('billing'), 'a client must be able to manage their own subscription');
-  assert.ok(!client.includes('subscribers'), 'a client must NOT see the platform subscriber list');
-
-  const owner = ids(build(true));
-  assert.ok(owner.includes('subscribers'));
-  assert.ok(!owner.includes('billing'));
-
-  // Unresolved ownership shows neither, same rule as home/clients.
-  const unknown = ids(build(null));
-  assert.ok(!unknown.includes('billing'));
-  assert.ok(!unknown.includes('subscribers'));
+test('billing is a client tab, and there is no owner tab left to confuse it with', () => {
+  // The original pairing existed because `billing` (a client's own
+  // subscription) and `subscribers` (every client's) were one word apart in the
+  // same sidebar. Subscribers moved to /console, so only half the rule remains
+  // -- and it is the half that matters: an OWNER must not get a tab that acts
+  // on whichever workspace happens to be selected.
+  const client = navGroups({ isOwner: false, ar: false, t: (k) => k })
+    .flatMap((g) => g.items.map((i) => i.id));
+  const owner = navGroups({ isOwner: true, ar: false, t: (k) => k })
+    .flatMap((g) => g.items.map((i) => i.id));
+  assert.ok(client.includes('billing'), 'a client must see their own subscription');
+  assert.equal(owner.includes('billing'), false, 'an owner must not get the client billing tab');
+  assert.equal(owner.includes('subscribers'), false, 'Subscribers belongs to /console now');
 });
 
 test('owner does NOT get the client Home screen', () => {
@@ -78,9 +82,14 @@ test('tab ids are unique — no tab reachable from two places', () => {
   }
 });
 
-test('groups are ordered Platform -> Website -> Insights -> Settings', () => {
-  assert.deepEqual(build(true).map(g => g.id), ['platform', 'website', 'insights', 'settings']);
-  assert.deepEqual(build(false).map(g => g.id), ['website', 'insights', 'settings']);
+test('groups are ordered Website -> Insights -> Settings', () => {
+  // Platform was first and is gone. The remaining order is the client's reading
+  // order: build the site, read its numbers, administer it.
+  for (const isOwner of [true, false]) {
+    const ids = navGroups({ isOwner, ar: false, t: (k) => k }).map((g) => g.id);
+    assert.deepEqual(ids, ['website', 'insights', 'settings'],
+      `isOwner=${isOwner} group order changed`);
+  }
 });
 
 test('every item has a label and an icon name', () => {

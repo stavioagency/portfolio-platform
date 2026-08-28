@@ -70,6 +70,12 @@ const S = {
     emailChanged: 'Login email changed.',
     granted: 'Free access granted.', revoked: 'Free access revoked.',
     failDelete: 'Could not delete this client',
+    addClient: 'Add client', addTitle: 'New client',
+    fName: 'Name', fAddress: 'Address', fEmail: 'Email', fUsername: 'Username',
+    fLang: 'Their language', create: 'Create client',
+    credsTitle: 'Their sign-in details', credsNote: 'Shown once. Copy them now — the password is not stored anywhere.',
+    copy: 'Copy', copied: 'Copied', done: 'Done',
+    created: 'Client created.',
   },
   ar: {
     clients: 'العملاء', removed: 'المحذوفون',
@@ -115,6 +121,12 @@ const S = {
     emailChanged: 'تم تغيير بريد الدخول.',
     granted: 'تم منح الوصول المجاني.', revoked: 'تم سحب الوصول المجاني.',
     failDelete: 'تعذّر حذف هذا العميل',
+    addClient: 'إضافة عميل', addTitle: 'عميل جديد',
+    fName: 'الاسم', fAddress: 'العنوان', fEmail: 'البريد', fUsername: 'اسم المستخدم',
+    fLang: 'لغته', create: 'إنشاء العميل',
+    credsTitle: 'بيانات الدخول', credsNote: 'تظهر مرة واحدة. نسخها الآن ضروري — كلمة المرور لا تُحفظ في أي مكان.',
+    copy: 'نسخ', copied: 'تم النسخ', done: 'تم',
+    created: 'تم إنشاء العميل.',
   },
 };
 
@@ -135,6 +147,8 @@ function Console() {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [creds, setCreds] = useState(null);
   const [busy, setBusy] = useState('');
   const [view, setView] = useState('clients');   // clients | archived
   const [archived, setArchived] = useState([]);
@@ -331,6 +345,48 @@ function Console() {
     setOpenId(null);
   }
 
+  // Creating a client is two steps, the same two the admin used: insert the
+  // workspace (owner-only by RLS), then invite-client attaches a login to it
+  // and returns credentials once. Nothing is reimplemented.
+  async function createClient(form) {
+    const slug = form.slug.trim().toLowerCase();
+    setBusy('create');
+    try {
+      const { data: tRow, error: tErr } = await supabase.from('tenants')
+        .insert({ slug, name: form.name.trim() || slug, default_lang: form.lang, status: 'active' })
+        .select().single();
+      if (tErr) {
+        toast.error(/duplicate|unique/i.test(tErr.message) ? `"${slug}" is taken.` : tErr.message);
+        return false;
+      }
+      const { data, error } = await supabase.functions.invoke('invite-client', {
+        body: { tenant_id: tRow.id, email: form.email.trim(), username: form.username.trim() },
+      });
+      if (error || data?.error) {
+        let msg = data?.error || error?.message;
+        try { const b = await error?.context?.json?.(); if (b?.detail) msg = `${b.error}: ${b.detail}`; } catch (e) {}
+        // The workspace exists but has no login. Leave it -- deleting it here
+        // could race the invite, and the console can remove it deliberately.
+        toast.error(String(msg));
+        await load();
+        return false;
+      }
+      setCreds({
+        workspace: form.name.trim() || slug,
+        url: `${window.location.origin}/${slug}`,
+        email: data?.email || form.email.trim(),
+        username: data?.username || form.username.trim(),
+        password: data?.temp_password || '',
+      });
+      toast.success(t('created'));
+      await load();
+      return true;
+    } catch (e) {
+      toast.error(String(e?.message || e));
+      return false;
+    } finally { setBusy(''); }
+  }
+
   // ---- render ---------------------------------------------------------------
 
   if (phase === 'loading') {
@@ -375,6 +431,9 @@ function Console() {
           <button type="button" role="tab" aria-selected={view === 'archived'}
                   className={view === 'archived' ? 'on' : ''} onClick={() => setView('archived')}>{t('removed')}</button>
         </div>
+        {view === 'clients' && (
+          <Button size="sm" onClick={() => setAdding(true)}>+ {t('addClient')}</Button>
+        )}
         <button type="button" className="lang" onClick={toggleLang} aria-label={ar ? 'Switch to English' : 'التبديل إلى العربية'}>
           {ar ? 'EN' : 'ع'}
         </button>
@@ -441,6 +500,16 @@ function Console() {
           ))}
         </div>
       )}
+
+      {adding && (
+        <AddClientPanel
+          t={t} busy={busy}
+          onClose={() => setAdding(false)}
+          onCreate={async (form) => { if (await createClient(form)) setAdding(false); }}
+        />
+      )}
+
+      {creds && <CredentialsPanel t={t} creds={creds} onClose={() => setCreds(null)} />}
 
       {open && (
         <ManagePanel
@@ -619,6 +688,104 @@ function ManagePanel({ row, busy, t, ar, onClose, onResetPassword, onChangeEmail
         .links { flex-direction: row; gap: var(--space-2); flex-wrap: wrap; }
         .danger { border-top: 1px solid var(--danger-border); padding-top: var(--space-4); }
         .danger h3 { color: var(--danger-ink); }
+      `}</style>
+    </div>
+  );
+}
+
+
+function AddClientPanel({ t, busy, onClose, onCreate }) {
+  const [f, setF] = useState({ name: '', slug: '', email: '', username: '', lang: 'ar' });
+  // The address is derived from the name until it is edited, so the common case
+  // is two fields rather than four. Same rule the admin's invite used.
+  const [slugTouched, setSlugTouched] = useState(false);
+  const slug = (slugTouched ? f.slug : f.name).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  return (
+    <div className="bg" onClick={onClose} role="presentation">
+      <div className="panel" role="dialog" aria-modal="true" aria-label={t('addTitle')} onClick={(e) => e.stopPropagation()}>
+        <div className="ph">
+          <b>{t('addTitle')}</b>
+          <button type="button" className="x" onClick={onClose} aria-label={t('cancel')}>×</button>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); onCreate({ ...f, slug }); }}>
+          {/* Explicit htmlFor/id rather than wrapping: the association is then
+              visible without knowing what <Input> renders, which is what
+              tests/label-association.test.mjs checks and what a screen reader
+              relies on. */}
+          <label htmlFor="nc-name">{t('fName')}</label>
+          <Input id="nc-name" value={f.name} onChange={set('name')} required />
+
+          <label htmlFor="nc-slug">{t('fAddress')}</label>
+          <Input id="nc-slug" value={slug} dir="ltr"
+                 onChange={(e) => { setSlugTouched(true); setF({ ...f, slug: e.target.value }); }} required />
+
+          <label htmlFor="nc-email">{t('fEmail')}</label>
+          <Input id="nc-email" type="email" value={f.email} onChange={set('email')} dir="ltr" required />
+
+          <label htmlFor="nc-username">{t('fUsername')}</label>
+          <Input id="nc-username" value={f.username} onChange={set('username')} dir="ltr" required />
+
+          <label htmlFor="nc-lang">{t('fLang')}</label>
+          <div>
+            <select id="nc-lang" value={f.lang} onChange={set('lang')}>
+              <option value="ar">العربية</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+          <div className="row">
+            <Button type="submit" loading={busy === 'create'}>{t('create')}</Button>
+            <Button type="button" variant="ghost" onClick={onClose}>{t('cancel')}</Button>
+          </div>
+        </form>
+      </div>
+      <style jsx>{`
+        .bg { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; justify-content: flex-end; z-index: 60; }
+        .panel { inline-size: min(440px, 100%); block-size: 100%; overflow-y: auto; background: var(--bg-primary);
+                 border-inline-start: 1px solid var(--border); padding: var(--space-5); }
+        .ph { display: flex; align-items: center; justify-content: space-between; margin-block-end: var(--space-4); }
+        .ph b { font-size: var(--text-xl); }
+        .x { inline-size: 44px; block-size: 44px; border: none; background: none; color: var(--text-secondary); font-size: 22px; cursor: pointer; }
+        form { display: flex; flex-direction: column; gap: var(--space-2); }
+        label { font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); }
+        form > :global(*) { width: 100%; }
+        select { padding: 10px 14px; min-height: 44px; background: var(--bg-secondary); border: 1px solid var(--border);
+                 border-radius: var(--radius-md); color: var(--text-primary); font: inherit; }
+        .row { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+      `}</style>
+    </div>
+  );
+}
+
+// Shown ONCE. The password is not stored anywhere -- GoTrue keeps only a hash --
+// so if this is dismissed without copying, the only way back is a reset.
+function CredentialsPanel({ t, creds, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const block = `${creds.workspace}\n${creds.url}\n${creds.email}\n${creds.username}\n${creds.password}`;
+  return (
+    <div className="bg" role="presentation">
+      <div className="panel" role="dialog" aria-modal="true" aria-label={t('credsTitle')}>
+        <b>{t('credsTitle')}</b>
+        <p>{t('credsNote')}</p>
+        <pre dir="ltr">{block}</pre>
+        <div className="row">
+          <Button size="sm" variant="secondary" onClick={async () => {
+            try { await navigator.clipboard.writeText(block); setCopied(true); } catch (e) { /* no clipboard */ }
+          }}>{copied ? t('copied') : t('copy')}</Button>
+          <Button size="sm" onClick={onClose}>{t('done')}</Button>
+        </div>
+      </div>
+      <style jsx>{`
+        .bg { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: grid; place-items: center; z-index: 70; padding: var(--space-4); }
+        .panel { inline-size: min(460px, 100%); background: var(--bg-primary); border: 1px solid var(--border);
+                 border-radius: var(--radius-lg); padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
+        b { font-size: var(--text-xl); }
+        p { margin: 0; font-size: var(--text-sm); color: var(--text-tertiary); line-height: 1.5; }
+        pre { margin: 0; padding: var(--space-4); background: var(--bg-secondary); border: 1px solid var(--border);
+              border-radius: var(--radius-md); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+              font-size: var(--text-sm); white-space: pre-wrap; word-break: break-all; color: var(--text-primary); }
+        .row { display: flex; gap: var(--space-2); }
       `}</style>
     </div>
   );

@@ -21,7 +21,6 @@ import { translations } from '../lib/translations.js';
 const SURFACES = [
   { name: 'CredentialsHandoff', file: 'components/CredentialsHandoff.js', component: null, container: 'modalRef', canonical: true },
   { name: 'SetPasswordGate',    file: 'pages/admin.js', component: 'SetPasswordGate',  container: 'panelRef',  canonical: false },
-  { name: 'ClientPanel',        file: 'pages/admin.js', component: 'ClientPanel',      container: 'panelRef',  canonical: true },
   { name: 'IconPickerModal',    file: 'pages/admin.js', component: 'IconPickerModal',  container: 'pickerRef', canonical: true },
   { name: 'CropperModal',       file: 'pages/admin.js', component: 'CropperModal',     container: 'cmRef',     canonical: true },
 ];
@@ -141,11 +140,16 @@ test('DS-17/18/19 contracts were not displaced', () => {
   assert.match(ch, /prevOverflow/, 'CH prevOverflow lost');
   assert.match(ch, /opener\.isConnected/, 'CH opener restoration lost');
   const admin = readFileSync('pages/admin.js', 'utf8');
-  assert.match(admin, /Rendered after ClientPanel on purpose/, 'DS-17 stacking order lost');
-  assert.match(admin, /await navigator\.clipboard\.writeText/, 'DS-17 clipboard guard lost');
-  assert.match(admin, /Focus is mount-scoped on purpose/, 'DS-18 ClientPanel mount-scoped focus lost');
+  // DS-17's guarded clipboard write went to /console with the credentials
+  // handoff. Still pinned, just where it now lives.
+  assert.match(readFileSync('pages/console/index.js', 'utf8'),
+    /await navigator\.clipboard\.writeText/, 'DS-17 clipboard guard lost');
+  // The DS-17 stacking-order pin and the DS-18 mount-scoped-focus pin both named
+  // ClientPanel, which was deleted with the owner screens on 2026-08-27. The
+  // contracts they protected are still enforced for every REMAINING surface by
+  // the sweep above; there is simply no ClientPanel left to pin.
   // Escape must still close these two; containment must not have swallowed it.
-  for (const s of SURFACES.filter((x) => ['ClientPanel', 'IconPickerModal'].includes(x.name))) {
+  for (const s of SURFACES.filter((x) => ['IconPickerModal'].includes(x.name))) {
     assert.match(tabHandler(s), /e\.key === 'Escape'/, `${s.name}: Escape handling lost from the handler`);
   }
 });
@@ -154,7 +158,8 @@ test('backdrop dismissal is preserved on the surfaces that had it', () => {
   // Containment was added without changing how these close. cm-bg is CropperModal,
   // which DS-21 left uncontained.
   const admin = readFileSync('pages/admin.js', 'utf8');
-  for (const cls of ['picker-bg', 'cp-bg', 'cm-bg']) {
+  // 'cp-bg' was ClientPanel's backdrop and left with the owner screens.
+  for (const cls of ['picker-bg', 'cm-bg']) {
     assert.match(admin, new RegExp(`className="${cls}" onClick=`),
       `${cls} no longer dismisses on backdrop click`);
   }

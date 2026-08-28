@@ -17,8 +17,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+// ClientPanel was the second surface here until 2026-08-27, when the owner
+// screens moved to /console and it went with them. The RULE it demonstrated is
+// unchanged and still enforced below against every surface that remains.
 const SURFACES = [
-  { file: 'pages/admin.js', name: 'ClientPanel', focusCall: 'panelRef.current?.focus()' },
   { file: 'components/CredentialsHandoff.js', name: 'CredentialsHandoff', focusCall: 'modalRef.current?.focus()' },
 ];
 
@@ -81,6 +83,6 @@ test('DS-17 nested-overlay invariants are still in place', () => {
   assert.match(ch, /addEventListener\('keydown', onKey, true\)/, 'capture-phase Escape lost');
   assert.match(ch, /removeEventListener\('keydown', onKey, true\)/, 'capture flag lost on removal');
   assert.match(ch, /prevOverflow/, 'prevOverflow scroll-lock lost');
-  const admin = readFileSync('pages/admin.js', 'utf8');
-  assert.match(admin, /prevOverflow/, 'ClientPanel prevOverflow lost');
+  // The admin.js half of this pin was ClientPanel's scroll lock, deleted with
+  // the owner screens. CredentialsHandoff above still carries it.
 });

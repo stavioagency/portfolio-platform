@@ -113,6 +113,9 @@ test('the Field labelling convention is still the norm in admin.js', () => {
   const src = readFileSync('pages/admin.js', 'utf8');
   // Field is the project's explicit-association component; it renders
   // <label htmlFor={id}> against a matching input id.
+  // Was >= 40 while admin.js also held the two owner screens. Those moved to
+  // /console on 2026-08-27 and took ~1,200 lines with them; 45 Field uses
+  // remain in the client editor, which is what this guard is actually about.
   assert.ok((src.match(/<Field\b/g) || []).length >= 40, 'the Field convention has been dismantled');
   assert.match(readFileSync('pages/admin.js', 'utf8'), /<label htmlFor=\{id\}>/,
     'Field no longer renders an htmlFor label');
@@ -127,7 +130,10 @@ test('the Field labelling convention is still the norm in admin.js', () => {
     .filter((t) => !/type="(hidden|checkbox|radio)"/.test(t))
     .filter((t) => /aria-label/.test(t));
   const APPROVED = [
-    'className="sb-search"',        // pre-existing subscriber search
+    // 'className="sb-search"' was here — the Subscribers search input. It left
+    // with SubscribersOverview when the owner screens moved to /console on
+    // 2026-08-27. Removed from the approved set rather than kept as a ghost:
+    // this list is checked in BOTH directions, so a stale entry would fail.
     'placeholder={icon.label}',     // DS-27: link label
     'update(l.id, { href:',         // DS-27: link URL
     'className="picker-search"',    // DS-27: icon-picker search
@@ -244,12 +250,15 @@ test('the two new translation keys exist in both locales with the approved value
   );
 });
 
-test('the pre-existing aria-label precedents are still intact', () => {
-  // DS-25 wrongly reported zero aria-label'd admin inputs; these two are the real
-  // precedent this phase followed, and they must not be disturbed.
-  const search = inputTagContaining('pages/admin.js', 'className="sb-search"');
-  assert.ok(search && /aria-label=\{ar \? 'بحث' : 'Search'\}/.test(search),
-    'the subscriber search aria-label precedent was altered');
+test('the pre-existing aria-label precedent is still intact', () => {
+  // DS-25 wrongly reported zero aria-label'd admin inputs; this is the real
+  // precedent this phase followed, and it must not be disturbed.
+  //
+  // There were TWO. The other was the Subscribers search field
+  // (className="sb-search"), which went with SubscribersOverview when the owner
+  // screens moved to /console on 2026-08-27. Its replacement there carries its
+  // own aria-label; this file scans admin.js and components/, so it is checked
+  // by the tree-wide sweep above rather than pinned by name here.
   const email = inputTagContaining('components/CredentialsHandoff.js', 'value={draftEmail}');
   assert.ok(email && /aria-label=\{ar \? 'بريد العميل' : 'Client email'\}/.test(email),
     'the CredentialsHandoff client-email aria-label precedent was altered');
