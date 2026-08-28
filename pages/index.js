@@ -698,26 +698,12 @@ export default function Home({ slug = null } = {}) {
           {/* STATS */}
           {stats.length > 0 && (
             <div className="stats" style={{ gridTemplateColumns: `repeat(${stats.length}, 1fr)` }}>
-              {stats.map((s, i) => {
-                const raw = pick(s.value, lang) || pick(s.value, 'en');
-                const isRating = s.kind === 'rating' && raw !== '' && !Number.isNaN(Number(raw));
-                return (
-                  <div key={s.id || i} className="stat">
-                    {isRating ? (
-                      // A score reads as a score. Stars carry it at a glance and
-                      // the number stays beside them, because "4.9" is the part
-                      // someone actually quotes.
-                      <div className="stat-value stat-rating">
-                        <span className="stars" aria-hidden="true">{stars(Number(raw))}</span>
-                        <span className="score">{Number(raw).toFixed(1)}</span>
-                      </div>
-                    ) : (
-                      <div className="stat-value">{raw}</div>
-                    )}
-                    <div className="stat-label">{pick(s.label, lang) || pick(s.label, 'en')}</div>
-                  </div>
-                );
-              })}
+              {stats.map((s, i) => (
+                <div key={s.id || i} className="stat">
+                  <div className="stat-value">{pick(s.value, lang) || pick(s.value, 'en')}</div>
+                  <div className="stat-label">{pick(s.label, lang) || pick(s.label, 'en')}</div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -1056,11 +1042,6 @@ export default function Home({ slug = null } = {}) {
           font-size: 11px; color: rgba(255,255,255,0.5); line-height: 1.5;
           unicode-bidi: plaintext;
         }
-        /* A rating is one unit: stars and the number never separate, and the
-           pair stays left-to-right in Arabic because a score is not mirrored. */
-        .stat-rating { direction: ltr; display: flex; flex-direction: column; align-items: center; gap: 2px; }
-        .stat-rating .stars { font-size: 13px; letter-spacing: 1px; color: #F5C451; line-height: 1; }
-        .stat-rating .score { font-size: 18px; font-weight: 700; }
 
         /* ---- CTA SYSTEM -----------------------------------------------------
            A 24px icon column that never flexes, so the glyph sits at the same

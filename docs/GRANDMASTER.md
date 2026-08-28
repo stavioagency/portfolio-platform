@@ -19,62 +19,106 @@ log**, and never in this file.
 
 ---
 
-## 0. THE PRODUCT, AS IT ACTUALLY IS (2026-08-27)
+## 0. THE PRODUCT, AS IT ACTUALLY IS (2026-08-28)
 
-Read this before anything else in `docs/`, because several documents below were
-written for a product direction that was abandoned.
+Read this before anything else in `docs/`. Several documents below were written
+for a product direction that was abandoned, and this section says which.
 
 **Designakum lets clients create and manage their portfolio, while the owner has
 a simple internal panel to manage those clients and their subscriptions.**
 
-Four surfaces, and there are only four:
+### The four surfaces, and there are only four
 
 | Surface | Where | What it is |
 |---|---|---|
-| Marketing site | `designakum.com` | Separate. Not in this repo. Do not touch. |
-| Public portfolio | `designakum.site/<slug>` | What a client pays for; what visitors see |
+| Marketing site | `designakum.com` | Separate repo. Do not touch. |
+| Public portfolio | `designakum.site/<slug>` | What a client pays for |
 | Client editor | `designakum.site/admin` | A client signs in and edits THEIR portfolio |
-| Owner back office | `designakum.site/admin` (owner sign-in) | Sites + Subscribers: every client, their email, subscription, reset password, change login email, grant free access |
+| Owner console | `designakum.site/console` | Client management: roster, money, reset password, change login email, grant/revoke free access, create a client, delete one |
 
-`/console` redirects to `/admin`. It is a convenience URL, not a second product.
+`/admin` is now the CLIENT's editor only. Sites and Subscribers were removed
+from it on 2026-08-27 and live in `/console`.
 
-### What was REMOVED on 2026-08-27, and why
+### The reference for the portfolio's look
 
-`pages/studio/`, `pages/console/` (the shell), `components/studio/`,
-`components/shell/`, `lib/studio/`, `lib/shell-nav.js`, `lib/shell-prefs.js`
-and their tests are **deleted**. They were an unbuilt second product — a
-"Studio" for clients and a "Console" for the owner — intended to eventually
-replace `/admin`. `/admin` already does both jobs and is live, so maintaining
-two half-answers to "where do I manage clients" cost more than it returned.
+`design/original-portfolio-reference.md` — the earlier build Feras wants to
+return to, at https://enchanting-palmier-b208ed.netlify.app/, with its card
+width, radius, font, gradient and structure measured off the running page.
+**Read it before touching `pages/index.js`.**
 
-**The editing model is: a client edits their portfolio and it is live.** There is
-no draft/publish step in the product.
+### The current plan, decided 2026-08-28
 
-`tenants.published_snapshot`, `tenants.published_at` and `publish_tenant()`
-exist in the production database (migration `20260826200344`). **Nothing reads
-or calls them, and nothing is expected to.** They are inert and were left in
-place rather than dropped, because dropping columns on a live table to tidy up
-is a worse risk than carrying two unused nullable columns. If publishing is ever
-wanted, they are the head start; if not, they cost nothing.
+**Finalise the portfolio's look FIRST, then build admin controls for whatever
+turned out to be customisable.** The previous order — adding a control and
+letting the design follow — produced settings nobody could explain, and was
+abandoned. A stat "Type" selector built this way was reverted the same day.
 
-### Proposed, not built
+### WHAT THE PORTFOLIO'S LOOK IS, AND WHOSE IT IS
 
-`features/live-availability.md` — auto-updating "available to chat" from
-WhatsApp / Telegram / Discord. Requested 2026-08-28. Written up rather than
-started because two of the three platforms do not expose presence at all; the
-note says what is actually possible and what the decision is.
+**Nobody redesigned the public portfolio in the 2026-08-26..28 sessions.** If a
+future session is asked to "revert the redesign", there is no redesign to
+revert. `pages/index.js` changed in exactly four ways:
 
-### Documents written for the abandoned direction
+  * the data path — reads a published snapshot via RPC instead of the tables
+    (no visual change at all)
+  * a green "Available now" badge (new, section-s)
+  * a "could not load, try again" screen, which replaced a false 404
+  * stat cells: padding 16 -> 18px and a min-height, because a two-line label
+    was clipping
 
-Still present because they are referenced by tooling or record real decisions,
-but **they describe a product that does not exist**. Treat their Studio/Console
-sections as history, not as instructions:
+The card's actual design predates all of it. Its history is in
+`git log --follow pages/index.js`; the last commits that shaped how it LOOKS are
+`4683400`, `2185986`, `0588ac0` and `36542d4`. That is where "the old design"
+lives, and reverting should start by reading those, not by undoing recent work.
+
+### What is live in the database
+
+| Section | What it did |
+|---|---|
+| P | `tenants.published_snapshot`, `published_at`, `publish_tenant()` |
+| Q | `get_public_portfolio()`; anon SELECT removed from `profile`/`projects` |
+| R | `deleted_clients` archive |
+| S | `profile.availability` — a self-expiring "available now" |
+
+**The paywall is now enforced by the database.** Before section-q, `profile` and
+`projects` were anon-readable, so the subscription gate ran in the visitor's own
+JavaScript while the data sat one fetch away. Verified after: an anon caller gets
+`[]` from both tables, and `get_public_portfolio` returns `null` for an
+unentitled tenant.
+
+**Editing model:** a client edits the draft (`profile`/`projects`) and presses
+Publish, which serialises it into the snapshot the public site reads. The
+preview pane shows the DRAFT; "View live site" shows what visitors see.
+
+**Availability is deliberately NOT in the snapshot** — it is merged live and
+expires by comparison at read time, so it can never be stale. See
+`features/live-availability.md`.
+
+### What was REMOVED, so nobody looks for it
+
+`pages/studio/`, `components/studio/`, `components/shell/`, `lib/studio/`,
+`lib/shell-nav.js`, `lib/shell-prefs.js` and their tests are **deleted**
+(2026-08-27). They were an unbuilt second product — a "Studio" for clients and a
+"Console" for owners — meant to replace `/admin`. `/admin` already did the job.
+The Studio/Console mythology in the documents below is history, not a plan.
+
+### Documents that describe the abandoned direction
+
+Kept because tooling references them or they record real decisions, but they
+describe a product that does not exist. Read their Studio/Console sections as
+history:
 
 `product/designakum-blueprint.md` (§8.5 publishing, Studio) ·
-`architecture/published-snapshot.md` · `architecture/publishing-model.md` (deleted) ·
-`architecture/renderer-migration.md` · `architecture/renderer-contracts.md` ·
-`design/design.md` §6 · `design/next-step.md` ·
-`ux/designakum-design-system-final.md` §7
+`architecture/published-snapshot.md` · `architecture/renderer-migration.md` ·
+`architecture/renderer-contracts.md` · `design/design.md` §6 ·
+`design/next-step.md` · `ux/designakum-design-system-final.md` §7
+
+### What has never been verified by a human
+
+Every signed-in flow. Sessions to date could not sign in — entering a password is
+refused — so `/console`, publish, reset password, change email, grant/revoke free
+access and delete are **build-and-test verified only**. Feras has since used
+delete successfully (4 archived rows). Everything else is unproven in use.
 
 ---
 

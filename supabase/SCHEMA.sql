@@ -1,6 +1,6 @@
 -- ############################################################################
 -- SCHEMA.sql — THE AUTHORITATIVE PICTURE OF THE LIVE DATABASE
--- Project gphrzvjlstznhypcfgre (ap-northeast-1) · verified 2026-08-21
+-- Project gphrzvjlstznhypcfgre (ap-northeast-1) · verified 2026-08-28
 -- ############################################################################
 --
 -- READ THIS FIRST
@@ -67,7 +67,16 @@
 --   "fixes" it.
 
 -- ============================================================================
--- TABLES — 14 in public, RLS enabled on every one
+-- REFRESHED 2026-08-28. Sections P, Q, R and S landed since the last pass:
+--   P  tenants.published_snapshot / published_at / publish_tenant()
+--   Q  get_public_portfolio(); anon SELECT REMOVED from profile and projects
+--   R  deleted_clients
+--   S  profile.availability
+-- The count below was already wrong before those (it said 14 with 15 tables).
+-- ============================================================================
+
+-- ============================================================================
+-- TABLES — 16 in public, RLS enabled on every one
 -- ============================================================================
 
 -- tenants — one row per client website.  15 rows (11 active)
@@ -81,6 +90,10 @@
 --   created_via text NOT NULL DEFAULT 'owner' CHECK ('owner' | 'self_signup')
 --     How the workspace came to exist. 'owner' = invite-client; 'self_signup' =
 --     registered at /signup and verified their own email.
+--   published_snapshot jsonb NULL — the portfolio a visitor sees, serialised at
+--     publish time. NULL = never published. Written by publish_tenant(); a
+--     platform owner can also write it directly (tenants UPDATE is owner-only).
+--   published_at timestamptz NULL — when that snapshot was last written.
 --   TRIGGER trg_enroll_platform_owners AFTER INSERT -> enroll_platform_owners()
 
 -- tenant_domains — custom domains pointing at a tenant.  2 rows
@@ -94,6 +107,11 @@
 --   jsonb structures: banners, stats, cta_buttons, custom_links, custom_fields,
 --     sections, top_ticker, footer, seo, appearance
 --   text: profile_image, brand_logo, favicon_url, default_lang
+--   availability jsonb NULL — {"until": timestamptz}. A self-expiring
+--     "available now" badge. Read LIVE by get_public_portfolio() and
+--     DELIBERATELY NOT in published_snapshot: serialising it would freeze the
+--     badge at publish time, which is the staleness it exists to remove.
+--     Expired by comparison at read time; nothing sweeps it. See section-s.
 --   updated_at timestamptz · tenant_id uuid UNIQUE NOT NULL
 --   LEGACY: `links` jsonb predates custom_links, is written but never rendered,
 --     and one row still holds data.
@@ -101,6 +119,15 @@
 --     sections and top_ticker are all REMOVED by the feature decisions. They are
 --     still live columns and still rendered by pages/index.js. Do not drop them
 --     before phase P6 — see docs/architecture/renderer-migration.md.
+
+-- deleted_clients — a record of clients removed outright.  See section-r.
+--   id uuid PK · tenant_id uuid (the id it HAD; no FK, the row is gone)
+--   slug, name, email, username text · projects_count integer
+--   had_billing boolean · billing_state text
+--   deleted_at timestamptz · deleted_by uuid · note text
+--   Holds NO portfolio content and restores nothing — it is a log, not a
+--   recycle bin. Written by the delete-client Edge Function under the service
+--   key; owner-read only, no INSERT policy, the pattern the billing tables use.
 
 -- projects — portfolio items.  9 rows across 2 tenants
 --   id bigint PK DEFAULT nextval('projects_id_seq') — ONE sequence shared by every
@@ -255,6 +282,23 @@
 --     On tenant INSERT, enrols every platform owner. The browser cannot do this:
 --     platform_owners is readable only for your own row.
 --
+-- publish_tenant(tid uuid)       -> timestamptz   authenticated only
+--     Serialises the current draft into tenants.published_snapshot. Gated by
+--     can_edit_tenant(). RAISES if the UPDATE affects zero rows rather than
+--     returning a timestamp for a write that did not happen. anon EXECUTE was
+--     revoked after review — Supabase's default privileges had granted it.
+--
+-- build_portfolio_snapshot(tid uuid) -> jsonb   INTERNAL, no grants
+--     The one serialisation, shared by publish_tenant() and section-q's
+--     backfill so the two shapes cannot drift. NO authorization check inside;
+--     revoked from anon and authenticated. publish_tenant() is the caller.
+--
+-- get_public_portfolio(slug, host) -> jsonb   ANON + authenticated
+--     THE public read path. Resolves slug-or-host (slug wins; a named slug that
+--     misses does NOT fall back to the host), refuses a disabled or unentitled
+--     tenant, returns the published snapshot merged with tenant_id and — live,
+--     never snapshotted — an unexpired profile.availability.
+--
 -- touch_updated_at()             -> trigger   NOT security definer
 --     BEFORE UPDATE on billing_customers and subscriptions.
 --
@@ -266,7 +310,11 @@
 -- ROW LEVEL SECURITY — enabled on all 14 public tables
 -- ============================================================================
 -- READ (role `public`, i.e. anon included):
---   profile, projects, tenants, tenant_domains .......... USING (true)
+--   tenants, tenant_domains ............................. USING (true)
+--   profile, projects ................................... NO ANON READ (section-q)
+--     SELECT authenticated ......... is_tenant_admin(tenant_id)  — membership,
+--     deliberately NOT can_edit_tenant: an unentitled client must still be able
+--     to read their own draft.
 --   storage.objects bucket 'media' ...................... USING (bucket_id='media')
 --
 -- WRITE (authenticated):
@@ -285,6 +333,7 @@
 --   analytics_events, billing_customers, subscriptions, payments, invoices
 --     ................. SELECT  is_tenant_admin(tenant_id)
 --   billing_events ..... SELECT  is_platform_owner()
+--   deleted_clients .... SELECT  is_platform_owner()
 --   provider_plans ..... SELECT  active
 --
 -- NO POLICIES AT ALL (service_role only, deliberately):
@@ -297,13 +346,29 @@
 --   INSERT is flagged by the advisor and is intentional — the trade is that anyone
 --   can post fake events.
 --
--- ---- THE READ GAP, stated plainly ----------------------------------------
--- `profile` and `projects` are readable by anon with USING (true), so an
--- UNPUBLISHED tenant's content is world-readable through PostgREST. lib/tenant.js
--- gates RENDERING, not data: the page 404s while the row is still fetchable.
--- That is UI standing in for a security boundary. Closing it is phase P6 of
--- docs/architecture/renderer-migration.md, and it cannot land before the public
--- pages stop reading these tables.
+-- ---- THE READ GAP — CLOSED 2026-08-28 (section-q) -------------------------
+-- It used to read: profile and projects are anon-readable with USING (true), so
+-- an unpublished tenant's content is world-readable through PostgREST, and the
+-- paywall gates RENDERING rather than ACCESS. That was true and it is fixed.
+--
+-- Those two policies are GONE. anon can no longer select either table. The
+-- public site calls ONE function, get_public_portfolio(), which resolves the
+-- tenant, checks status AND entitlement inside Postgres, and returns only the
+-- published snapshot.
+--
+-- Verified as anon against the live API on 2026-08-28:
+--   GET  /rest/v1/profile   -> []
+--   GET  /rest/v1/projects  -> []
+--   POST /rpc/get_public_portfolio {"p_slug":"f9designer"}  -> the portfolio
+--   POST /rpc/get_public_portfolio {"p_slug":"onecenttest"} -> null (unentitled)
+--
+-- READING YOUR OWN DRAFT DOES NOT REQUIRE ENTITLEMENT, and that is load-bearing.
+-- profile/projects had ONE authenticated policy, `ALL ... can_edit_tenant()`,
+-- and can_edit_tenant requires a subscription. Dropping the public SELECT
+-- without adding a membership read would have locked out 24 of the 42
+-- tenant_admins rows — every lapsed or not-yet-paying client, i.e. exactly the
+-- people deciding whether to buy. SELECT is is_tenant_admin(); WRITES still
+-- require can_edit_tenant(). Section K is untouched.
 
 
 -- ============================================================================
@@ -349,7 +414,8 @@
 --    governs only future uploads and clients cannot manage existing media. These
 --    objects must be permanently excluded from any cleanup sweep — a sweep cannot
 --    attribute them, and deleting one is unrecoverable.
--- 3. Unpublished draft content is world-readable. See THE READ GAP above.
+-- 3. FIXED 2026-08-28 by section-q. Was: unpublished draft content is
+--    world-readable. profile and projects are no longer anon-readable.
 -- 4. Draft MEDIA is world-readable too, and the snapshot model does not fix it:
 --    an image uploaded to a draft is fetchable by anyone holding the URL, whether
 --    or not it was ever published. Needs the media pipeline, not a policy tweak.

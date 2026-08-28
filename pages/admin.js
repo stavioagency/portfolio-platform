@@ -2086,58 +2086,6 @@ function BannerRow({ banner, lang, onChange, onRemove, onUp, onDown, canUp, canD
   );
 }
 
-// Half-star aware, 0-5. Returns a string rather than markup so the public card
-// and this editor cannot drift into two different star systems.
-function renderStars(value) {
-  const v = Math.max(0, Math.min(5, Number(value) || 0));
-  const full = Math.floor(v);
-  const half = v - full >= 0.25 && v - full < 0.75;
-  const rounded = v - full >= 0.75 ? full + 1 : full;
-  return '★'.repeat(half ? full : rounded)
-    + (half ? '⯨' : '')
-    + '☆'.repeat(5 - (half ? full + 1 : rounded));
-}
-
-// "Available now", with an expiry.
-//
-// There is no ON switch that stays on. Every option is a DURATION, because the
-// failure this replaces was a status nobody remembered to turn off -- a client
-// typed "We are available to connect." into a stat and it was wrong an hour
-// later, forever. Choosing a length makes the wrong state impossible to reach
-// by forgetting; the badge stops when the clock says so, with nothing running.
-//
-// The expiry is enforced in get_public_portfolio(), not here. This only writes
-// a timestamp, so a stale browser tab cannot keep anyone visible.
-function AvailabilityRow({ value, lang, t, onChange }) {
-  const until = value && value.until ? new Date(value.until) : null;
-  const live = !!until && until.getTime() > Date.now();
-  const setFor = (ms) => onChange({ until: new Date(Date.now() + ms).toISOString() });
-  const endOfDay = () => {
-    const d = new Date(); d.setHours(23, 59, 0, 0);
-    // Already past 23:59? Then "rest of today" means an hour, not nothing.
-    onChange({ until: (d.getTime() > Date.now() ? d : new Date(Date.now() + 3600e3)).toISOString() });
-  };
-  const timeText = live
-    ? until.toLocaleTimeString(lang === 'ar' ? 'ar' : 'en-GB', { hour: '2-digit', minute: '2-digit' })
-    : '';
-
-  return (
-    <div className="card-row avail">
-      <div className="avail-state">
-        <span className={`dot ${live ? 'on' : ''}`} aria-hidden="true" />
-        <b>{live ? t('avail_on_until').replace('{time}', timeText) : t('avail_off')}</b>
-      </div>
-      <div className="avail-actions">
-        <Button size="sm" variant="secondary" onClick={() => setFor(3600e3)}>{t('avail_1h')}</Button>
-        <Button size="sm" variant="secondary" onClick={() => setFor(4 * 3600e3)}>{t('avail_4h')}</Button>
-        <Button size="sm" variant="secondary" onClick={endOfDay}>{t('avail_today')}</Button>
-        {live && <Button size="sm" variant="ghost" onClick={() => onChange(null)}>{t('avail_stop')}</Button>}
-      </div>
-      <p className="avail-hint">{t('avail_hint')}</p>
-    </div>
-  );
-}
-
 function StatRow({ stat, lang, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
   return (
     <div className="card-row">
@@ -2149,45 +2097,14 @@ function StatRow({ stat, lang, onChange, onRemove, onUp, onDown, canUp, canDown,
           <button type="button" className="x-small" onClick={onRemove} aria-label={t('remove')}>×</button>
         </div>
       </div>
-      <Field id={`s-k-${stat.id}`} label={t('stat_kind')}>
-        <select
-          id={`s-k-${stat.id}`}
-          value={stat.kind === 'rating' ? 'rating' : 'text'}
-          onChange={(e) => onChange({ kind: e.target.value === 'rating' ? 'rating' : 'text' })}
-        >
-          <option value="text">{t('stat_kind_text')}</option>
-          <option value="rating">{t('stat_kind_rating')}</option>
-        </select>
-      </Field>
-
       <div className="row-grid-2">
         <Field id={`s-l-${stat.id}`} label={t('stat_label')}>
           <input id={`s-l-${stat.id}`} value={pick(stat.label, lang)} onChange={(e) => onChange({ label: setLangValue(stat.label, lang, e.target.value) })} placeholder={lang === 'ar' ? 'تقييم العملاء' : 'Client rating'} />
         </Field>
-        <Field id={`s-v-${stat.id}`} label={stat.kind === 'rating' ? t('stat_rating_value') : t('stat_value')}>
-          {stat.kind === 'rating' ? (
-            // A rating is ONE number, the same in both languages -- a score is
-            // not translated -- so this writes the same value to both rather
-            // than letting the two drift apart.
-            <input
-              id={`s-v-${stat.id}`}
-              type="number" min="0" max="5" step="0.1" inputMode="decimal" dir="ltr"
-              value={pick(stat.value, lang) || ''}
-              onChange={(e) => {
-                const raw = e.target.value;
-                const n = raw === '' ? '' : String(Math.min(5, Math.max(0, Number(raw))));
-                onChange({ value: { ar: n, en: n } });
-              }}
-              placeholder="4.9"
-            />
-          ) : (
-            <input id={`s-v-${stat.id}`} value={pick(stat.value, lang)} onChange={(e) => onChange({ value: setLangValue(stat.value, lang, e.target.value) })} placeholder={lang === 'ar' ? '2+' : '2+'} />
-          )}
+        <Field id={`s-v-${stat.id}`} label={t('stat_value')}>
+          <input id={`s-v-${stat.id}`} value={pick(stat.value, lang)} onChange={(e) => onChange({ value: setLangValue(stat.value, lang, e.target.value) })} placeholder="4.9" />
         </Field>
       </div>
-      {stat.kind === 'rating' && (
-        <p className="stat-preview" aria-hidden="true">{renderStars(Number(pick(stat.value, lang)) || 0)}</p>
-      )}
     </div>
   );
 }
@@ -5401,7 +5318,6 @@ function AdminStyles() {
          a 12px/600 label is assertive). One more RTL guard retired by not
          needing one. */
       .card-row .row-tag { font-size: var(--text-sm); font-weight: 600; color: var(--text-tertiary); }
-      .card-row .stat-preview { margin: var(--space-2) 0 0; font-size: var(--text-xl); letter-spacing: 2px; color: var(--accent); }
       .card-row.avail { display: flex; flex-direction: column; gap: var(--space-3); }
       .avail-state { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-md); }
       .avail-state .dot { inline-size: 9px; block-size: 9px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
