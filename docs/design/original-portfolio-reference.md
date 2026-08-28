@@ -134,18 +134,25 @@ real tenant data, in Arabic and English, at 375px and desktop.
   to edge because `appearance.tokens.bg` had been set to the accent. Only the
   accent is still a tenant value.
 
-### The banner concept is gone — "the slider IS the work"
+### The band shows BANNERS — proposed, tried, and reversed the same day
 
-Approved 2026-08-28. What used to be a separate `banners` array — promotional
-images above the portfolio, which a visitor reads as the client's work when it
-is not — is now the client's actual pieces, drawn from `projects` in the order
-they chose. Tapping one opens it full size.
+**Do not re-propose this without reading the whole entry.**
 
-**This was safe to do because no tenant has a banner without also having
-pieces** — checked against all seven before it was written, not assumed.
+For a few hours the band showed the client's `projects` instead of `banners`,
+on the argument that an image above the work reads AS the work. Feras reversed
+it: it tied the largest block on the card to whether a client had uploaded
+projects, and he wants an image he places there directly. His call on his own
+product, and it stands.
 
-It also deleted the auto-appended "open my portfolio" button: the work is on the
-card, so a button whose job was to go and find it has nothing left to do.
+What survived the reversal:
+
+* the auto-appended "open my portfolio" button stays deleted — a client who
+  wants their work reachable adds a button with `action: open_projects`, which
+  opens the same modal it always did;
+* `Lightbox` stays extracted from `ProjectsModal`, because that modal uses it;
+* the band keeps the fixed 170px height, the dots, and the hover arrows.
+
+The `banners` array, `BANNER_BGS` and the banner editor in بطاقتي are all back.
 
 ### Removed from the render, and live for someone today
 
@@ -154,9 +161,26 @@ Each of these still exists in the database. Nothing was migrated or deleted.
 | Removed | Was live on | Why |
 |---|---|---|
 | The ticker | `designakum`, `roza` | A marquee. Loudest thing on a page selling calm, and it sat above the work |
-| CTAs 2..n | `roza` (6), `alihabibfilms` (4), `designakum` (3) | A page with five equal asks has none. Contact is the icon row at the top |
+| CTAs 4..n | `roza` (6) | Capped at THREE, styled identically. Six read as a wall; which of the three matters is the client's ordering, not a hierarchy the product invents |
 | The admin setup nudge | any signed-in owner | The product talking to itself on a customer's site |
-| `sections.projects` | `f9designer`, `designakum` | It was hiding the only real work on the platform. Sections appear from content |
+| all five `sections.*` toggles | every tenant | A section appears when it has content. `projects` was false on the only two workspaces that HAVE work; `lang_switcher` was on for five clients with no English to switch to |
+| Custom fields | nobody — zero usage across all seven | Arbitrary key/value pairs ask the client to invent structure, which is the product's job |
+
+### Added after the reference, and not in it
+
+| | |
+|---|---|
+| The three-fact strip | A rating, a client count, and availability derived from working hours. The original had three free-text stats; every client used one of them to say whether they were free, by hand, with nothing to expire it |
+| The bio | Visible, after the work. The original has none; hiding the sentence that explains who someone is, to save four lines, spends effort to lose meaning |
+| The page glow | Takes the client's accent HUE at pinned lightness. The default accent reproduces `#6a70ab` to within 0.35° |
+| Manrope for Latin | The original sets everything in Tajawal, whose Latin is a secondary design |
+
+### Two things in the original deliberately NOT copied
+
+* **`letter-spacing: 0.5px` on the Arabic `h1`.** Arabic is cursive; tracking
+  severs the joins. design.md §10, and a test enforces it elsewhere.
+* **The share button.** A single-tenant affordance. That corner holds the
+  language switch, which needed a home and is the right kind of quiet.
 
 ## THE STAR RATING ALREADY EXISTED
 

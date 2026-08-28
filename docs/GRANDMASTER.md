@@ -41,50 +41,96 @@ from it on 2026-08-27 and live in `/console`.
 
 ### The reference for the portfolio's look
 
-`design/original-portfolio-reference.md` — the earlier build Feras wants to
-return to, at https://enchanting-palmier-b208ed.netlify.app/, with its card
-width, radius, font, gradient and structure measured off the running page.
-**Read it before touching `pages/index.js`.**
+`design/original-portfolio-reference.md` — the build Feras returned to, at
+https://enchanting-palmier-b208ed.netlify.app/, measured off the running page
+with `getComputedStyle` rather than described from memory. It carries the full
+spec and every decision taken against it. **Read it before touching
+`pages/index.js`.**
 
-### Where this stands, 2026-08-28
+---
 
-**The portfolio's look is done and verified in a browser** against the reference
-below, on real tenant data, in both languages, at phone and desktop width. The
-measured spec and every decision taken are recorded in
-`design/original-portfolio-reference.md`. The headline change: **the image band
-is now the client's work**, not a separate "banners" feature, and the card ends
-on exactly one button.
+### WHERE THIS STANDS (end of 2026-08-28)
 
-**The admin has not been touched, and it is now the job.** It is being rebuilt
-as a clean slate, one control at a time, and only for what the design turned out
-to need. Until then the editor still offers settings the public page no longer
-renders — a ticker, extra buttons, a background colour, a corner radius, a font.
-Nothing was deleted from the database.
+Everything below is shipped, pushed and applied unless it says otherwise.
 
-### The plan this follows, decided 2026-08-28
+**The public portfolio** is the original's design: a 330px card at 35px radius,
+a violet page gradient, contact as icons at the top, one 170px image band, a
+three-fact strip, up to three buttons, a footer. Verified in a browser on real
+tenant data, in Arabic and English, at 375px and desktop.
 
-**Finalise the portfolio's look FIRST, then build admin controls for whatever
-turned out to be customisable.** The previous order — adding a control and
-letting the design follow — produced settings nobody could explain, and was
-abandoned. A stat "Type" selector built this way was reverted the same day.
+**The client editor is five tabs**, down from ten: أعمالي، بطاقتي، التواصل،
+الزيارات، حسابي.
 
-### WHAT THE PORTFOLIO'S LOOK IS, AND WHOSE IT IS
+**`/console`** is the owner's one screen: roster, search, invite, and a panel
+per client (access, portfolio, editor, reset password, change email,
+grant/renew/revoke free access, delete). Pinned dark.
 
-**Nobody redesigned the public portfolio in the 2026-08-26..28 sessions.** If a
-future session is asked to "revert the redesign", there is no redesign to
-revert. `pages/index.js` changed in exactly four ways:
+#### What changed today, and why — the short version
 
-  * the data path — reads a published snapshot via RPC instead of the tables
-    (no visual change at all)
-  * a green "Available now" badge (new, section-s)
-  * a "could not load, try again" screen, which replaced a false 404
-  * stat cells: padding 16 -> 18px and a min-height, because a two-line label
-    was clipping
+| | |
+|---|---|
+| The band | Shows **banners** again. It briefly showed the client's projects; Feras reversed that — he wants an image he puts there directly |
+| The strip | Three DEFINED facts, not free text: a rating (chosen from a list), a client count (a number, no label), and availability **derived from working hours** so it cannot go stale |
+| Type | Manrope for Latin, Tajawal for Arabic. Tajawal was first, so every Latin glyph came from its secondary script |
+| The glow | Takes the client's accent **hue only**, at pinned lightness. The default accent reproduces the measured original to within 0.35° of hue |
+| Bilingual | Opt-in. Five of seven clients had no English and were being asked for it twice |
+| Free access | Can expire. No end date still means forever, which is what all seven carry |
+| Onboarding | Self-serve only. The owner types an email; the client signs themselves up onto a 30-day comp |
 
-The card's actual design predates all of it. Its history is in
-`git log --follow pages/index.js`; the last commits that shaped how it LOOKS are
-`4683400`, `2185986`, `0588ac0` and `36542d4`. That is where "the old design"
-lives, and reverting should start by reading those, not by undoing recent work.
+#### The database, as of tonight
+
+```
+tenants 7 · all comped, none with a deadline · payments 0 · invites 0
+projects 9 · bilingual 2 (designakum, f9designer) · cron jobs 1
+published snapshots carrying the new columns: 3 of 7
+```
+
+**Nobody has ever paid.** The revenue tiles in `/console` appear with the first
+payment and are hidden until then.
+
+**Four portfolios still have stale snapshots.** A snapshot is built from an
+EXPLICIT column list, so the new fields only reach a live site when that client
+presses Publish. Their cards are correct, just missing the newer parts.
+
+#### Applied to production
+
+Sections `t` `u` `v` `w` `x` (quick facts + the paywall date rule; free-access
+invites; bilingual + the snapshot builder; expiry notices; unpublished-changes).
+Edge Functions deployed: `signup-verify`, `billing-subscription`,
+`delete-client`, `expiry-notices`. `invite-client` deleted. `pg_cron` job
+`expiry-notices-daily` runs 06:00 UTC and was proven end to end (200, considered
+0). `CRON_SECRET` is in Vault and in the function's secrets.
+
+---
+
+### THE FIVE THINGS THAT WILL WASTE YOUR DAY
+
+1. **`next build` poisons a running dev server.** It writes `.next` with the
+   placeholder credentials baked in, because `NEXT_PUBLIC_*` is a compile-time
+   substitution. The symptom is `ERR_NAME_NOT_RESOLVED` for
+   `placeholder.supabase.co` and a portfolio stuck on its retry screen.
+   `rm -rf .next` and restart. See the `verify` skill.
+
+2. **The preview shows the DRAFT; the public page shows the last PUBLISH.**
+   Fields can be filled in, visible in the preview, and absent from the live
+   card. That is the staging model, not a bug.
+
+3. **A new profile column is invisible to the live site** until it is named in
+   `build_snapshot()` (section-x). It will work perfectly in the preview and do
+   nothing after Publish.
+
+4. **You cannot sign in.** Entering a password is refused, so every signed-in
+   screen is build-and-test verified only. To actually see an editor render,
+   mount it on a scratch page against a stub `TenantContext` — that is how the
+   `RATING_CHOICES` crash was reproduced.
+
+5. **The guards bite, and they are right.** `npm test` will refuse: a JSX
+   component or SCREAMING_SNAKE constant used and never declared; a backtick
+   inside a styled-jsx template; an Arabic imperative aimed at a person; a
+   `<label>` naming nothing; a sixth font family. Fix the code, or update the
+   guard **with the reason recorded** — never lower a threshold to get green.
+
+---
 
 ### What is live in the database
 
@@ -93,29 +139,34 @@ lives, and reverting should start by reading those, not by undoing recent work.
 | P | `tenants.published_snapshot`, `published_at`, `publish_tenant()` |
 | Q | `get_public_portfolio()`; anon SELECT removed from `profile`/`projects` |
 | R | `deleted_clients` archive |
-| S | `profile.availability` — a self-expiring "available now" |
+| S | `profile.availability` — superseded by `profile.hours` (section-t) |
+| T | `rating`, `client_count`, `hours`; comps can expire |
+| U | `free_access_invites`, `claim_free_access()` |
+| V | `profile.bilingual`; snapshot carries the new columns |
+| W | `comp_expiry_notices`, `comps_needing_notice()`, the daily cron |
+| X | `build_snapshot()`, `has_unpublished_changes()` |
 
-**The paywall is now enforced by the database.** Before section-q, `profile` and
-`projects` were anon-readable, so the subscription gate ran in the visitor's own
-JavaScript while the data sat one fetch away. Verified after: an anon caller gets
-`[]` from both tables, and `get_public_portfolio` returns `null` for an
-unentitled tenant.
-
-**Editing model:** a client edits the draft (`profile`/`projects`) and presses
-Publish, which serialises it into the snapshot the public site reads. The
-preview pane shows the DRAFT; "View live site" shows what visitors see.
-
-**Availability is deliberately NOT in the snapshot** — it is merged live and
-expires by comparison at read time, so it can never be stale. See
-`features/live-availability.md`.
+**The paywall is enforced by the database**, not the UI:
+`get_public_portfolio()` → `tenant_has_active_subscription()`. A comped row with
+`current_period_end` in the past is no longer entitled; a NULL end date is
+permanent.
 
 ### What was REMOVED, so nobody looks for it
 
 `pages/studio/`, `components/studio/`, `components/shell/`, `lib/studio/`,
-`lib/shell-nav.js`, `lib/shell-prefs.js` and their tests are **deleted**
-(2026-08-27). They were an unbuilt second product — a "Studio" for clients and a
-"Console" for owners — meant to replace `/admin`. `/admin` already did the job.
-The Studio/Console mythology in the documents below is history, not a plan.
+`lib/shell-nav.js`, `lib/shell-prefs.js` (2026-08-27) — an unbuilt second
+product.
+
+`components/CredentialsHandoff.js`, `lib/credentials.js`,
+`lib/credentials-pdf.js`, `lib/handoff-store.js`,
+`supabase/functions/invite-client` (2026-08-28) — the generated-password
+handover. Clients sign themselves up; nobody sees a password.
+
+`AppearanceEditor`, `ClientHome`, `BannerRow`'s tab, custom fields, the five
+`sections.*` visibility toggles, the ticker (2026-08-28).
+
+**Columns kept but unread:** `stats`, `top_ticker`, `custom_fields`,
+`sections`, and most of `appearance`. Dropping them is a separate decision.
 
 ### Documents that describe the abandoned direction
 
@@ -128,34 +179,42 @@ history:
 `architecture/renderer-contracts.md` · `design/design.md` §6 ·
 `design/next-step.md` · `ux/designakum-design-system-final.md` §7
 
-**Added to this list 2026-08-28**, because a session lost time to the
-contradiction before spotting it:
+**Added 2026-08-28**, because a session lost time to the contradiction:
 
 `design/public-portfolio-hierarchy.md` · `design/public-portfolio-feature-decisions.md`
 · `design/credibility-line.md`
 
 These three are marked **approved** and describe a **different page entirely**:
-work-first, no image band, no stat row, bio after the work, the action below it.
-They were written for `PortfolioRenderer`, which was deleted on 2026-08-27, and
-they contradict `design/original-portfolio-reference.md` — the actual target —
-on nearly every point.
+work-first, no image band, no stat row, the action below the work. They were
+written for `PortfolioRenderer`, deleted 2026-08-27.
 
-**The live data settles it.** Six of the seven published tenants have NO pieces
-at all. "The work is the page" would render an empty page for everyone except
-f9designer. Read them for their principles, which are good, and not for their
-layout, which is for a product that was not built.
+**The live data settles it.** Six of seven tenants have NO pieces at all. "The
+work is the page" would render an empty page for everyone but f9designer. Read
+them for their principles, not their layout.
 
-Where they were RIGHT, and it was taken: one call to action, no ticker, no
+Where they were RIGHT, and it was taken: one primary action, no ticker, no
 custom fields, no visibility toggles, sections appear from content.
 
 ### What has never been verified by a human
 
-Every signed-in flow. Sessions to date could not sign in — entering a password is
-refused — so `/console`, publish, reset password, change email, grant/revoke free
-access and delete are **build-and-test verified only**. Feras has since used
-delete successfully (4 archived rows). Everything else is unproven in use.
+**Every signed-in flow.** No session has been able to sign in. `/console`, the
+five editor tabs, publish, the colour picker, the hours picker, invite,
+grant/renew, reset password, change email and delete are build-and-test
+verified only.
 
----
+**Untested end to end:** the signup → invite → 30-day comp path, and
+cancel-on-delete at PayPal (no live subscription has ever existed).
+
+### What is open
+
+* **Custom domains.** Wanted, not built, no `domains` table. The "Workspace"
+  section in Account still shows a manager for it.
+* **The next background step.** The glow follows the accent's hue; a short list
+  of full background treatments is the next rung if that is not enough.
+* **`profile.footer.color`** stores `rgba(var(--on-bg),0.3)` — a CSS variable
+  written into the database and read back by the public page.
+* **`docs/features/live-availability.md`** — option 1 (Discord presence) parked.
+  WhatsApp and Telegram cannot provide presence; only Discord can.
 
 ## 1. What this is
 
