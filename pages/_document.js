@@ -66,6 +66,13 @@ export default function Document() {
             This only fixes the first paint, which is the only thing that was
             broken. Behaviour, storage key and 'dark' default are unchanged.
 
+            /console IS PINNED DARK and does not read the stored preference. It
+            is one person's operating tool, it is designed dark, and the theme
+            toggle lives in /admin — so the stored value there is a CLIENT
+            editor preference that has no business deciding what the operator's
+            console looks like. Reading it meant flipping the theme in the
+            editor silently repainted the console too.
+
             In <body> rather than <Head>: Next.js reorders and dedupes head
             children, and this must run in document order, before the body
             paints. */}
@@ -74,7 +81,9 @@ export default function Document() {
             __html:
               '(function(){try{' +
                 'var p=location.pathname.replace(/\\/+$/,"")||"/";' +
-                'if(p==="/admin"||p==="/console"||p==="/signup"||p==="/signup/verify"||p==="/subscribe"||p==="/reset-password"){' +
+                'if(p==="/console"){' +
+                  'document.documentElement.setAttribute("data-admin-theme","dark");' +
+                '}else if(p==="/admin"||p==="/signup"||p==="/signup/verify"||p==="/subscribe"||p==="/reset-password"){' +
                   'document.documentElement.setAttribute("data-admin-theme",localStorage.getItem("admin_theme")||"dark");' +
                 '}' +
               '}catch(e){}})();',

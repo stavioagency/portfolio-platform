@@ -903,6 +903,26 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   // rather than by hiding the button.
   const [publishing, setPublishing] = useState(false);
   const [publishedMsg, setPublishedMsg] = useState('');
+  // ARE THERE CHANGES VISITORS CANNOT SEE YET?
+  //
+  // Answered by the database, which serialises the draft and compares it to the
+  // published snapshot (section-x) — not by a timestamp, because updated_at
+  // moves when someone opens a field and closes it again, and `projects` has no
+  // updated_at at all, so a reordered or deleted piece would have been
+  // invisible to that test.
+  //
+  // Re-checked when the tab changes and after a save or a publish, which is
+  // every moment the answer can have moved. Not polled: a client editing for
+  // ten minutes does not need this asked twenty times.
+  const [pending, setPending] = useState(false);
+  const checkPending = useCallback(async () => {
+    if (!tenant?.id) { setPending(false); return; }
+    try {
+      const { data } = await supabase.rpc('has_unpublished_changes', { tid: tenant.id });
+      setPending(data === true);
+    } catch (e) { /* a failed check must never block editing */ }
+  }, [tenant?.id]);
+  useEffect(() => { checkPending(); }, [checkPending, activeTab]);
   async function publishSite() {
     if (!tenant?.id || publishing) return;
     setPublishing(true);
@@ -916,6 +936,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
           : (ar ? 'تعذّر النشر. يمكن المحاولة مرة أخرى.' : 'Could not publish. Try again.'));
       } else {
         setPublishedMsg(ar ? 'تم النشر' : 'Published');
+        setPending(false);
       }
     } catch (e) {
       setPublishedMsg(ar ? 'تعذّر النشر. يمكن المحاولة مرة أخرى.' : 'Could not publish. Try again.');
@@ -1114,9 +1135,29 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
             <Icon name="external" size={13} mirror />
             {t('view_live_site')}
           </a>
-          <button type="button" className="publish-btn" onClick={publishSite} disabled={publishing}>
-            {publishing ? (ar ? 'جاري النشر…' : 'Publishing…') : (ar ? 'نشر التغييرات' : 'Publish changes')}
+          {/* THE STATE IS ON THE BUTTON, not in a badge beside it. A count of
+              pending changes is meaningless to a client — they know what they
+              changed — and a separate indicator is a second thing to notice.
+              The button either has something to do or it says so. */}
+          <button
+            type="button"
+            className={`publish-btn ${pending ? 'has-changes' : ''}`}
+            onClick={publishSite}
+            disabled={publishing || !pending}
+          >
+            {publishing
+              ? (ar ? 'جاري النشر…' : 'Publishing…')
+              : pending
+                ? (ar ? 'نشر التغييرات' : 'Publish changes')
+                : (ar ? 'كل شيء منشور' : 'Everything is published')}
           </button>
+          {pending && !publishing && (
+            <div className="publish-note">
+              {ar
+                ? 'لديك تعديلات لا يراها الزوار بعد.'
+                : 'You have changes visitors cannot see yet.'}
+            </div>
+          )}
           {publishedMsg && <div className="publish-msg" role="status">{publishedMsg}</div>}
         </div>
 
@@ -1255,7 +1296,12 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         .view-site-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
         .publish-btn { display: flex; align-items: center; justify-content: center; width: 100%; margin-top: var(--space-2); padding: 9px 12px; min-height: 40px; background: var(--accent); border: 1px solid var(--accent); border-radius: var(--radius-sm); color: var(--accent-fg); font-family: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer; transition: opacity var(--t-ui) var(--ease); }
         .publish-btn:hover:not(:disabled) { opacity: 0.9; }
-        .publish-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        /* Nothing to publish is the RESTING state and it is quiet: a filled
+           accent button that does nothing is an instruction the client cannot
+           follow. It fills only when pressing it would change what visitors
+           see. */
+        .publish-btn:disabled { opacity: 1; background: none; border-color: var(--border); color: var(--text-tertiary); cursor: default; font-weight: 500; }
+        .publish-note { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.5; }
         .publish-btn:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
         .publish-msg { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--text-tertiary); text-align: center; }
         .signout-btn { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--text-tertiary); padding: 6px 0; background: none; border: none; cursor: pointer; font-family: inherit; }

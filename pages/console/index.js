@@ -196,13 +196,15 @@ function Console() {
     try { localStorage.setItem('lang', next); } catch (e) { /* ignore */ }
   }
 
-  // Same stored preference the admin uses, applied on mount. _document.js
-  // initialises it before paint; this keeps it correct after hydration and is
-  // what makes /console honest in the theme-init route list.
+  // PINNED DARK, and it does not read the stored preference.
+  //
+  // It used to take admin_theme, which is the CLIENT EDITOR's theme toggle —
+  // so switching /admin to light silently repainted the operator's console
+  // too. This is one person's operating tool, it is designed dark, and there is
+  // no toggle for it here. _document.js sets the same value before first paint;
+  // this keeps it right after hydration and after a client-side navigation.
   useEffect(() => {
-    try {
-      document.documentElement.setAttribute('data-admin-theme', localStorage.getItem('admin_theme') || 'dark');
-    } catch (e) { /* private mode: fall through to the default */ }
+    document.documentElement.setAttribute('data-admin-theme', 'dark');
   }, []);
 
   useEffect(() => { boot(); }, []);
@@ -290,6 +292,10 @@ function Console() {
   // languages (Intl.NumberFormat('ar') would render ١٢, which this product does
   // not use anywhere).
   const fmtMoney = (minor) => <Money minor={minor} lang={lang} currency={money.currency} />;
+  // Has anyone ever paid? Not "is the total zero" — a month with no payments
+  // after a year of them is still a business with revenue, and hiding the
+  // figure then would be hiding the bad news.
+  const hasRevenue = payments.length > 0;
 
   // ---- actions. Each one calls exactly what /admin calls. -------------------
 
@@ -506,11 +512,20 @@ function Console() {
 
   return (
     <Shell lang={lang}>
+      {/* TWO ROWS, NOT ONE. A title, then the controls. Six things on one flex
+          line wrapped differently at every window width, and the count sat next
+          to a tab that changed what it counted. */}
       <div className="head">
         <h1>
           {view === 'clients' ? t('clients') : t('removed')}
           <span className="count">{view === 'clients' ? rows.length : archived.length}</span>
         </h1>
+        <button type="button" className="lang" onClick={toggleLang} aria-label={ar ? 'Switch to English' : 'التبديل إلى العربية'}>
+          {ar ? 'EN' : 'ع'}
+        </button>
+      </div>
+
+      <div className="toolbar">
         <div className="tabs" role="tablist">
           <button type="button" role="tab" aria-selected={view === 'clients'}
                   className={view === 'clients' ? 'on' : ''} onClick={() => setView('clients')}>{t('clients')}</button>
@@ -518,23 +533,32 @@ function Console() {
                   className={view === 'archived' ? 'on' : ''} onClick={() => setView('archived')}>{t('removed')}</button>
         </div>
         {view === 'clients' && (
-          <Button size="sm" onClick={() => setAdding(true)}>+ {t('inviteTitle')}</Button>
-        )}
-        <button type="button" className="lang" onClick={toggleLang} aria-label={ar ? 'Switch to English' : 'التبديل إلى العربية'}>
-          {ar ? 'EN' : 'ع'}
-        </button>
-        {view === 'clients' && (
-          <input
-            className="search" value={q} onChange={(e) => setQ(e.target.value)}
-            placeholder={t('search')} aria-label={t('search')}
-          />
+          <>
+            <input
+              className="search" value={q} onChange={(e) => setQ(e.target.value)}
+              placeholder={t('search')} aria-label={t('search')}
+            />
+            <Button size="sm" onClick={() => setAdding(true)}>+ {t('inviteTitle')}</Button>
+          </>
         )}
       </div>
 
+      {/* THE REVENUE TILES APPEAR WHEN THERE IS REVENUE. Nobody has ever paid,
+          so two of these five were a permanent pair of zeroes — and a dashboard
+          whose figures never move is one you stop reading, which is how the
+          number that DOES matter gets missed. They arrive with the first
+          payment, which is when they start meaning something.
+
+          The three that remain are counts of clients, which is what this screen
+          is for. */}
       {view === 'clients' && (
-        <div className="money">
-          <div className="m"><b>{fmtMoney(money.month)}</b><span>{t('thisMonth')}</span></div>
-          <div className="m"><b>{fmtMoney(money.all)}</b><span>{t('allTime')}</span></div>
+        <div className={`money ${hasRevenue ? 'with-money' : ''}`}>
+          {hasRevenue && (
+            <>
+              <div className="m"><b>{fmtMoney(money.month)}</b><span>{t('thisMonth')}</span></div>
+              <div className="m"><b>{fmtMoney(money.all)}</b><span>{t('allTime')}</span></div>
+            </>
+          )}
           <div className="m"><b>{money.paying}</b><span>{t('paying')}</span></div>
           <div className="m"><b>{money.free}</b><span>{t('freeCount')}</span></div>
           <div className="m"><b>{money.unpaid}</b><span>{t('notPaying')}</span></div>
@@ -624,9 +648,13 @@ function Console() {
       )}
 
       <style jsx>{`
-        .head { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-5); }
+        .head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
         h1 { font-size: var(--text-2xl); font-weight: 700; margin: 0; }
         .count { margin-inline-start: var(--space-2); font-size: var(--text-md); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+        /* The controls, on their own line. The search takes the room between
+           the tabs and the button rather than pushing everything around as the
+           window narrows. */
+        .toolbar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-5); }
         .tabs { display: inline-flex; gap: 2px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 3px; }
         .tabs button { padding: 6px 14px; min-height: 34px; border: none; background: none; border-radius: var(--radius-sm);
                        color: var(--text-tertiary); font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
@@ -635,26 +663,46 @@ function Console() {
         .lang { min-width: 44px; min-height: 40px; padding: 0 12px; background: var(--bg-secondary); border: 1px solid var(--border);
                 border-radius: var(--radius-md); color: var(--text-secondary); font: inherit; font-weight: 700; cursor: pointer; }
         .lang:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
-        .search { margin-inline-start: auto; min-width: 260px; flex: 1 1 260px; max-width: 380px; padding: 10px 14px; min-height: 44px;
+        .search { min-width: 220px; flex: 1 1 220px; max-width: 420px; padding: 10px 14px; min-height: 40px;
                   background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md);
                   color: var(--text-primary); font: inherit; }
         .search:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 2px var(--brand-focus); }
         .skel { display: flex; flex-direction: column; gap: var(--space-2); }
-        .money { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-5); }
+        .money { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-5); }
+        .money.with-money { grid-template-columns: repeat(5, minmax(0, 1fr)); }
         .m { background: var(--surface-card); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-4); }
         .m b { display: block; font-size: var(--text-xl); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
         .m span { display: block; margin-top: 2px; font-size: var(--text-sm); color: var(--text-tertiary); }
-        @media (max-width: 860px) { .money { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-        .table { display: flex; flex-direction: column; }
+        @media (max-width: 860px) { .money, .money.with-money { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+        /* THE TABLE IS ONE SURFACE. It was rows floating on the page background
+           separated by hairlines, which reads as a list of fragments rather
+           than as a table of clients — and gave a row nowhere to highlight when
+           the pointer was over it. */
+        .table { display: flex; flex-direction: column;
+                 background: var(--surface-card); border: 1px solid var(--border-default);
+                 border-radius: var(--radius-md); overflow: hidden; }
         .tr { display: grid; grid-template-columns: 1.4fr 1.6fr 0.9fr auto; gap: var(--space-3); align-items: center;
-              padding: var(--space-3) 0; border-bottom: 1px solid var(--border); }
-        .th { font-size: var(--text-sm); font-weight: 600; color: var(--text-tertiary); border-bottom-color: var(--border-strong); }
+              padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border);
+              transition: background-color var(--t-ui) var(--ease); }
+        .tr:last-child { border-bottom: none; }
+        /* Only real rows light up. The header is not a row you can act on. */
+        .tr:not(.th):hover { background: var(--bg-secondary); }
+        .th { font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+              color: var(--text-tertiary); background: var(--bg-secondary); }
+        /* Arabic has no case and letter-spacing severs its joins (design.md
+           §10), so the Latin header treatment is undone in RTL. */
+        :global(html[dir='rtl']) .th { letter-spacing: normal; text-transform: none; }
         .c-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
         .slug { font-size: var(--text-sm); color: var(--text-tertiary); }
         .c-email { font-size: var(--text-sm); color: var(--text-secondary); overflow-wrap: anywhere; }
         .c-email i { color: var(--text-muted); }
         .c-act { display: flex; gap: var(--space-2); justify-content: flex-end; flex-wrap: wrap; }
-        .arc { grid-template-columns: 1.4fr 1.6fr 1fr; opacity: 0.75; }
+        .arc { grid-template-columns: 1.4fr 1.6fr 1fr; }
+        /* Removed clients are history, not a lesser version of a live row.
+           Dimming the whole row made the email hard to read, which is the one
+           thing anybody comes to this view for. */
+        .arc .c-name b { color: var(--text-secondary); }
         @media (max-width: 860px) {
           .tr { grid-template-columns: 1fr; gap: var(--space-2); }
           .th { display: none; }
