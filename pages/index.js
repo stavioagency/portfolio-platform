@@ -597,7 +597,14 @@ export default function Home({ slug = null } = {}) {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="social-icon"
-                    aria-label={pick(l.label, lang)}
+                    /* The client's own label if they wrote one, and the
+                       platform's name if they did not. It usually is not
+                       written: four of roza's links and all of f9designer's
+                       reached the page as links with NO accessible name at all
+                       — a screen reader announced four consecutive "link"s and
+                       nothing else. An icon-only control must carry its name in
+                       the markup, and BRAND_ICONS already knows every one. */
+                    aria-label={pick(l.label, lang) || ic.label}
                     onClick={() => onSocialClick(iconKey)}
                   >
                     <BrandGlyph icon={iconKey} size={15} />
