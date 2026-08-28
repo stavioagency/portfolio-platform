@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { supabase } from '../../lib/supabase';
 import { deriveBilling, statusLabel, formatBillingDate } from '../../lib/billing-status';
+import { formatAmount, DISPLAY_CURRENCY } from '../../lib/billing-plans';
 import { Button, Badge, Input, EmptyState, Icon, Skeleton, ToastProvider, useToast, ConfirmProvider, useConfirm } from '../../components/ui';
 
 
@@ -267,8 +268,12 @@ function Console() {
     const ok = payments.filter((p) => ['succeeded', 'completed', 'paid'].includes(String(p.status)));
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    const sum = (list) => list.reduce((n, p) => n + (Number(p.amount) || 0), 0) / 100;
-    const cur = ok[0]?.currency || 'USD';
+    // Kept in MINOR UNITS all the way to the formatter. Dividing by 100 here
+    // and formatting there was two places that had to agree about what a
+    // hundredth is, and formatAmount() already knows (zero-decimal currencies
+    // exist and JPY is one of them).
+    const sum = (list) => list.reduce((n, p) => n + (Number(p.amount) || 0), 0);
+    const cur = ok[0]?.currency || DISPLAY_CURRENCY;
     return {
       all: sum(ok),
       month: sum(ok.filter((p) => new Date(p.created_at).getTime() >= monthStart)),
@@ -278,7 +283,13 @@ function Console() {
       unpaid: rows.filter((r) => !r.billing.entitled).length,
     };
   }, [payments, rows]);
-  const fmtMoney = (n) => `${money.currency} ${n.toFixed(2)}`;
+  // formatAmount() is the product's one money formatter, and this screen was
+  // the only place not using it -- it printed "USD 12.00" while every customer-
+  // facing screen printed "12 ر.س". Same function now, so the operator sees the
+  // figure in the currency the market is quoted in, with LATIN digits in both
+  // languages (Intl.NumberFormat('ar') would render ١٢, which this product does
+  // not use anywhere).
+  const fmtMoney = (minor) => formatAmount(minor, lang, money.currency);
 
   // ---- actions. Each one calls exactly what /admin calls. -------------------
 
