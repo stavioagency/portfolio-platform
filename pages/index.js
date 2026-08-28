@@ -50,12 +50,22 @@ const BANNER_BGS = {
   dark:   'linear-gradient(135deg, #1f2937, #374151)',
 };
 
-// The portfolio is set in Tajawal, which is the original's font and the only
-// one this page uses. It was four client-selectable stacks and a three-value
-// radius scale; both were presentation controls and both are gone -- see the
-// appearance effect below for why. The stack keeps Arabic and Latin fallbacks
-// so the page is legible in the moment before the webfont lands.
-const PF_FONT = "'Tajawal', 'IBM Plex Sans Arabic', system-ui, sans-serif";
+// TWO FACES, ONE STACK, and the ORDER is the whole point.
+//
+// Tajawal was first, which meant every Latin character on the card was drawn by
+// Tajawal -- and Latin is the secondary script in that family. An English
+// portfolio came out loose and wide, with the flat even rhythm of a face whose
+// designers were solving a different problem.
+//
+// A browser falls back PER CHARACTER, not per element. Manrope first means
+// Latin letters and digits come from Manrope, which is a real Latin face and
+// already loaded; every Arabic character misses in Manrope and lands in
+// Tajawal, which is the face the original uses and the one this card was
+// measured against. Neither script gives anything up.
+//
+// It also fixes the numbers: Latin digits in the Arabic view now come from
+// Manrope too, so "1,000" is the same shape in both languages.
+const PF_FONT = "'Manrope', 'Tajawal', 'IBM Plex Sans Arabic', system-ui, sans-serif";
 
 export default function Home({ slug = null } = {}) {
   const [profile, setProfile] = useState(null);
@@ -744,7 +754,11 @@ export default function Home({ slug = null } = {}) {
               {rating !== null && (
                 <div className="stat">
                   <span className="stat-icon star" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                    {/* viewBox trimmed to the ink rather than left at 0 0 24 24.
+                        A star fills its box and a person does not, so at 13px
+                        the two sat a pixel apart vertically — visible when they
+                        are side by side on one line. */}
+                    <svg viewBox="2 2 20 19.4" width="13" height="13" fill="currentColor">
                       <path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z" />
                     </svg>
                   </span>
@@ -759,7 +773,7 @@ export default function Home({ slug = null } = {}) {
               {clientCount !== null && (
                 <div className="stat">
                   <span className="stat-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <svg viewBox="3 2.5 18 20" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <circle cx="12" cy="8" r="3.5" />
                       <path d="M5 21c0-3.9 3.1-7 7-7s7 3.1 7 7" />
                     </svg>
@@ -1141,25 +1155,37 @@ export default function Home({ slug = null } = {}) {
         .stats {
           display: flex;
           justify-content: space-between;
-          align-items: stretch;
-          gap: 4px;
-          padding: 12px;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px;
           background: var(--pf-well);
           border-radius: 20px;
           margin-top: var(--card-stack);
         }
-        /* Each slot is icon + value on ONE line. They used to stack a value
-           over a label, which is what made the strip grow when a label wrapped
-           -- there is no label to wrap any more. */
+        /* SIZED TO THEIR CONTENT, spaced apart — NOT three equal columns.
+           Equal columns are what it had, and they were wrong for a reason worth
+           writing down: a flex item with flex:1 1 0 still cannot shrink below
+           the width of text that is nowrap, so the widest slot ("Available")
+           overflowed its third and shoved the other two left of centre. Every
+           figure sat off its own column, which is exactly what it looked like.
+           Content-sized with space-between gives even GAPS instead, which is
+           what the eye actually reads, and it is what the original does. */
         .stat {
-          flex: 1 1 0;
-          min-width: 0;
+          flex: 0 0 auto;
           display: flex;
           align-items: center;
-          justify-content: center;
           gap: 5px;
         }
-        .stat-icon { display: inline-flex; flex-shrink: 0; color: var(--pf-ink); }
+        /* A fixed box, so the glyph occupies the same width whatever its
+           drawing, and the gap to the number never changes. */
+        .stat-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          inline-size: 14px; block-size: 14px;
+          flex-shrink: 0;
+          color: var(--pf-ink);
+        }
         /* The star is the one gold thing on the card, and it is gold for the
            obvious reason: a star that is not star-coloured reads as an
            asterisk. It does not use the tenant accent -- a rating means the
@@ -1189,6 +1215,9 @@ export default function Home({ slug = null } = {}) {
           font-size: 14px; font-weight: 700; color: var(--pf-ink);
           line-height: 1.4;
           white-space: nowrap;
+          /* Tabular figures: "1,000" and "4.9" then occupy predictable widths,
+             so the row does not shuffle when a client changes a count. */
+          font-variant-numeric: tabular-nums;
           unicode-bidi: plaintext;
         }
 
