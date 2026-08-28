@@ -66,7 +66,8 @@ const S = {
     confirmMismatch: 'That did not match. Nothing was deleted.',
     del_done: 'Client deleted. Their email is free to use again.',
     del_blocked_title: 'A subscription is still open',
-    del_blocked_desc: 'PayPal still has a {state} subscription for this client ({env}, {id}). Cancelling it at PayPal first is the clean route. Deleting anyway is allowed — the subscription id is recorded in Removed so it is not lost.',
+    del_blocked_desc: 'PayPal still has a {state} subscription for this client ({env}, {id}), and there is no subscription id to cancel it with. Deleting anyway is allowed — the id is recorded in Removed so it is not lost.',
+    del_cancel_failed_desc: 'Cancelling this client\'s subscription at PayPal failed ({id}): {detail}. Nothing has been deleted. Cancel it at PayPal, then try again. Deleting anyway leaves the subscription live and still charging them.',
     del_force: 'Delete anyway',
     resetConfirmTitle: 'Reset this password?',
     resetConfirmDesc: 'A new password will be generated and emailed to {email}. Their current one stops working immediately.',
@@ -130,7 +131,8 @@ const S = {
     confirmMismatch: 'لم يطابق. لم يُحذف شيء.',
     del_done: 'تم حذف العميل. بريده متاح للاستخدام من جديد.',
     del_blocked_title: 'هناك اشتراك ما زال مفتوحًا',
-    del_blocked_desc: 'لدى باي بال اشتراك بحالة {state} لهذا العميل ({env}، {id}). إلغاؤه في باي بال أولًا هو الطريق النظيف. الحذف رغم ذلك متاح — ورقم الاشتراك يُسجَّل في «المحذوفون» حتى لا يضيع.',
+    del_blocked_desc: 'لدى باي بال اشتراك بحالة {state} لهذا العميل ({env}، {id})، ولا يوجد رقم اشتراك لإلغائه به. الحذف رغم ذلك متاح — والرقم يُسجَّل في «المحذوفون» حتى لا يضيع.',
+    del_cancel_failed_desc: 'تعذّر إلغاء اشتراك هذا العميل في باي بال ({id}): {detail}. لم يُحذف شيء. الإلغاء في باي بال ثم إعادة المحاولة هو الطريق الصحيح. الحذف رغم ذلك يترك الاشتراك فعّالًا ويستمر السحب من العميل.',
     del_force: 'الحذف رغم ذلك',
     resetConfirmTitle: 'إعادة تعيين كلمة المرور؟',
     resetConfirmDesc: 'ستُنشأ كلمة مرور جديدة وتُرسل إلى {email}. كلمتهم الحالية تتوقف فورًا.',
@@ -389,16 +391,21 @@ function Console() {
     let first;
     try { first = await attempt(false); } finally { setBusy(''); }
 
-    // 409 means a subscription could still be charged. Offer the override
-    // rather than a dead end -- a live `pending` that was never approved would
-    // otherwise make the workspace undeletable forever. The orphaned id is
-    // recorded in the archive either way.
+    // The delete cancels a chargeable subscription at PayPal first and only
+    // stops if that fails. So reaching here means the cancel did not happen —
+    // either PayPal refused it, or there was no provider id to cancel.
+    //
+    // The override is still offered rather than a dead end: a live `pending`
+    // that was never approved would otherwise make a workspace undeletable
+    // forever. But forcing now means deleting a client whose subscription MAY
+    // STILL BE CHARGING, which is what the copy has to say.
     if (first.blocked?.kind === 'subscription_live') {
       const b = first.blocked;
       const go = await confirm({
         title: t('del_blocked_title'),
-        description: t('del_blocked_desc')
+        description: (b.failedCancel ? t('del_cancel_failed_desc') : t('del_blocked_desc'))
           .replace('{state}', b.state)
+          .replace('{detail}', b.detail || '—')
           .replace('{env}', b.environment || '—')
           .replace('{id}', b.provider_subscription_id || '—'),
         confirmLabel: t('del_force'),
@@ -654,9 +661,14 @@ async function readFnBlock(error, t) {
   try {
     const body = await error?.context?.json?.();
     if (!body) return { kind: 'unknown', message: t('failDelete') };
-    if (body.error === 'subscription_live') {
+    // Two shapes mean the same thing to the operator: the subscription is
+    // still live and this delete did not go through. 'cancel_failed' is the
+    // newer one — the delete TRIED to cancel at PayPal and could not.
+    if (body.error === 'subscription_live' || body.error === 'cancel_failed') {
       return {
         kind: 'subscription_live',
+        failedCancel: body.error === 'cancel_failed',
+        detail: body.detail || null,
         state: body.state,
         environment: body.environment,
         provider_subscription_id: body.provider_subscription_id,

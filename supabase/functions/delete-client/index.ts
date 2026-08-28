@@ -7,7 +7,8 @@
 // obviously correct, and it cannot break anything that already works.
 //
 // WHAT IT DOES
-//   1. refuses if the subscription could still be charged
+//   1. CANCELS a chargeable subscription at PayPal, and refuses to go on if
+//      that fails
 //   2. writes a record to deleted_clients BEFORE destroying anything
 //   3. deletes the tenant, which cascades profile, projects, tenant_domains,
 //      analytics_events, billing rows and tenant_admins
@@ -20,6 +21,7 @@
 //
 // THIS DOES NOT RESTORE. deleted_clients is a log, not a recycle bin.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getProvider } from "../_shared/provider.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -94,20 +96,60 @@ Deno.serve(async (req: Request) => {
     .select("status, environment, provider_subscription_id")
     .eq("tenant_id", tenant_id).maybeSingle();
 
-  // `force` is the deliberate override for the case the guard cannot resolve on
-  // its own: a LIVE subscription stuck at `pending` that was never approved and
-  // never will be. Refusing forever would mean those workspaces can never be
-  // removed. Overriding is allowed, but it is recorded -- the orphaned provider
-  // subscription id goes into deleted_clients, because after this there is no
-  // other place it survives. The operator is told to cancel at PayPal first.
+  // CANCEL BEFORE DELETING. This used to REFUSE when a subscription could
+  // still be charged, and offer `force` to go ahead anyway -- which left a live
+  // PayPal subscription with nothing on this side: the customer kept being
+  // billed every month and we no longer held a record of who they were.
+  //
+  // So the delete now cancels it first, through the same provider adapter
+  // billing-subscription's `cancel` action uses. cancelSubscription() maps
+  // PayPal's 422 SUBSCRIPTION_STATUS_INVALID to a return rather than a throw,
+  // so a subscription the customer already cancelled reaches the same end state
+  // without an error.
+  //
+  // A FAILED CANCEL STOPS THE DELETE, and that is the whole point. Of the two
+  // bad outcomes -- a client who is not deleted, and a client who is deleted
+  // while their card keeps being charged -- only the second is unrecoverable
+  // from this side. `force` still exists for the case the guard cannot resolve
+  // on its own (a LIVE subscription stuck at `pending` that was never approved
+  // and never will be), and it still records the orphaned id in
+  // deleted_clients, because after this there is nowhere else it survives.
   const force = body.force === true;
-  if (canCharge(sub) && !force) {
-    return json({
-      error: "subscription_live",
-      state: sub!.status,
-      environment: sub!.environment ?? null,
-      provider_subscription_id: sub!.provider_subscription_id ?? null,
-    }, 409);
+  let canceled_at_provider = false;
+  if (canCharge(sub)) {
+    const providerSubId = sub?.provider_subscription_id
+      ? String(sub.provider_subscription_id)
+      : "";
+    if (providerSubId) {
+      try {
+        await getProvider().cancelSubscription(providerSubId, "Client removed by the platform owner");
+        canceled_at_provider = true;
+        console.log(`[delete-client] cancelled ${providerSubId} before deleting ${tenant.slug}`);
+      } catch (err) {
+        if (!force) {
+          // Deliberately NOT deleted. The operator is told exactly which
+          // subscription is still live so they can cancel it at PayPal.
+          console.error("[delete-client] provider cancel failed:", err);
+          return json({
+            error: "cancel_failed",
+            detail: String((err as Error).message),
+            state: sub!.status,
+            environment: sub!.environment ?? null,
+            provider_subscription_id: providerSubId,
+          }, 502);
+        }
+        console.warn("[delete-client] FORCED past a failed cancel:", err);
+      }
+    } else if (!force) {
+      // Chargeable but with no provider id to cancel -- there is nothing this
+      // function can do about it, and guessing is worse than stopping.
+      return json({
+        error: "subscription_live",
+        state: sub!.status,
+        environment: sub!.environment ?? null,
+        provider_subscription_id: null,
+      }, 409);
+    }
   }
 
   // Platform owners are enrolled on EVERY tenant by trg_enroll_platform_owners.
@@ -156,10 +198,14 @@ Deno.serve(async (req: Request) => {
     deleted_by: who.user.id,
     note: [
       String(body.note ?? "").trim() || null,
-      // Whatever was overridden must be legible later, not just implied.
-      canCharge(sub)
+      // What happened to the money must be legible later, not implied. Three
+      // distinct outcomes, and only one of them leaves anything outstanding.
+      canceled_at_provider
+        ? `Cancelled ${sub!.provider_subscription_id} at the provider before deleting`
+        : null,
+      canCharge(sub) && !canceled_at_provider
         ? `FORCED past a ${sub!.environment ?? "unknown"} ${sub!.status} subscription; `
-          + `provider_subscription_id=${sub!.provider_subscription_id ?? "none"} may still exist at PayPal`
+          + `provider_subscription_id=${sub!.provider_subscription_id ?? "none"} MAY STILL BE LIVE at PayPal`
         : null,
     ].filter(Boolean).join(" | ") || null,
   });
