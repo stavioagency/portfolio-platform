@@ -9,6 +9,7 @@ import { BRAND_ICONS, normalizeIcon, brandColor } from '../lib/brand-icons';
 import { safeUrl } from '../lib/safe-url';
 import { hasPublicContent } from '../lib/profile-content';
 import BrandGlyph from '../components/ui/BrandGlyph';
+import { isOpen } from '../lib/working-hours';
 
 function readLang() {
   if (typeof window === 'undefined') return null;
@@ -53,7 +54,6 @@ export default function Home({ slug = null } = {}) {
   // Distinct from notFound: the lookup itself failed. A paying client must not
   // be told their site does not exist because of a transient error.
   const [loadFailed, setLoadFailed] = useState(false);
-  const [available, setAvailable] = useState(false);
   const [lang, setLang] = useState('ar');
   // Captured on the FIRST RENDER, before the persist effect below can run. That
   // effect used to fire on mount with the default 'ar' and overwrite the stored
@@ -129,8 +129,6 @@ export default function Home({ slug = null } = {}) {
           setTenantId(draft.tenant_id);
           // In preview the expiry has to be checked here: this path reads the
           // draft row directly and never goes through the function.
-          setAvailable(!!draft.profile?.availability?.until
-            && new Date(draft.profile.availability.until).getTime() > Date.now());
           setProfile(draft.profile);
           setLang(storedLangRef.current || draft.profile?.default_lang || 'ar');
           setProjects(draft.projects);
@@ -161,10 +159,6 @@ export default function Home({ slug = null } = {}) {
       if (!portfolio) { setNotFound(true); return; }
 
       setTenantId(portfolio.tenant_id || null);
-      // Merged LIVE by get_public_portfolio() and already expiry-checked there,
-      // so if it arrived at all it is currently true.
-      setAvailable(!!portfolio.availability);
-
       // The snapshot carries the same field names the tables did, so everything
       // downstream of here is unchanged.
       const profileData = portfolio.profile || null;
@@ -428,7 +422,29 @@ export default function Home({ slug = null } = {}) {
       title: pick(p.title, lang) || pick(p.title, 'en') || '',
     }))
     .filter(p => !!p.cover);
-  const stats = (profile.stats || []).filter(s => pick(s.value, lang) || pick(s.value, 'en') || pick(s.label, lang) || pick(s.label, 'en'));
+  // THE STRIP — three defined facts, not three free-text boxes.
+  //
+  // It was an array of {value, label} pairs the client typed by hand, and what
+  // they typed says why this changed: all three clients who filled it in used
+  // slot 2 for "am I available", by hand, with no way for it to ever expire.
+  // Roza's said "no" and would have said "no" forever.
+  //
+  // Each slot now has ONE meaning and its own control, and the labels are gone
+  // entirely — the icon says what the number is.
+  const rating = (() => {
+    const n = Number(profile.rating);
+    return Number.isFinite(n) && n > 0 && n <= 5 ? n : null;
+  })();
+  const clientCount = (() => {
+    const n = Number(profile.client_count);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+  })();
+  // Hours that exist and are switched on. Whether they are open RIGHT NOW is a
+  // separate question, asked at render time so the answer can never be stale.
+  const hasHours = !!(profile.hours && profile.hours.enabled !== false
+    && Array.isArray(profile.hours.days) && profile.hours.days.length > 0);
+  const openNow = hasHours && isOpen(profile.hours);
+  const showStrip = rating !== null || clientCount !== null || hasHours;
   const ctas = (profile.cta_buttons || []).filter(b => {
     const hasLabel = pick(b.label, lang) || pick(b.label, 'en') || pick(b.label, 'ar');
     if (!hasLabel) return false;
@@ -738,27 +754,46 @@ export default function Home({ slug = null } = {}) {
             </div>
           )}
 
-          {/* STATS */}
-          {stats.length > 0 && (
+          {/* THE STRIP — a rating, a client count, and whether they are
+              working right now. No labels: the icon carries the meaning, which
+              is what the client asked for and what stops the strip growing
+              three lines tall the moment somebody writes a sentence. */}
+          {showStrip && (
             <div className="stats">
-              {stats.map((s, i) => (
-                <div key={s.id || i} className="stat">
-                  <div className="stat-value">{pick(s.value, lang) || pick(s.value, 'en')}</div>
-                  <div className="stat-label">{pick(s.label, lang) || pick(s.label, 'en')}</div>
+              {rating !== null && (
+                <div className="stat">
+                  <span className="stat-icon star" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                      <path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z" />
+                    </svg>
+                  </span>
+                  {/* toFixed(1) so 5 reads as "5.0" beside a neighbour's "4.9"
+                      — a bare 5 next to 4.9 looks like a different kind of
+                      number. Latin digits in both languages, per design.md. */}
+                  <span className="stat-value">{rating.toFixed(1)}</span>
+                  <span className="sr-only">{lang === 'ar' ? 'التقييم' : 'Rating'}</span>
                 </div>
-              ))}
-            </div>
-          )}
+              )}
 
-          {/* AVAILABILITY — context for the action directly below it, which is
-              the only reason it is on the page. It sits here rather than under
-              the work because "can I hire this person" is a question a visitor
-              forms after seeing the work, and it is answered a line above the
-              button that acts on it. */}
-          {available && (
-            <div className="avail-badge">
-              <span className="avail-dot" aria-hidden="true" />
-              {t('avail_badge')}
+              {clientCount !== null && (
+                <div className="stat">
+                  <span className="stat-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <circle cx="12" cy="8" r="3.5" />
+                      <path d="M5 21c0-3.9 3.1-7 7-7s7 3.1 7 7" />
+                    </svg>
+                  </span>
+                  <span className="stat-value">{clientCount.toLocaleString('en-US')}</span>
+                  <span className="sr-only">{lang === 'ar' ? 'عميل' : 'clients'}</span>
+                </div>
+              )}
+
+              {hasHours && (
+                <div className="stat">
+                  <span className={`avail-dot ${openNow ? 'on' : ''}`} aria-hidden="true" />
+                  <span className="stat-value">{openNow ? t('avail_open') : t('avail_closed')}</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -1113,25 +1148,6 @@ export default function Home({ slug = null } = {}) {
            point is that it removes itself. A pulsing dot was rejected: the
            brand forbids perpetual motion, and a badge that breathes at you is
            louder than the fact it carries. */
-        /* Green, and green is doing real work here — it is the one status on
-           the card, it is time-bounded, and it expires by itself. The card has
-           no other coloured surface, so it cannot be mistaken for decoration.
-           A pulsing dot was rejected and stays rejected: nothing on a published
-           portfolio may demand, and a badge that breathes at you is louder than
-           the fact it carries. */
-        .avail-badge {
-          width: fit-content;
-          margin-top: var(--card-stack);
-          display: flex; align-items: center; gap: 6px;
-          padding: 5px 11px;
-          border-radius: 999px;
-          background: rgba(52,199,89,0.12);
-          border: 1px solid rgba(52,199,89,0.28);
-          color: #6BE08D;
-          font-size: 11px; font-weight: 700;
-        }
-        .avail-dot { inline-size: 6px; block-size: 6px; border-radius: 50%; background: #34C759; flex-shrink: 0; }
-
         /* ONE WELL, not three tiles.
            The stats used to be a grid of bordered cells on their own darker
            background — three boxes, each with a hairline, each reading as a
@@ -1149,27 +1165,47 @@ export default function Home({ slug = null } = {}) {
           border-radius: 20px;
           margin-top: var(--card-stack);
         }
+        /* Each slot is icon + value on ONE line. They used to stack a value
+           over a label, which is what made the strip grow when a label wrapped
+           -- there is no label to wrap any more. */
         .stat {
           flex: 1 1 0;
           min-width: 0;
-          text-align: center;
-          overflow-wrap: anywhere;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 5px;
+        }
+        .stat-icon { display: inline-flex; flex-shrink: 0; color: var(--pf-ink); }
+        /* The star is the one gold thing on the card, and it is gold for the
+           obvious reason: a star that is not star-coloured reads as an
+           asterisk. It does not use the tenant accent -- a rating means the
+           same thing on everyone's portfolio, so it is not theirs to tint. */
+        .stat-icon.star { color: #FFC93C; }
+        .avail-dot {
+          inline-size: 7px; block-size: 7px;
+          border-radius: 50%;
+          flex-shrink: 0;
+          background: var(--pf-ink-faint);
+        }
+        .avail-dot.on { background: #34C759; }
+        .sr-only {
+          position: absolute; width: 1px; height: 1px;
+          padding: 0; margin: -1px; overflow: hidden;
+          clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
         }
         /* unicode-bidi on both: a stat is a self-contained string, and without
            it the RTL page reorders neutral characters against the author's
            intent — "2+" renders as "+2" and "connect." as ".connect". A rating
            or a count displayed backwards is a correctness bug, not a nicety. */
+        /* White, with the colour carried by the icon beside it. The figures
+           were in the tenant accent, which put the accent in three places on a
+           card that only needs it in one -- and it made a rating look like a
+           link. unicode-bidi keeps "4.9" from being reordered on the RTL page. */
         .stat-value {
-          /* The accent, and this is the one number on the card allowed to carry
-             it. The figures were white, which made them the same weight as the
-             name and the button label — three more shouts. In the accent they
-             read as one coloured detail, and the colour is the tenant's own. */
-          font-size: 14px; font-weight: 700; color: var(--pf-accent);
+          font-size: 14px; font-weight: 700; color: var(--pf-ink);
           line-height: 1.4;
-          unicode-bidi: plaintext;
-        }
-        .stat-label {
-          font-size: 10px; color: var(--pf-ink-dim); line-height: 1.4;
+          white-space: nowrap;
           unicode-bidi: plaintext;
         }
 
