@@ -63,6 +63,7 @@ export default function Home({ slug = null } = {}) {
   // Distinct from notFound: the lookup itself failed. A paying client must not
   // be told their site does not exist because of a transient error.
   const [loadFailed, setLoadFailed] = useState(false);
+  const [available, setAvailable] = useState(false);
   const [lang, setLang] = useState('ar');
   // Captured on the FIRST RENDER, before the persist effect below can run. That
   // effect used to fire on mount with the default 'ar' and overwrite the stored
@@ -137,6 +138,10 @@ export default function Home({ slug = null } = {}) {
         const draft = await loadDraftForPreview(slug);
         if (draft) {
           setTenantId(draft.tenant_id);
+          // In preview the expiry has to be checked here: this path reads the
+          // draft row directly and never goes through the function.
+          setAvailable(!!draft.profile?.availability?.until
+            && new Date(draft.profile.availability.until).getTime() > Date.now());
           setProfile(draft.profile);
           setLang(storedLangRef.current || draft.profile?.default_lang || 'ar');
           setProjects(draft.projects);
@@ -167,6 +172,9 @@ export default function Home({ slug = null } = {}) {
       if (!portfolio) { setNotFound(true); return; }
 
       setTenantId(portfolio.tenant_id || null);
+      // Merged LIVE by get_public_portfolio() and already expiry-checked there,
+      // so if it arrived at all it is currently true.
+      setAvailable(!!portfolio.availability);
 
       // The snapshot carries the same field names the tables did, so everything
       // downstream of here is unchanged.
@@ -680,6 +688,13 @@ export default function Home({ slug = null } = {}) {
             </div>
           )}
 
+          {available && (
+            <div className="avail-badge">
+              <span className="avail-dot" aria-hidden="true" />
+              {t('avail_badge')}
+            </div>
+          )}
+
           {/* STATS */}
           {stats.length > 0 && (
             <div className="stats" style={{ gridTemplateColumns: `repeat(${stats.length}, 1fr)` }}>
@@ -983,6 +998,22 @@ export default function Home({ slug = null } = {}) {
           transition: var(--transition);
         }
         .banner-dots button.on { width: 20px; background: #fff; }
+
+        /* Small, quiet, and only ever present when it is true -- the whole
+           point is that it removes itself. A pulsing dot was rejected: the
+           brand forbids perpetual motion, and a badge that breathes at you is
+           louder than the fact it carries. */
+        .avail-badge {
+          display: inline-flex; align-items: center; gap: 6px;
+          align-self: flex-start;
+          padding: 5px 11px; margin-bottom: var(--card-stack);
+          border-radius: 999px;
+          background: rgba(52,199,89,0.12);
+          border: 1px solid rgba(52,199,89,0.28);
+          color: #6BE08D;
+          font-size: 11px; font-weight: 600;
+        }
+        .avail-dot { inline-size: 6px; block-size: 6px; border-radius: 50%; background: #34C759; flex-shrink: 0; }
 
         .stats {
           display: grid; gap: 1px;

@@ -1871,7 +1871,7 @@ function CardEditor({ t, lang }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [profile, setProfile] = useState({
-    banners: [], stats: [], cta_buttons: [], brand_logo: '', favicon_url: '',
+    banners: [], stats: [], cta_buttons: [], brand_logo: '', favicon_url: '', availability: null,
     top_ticker: { enabled: false, text: emptyBilingual(), bg_color: '#9FA7FF', text_color: '#0a0a0c', speed: 'medium' },
     footer: { text: emptyBilingual(), color: 'rgba(var(--on-bg),0.3)' },
   });
@@ -1890,6 +1890,10 @@ function CardEditor({ t, lang }) {
       cta_buttons: data.cta_buttons || [],
       brand_logo: data.brand_logo || '',
       favicon_url: data.favicon_url || '',
+      // null, not undefined: persistProfile writes the object as-is, and an
+      // undefined key would be dropped rather than clearing the column when
+      // the client turns availability off.
+      availability: data.availability || null,
       top_ticker: {
         enabled: data.top_ticker?.enabled || false,
         text: data.top_ticker?.text || emptyBilingual(),
@@ -2001,6 +2005,14 @@ function CardEditor({ t, lang }) {
       ))}
       {(profile.banners?.length || 0) < 5 && <Button variant="secondary" size="sm" onClick={addBanner}>+ {t('banner_add')}</Button>}
 
+      <h2>{t('avail_title')} <span className="meta">· {t('avail_sub')}</span></h2>
+      <AvailabilityRow
+        value={profile.availability}
+        lang={lang}
+        t={t}
+        onChange={(availability) => patch({ availability })}
+      />
+
       <h2>{t('stats_title')} <span className="meta">· {t('stats_sub')} · {(profile.stats?.length || 0)}/3</span></h2>
       {profile.stats?.map((s, i) => (
         <StatRow key={s.id} stat={s} lang={lang} onChange={(u) => updateStat(s.id, u)} onRemove={() => removeStat(s.id)} onUp={() => moveStat(s.id, -1)} onDown={() => moveStat(s.id, 1)} canUp={i > 0} canDown={i < profile.stats.length - 1} t={t} />
@@ -2084,6 +2096,46 @@ function renderStars(value) {
   return '★'.repeat(half ? full : rounded)
     + (half ? '⯨' : '')
     + '☆'.repeat(5 - (half ? full + 1 : rounded));
+}
+
+// "Available now", with an expiry.
+//
+// There is no ON switch that stays on. Every option is a DURATION, because the
+// failure this replaces was a status nobody remembered to turn off -- a client
+// typed "We are available to connect." into a stat and it was wrong an hour
+// later, forever. Choosing a length makes the wrong state impossible to reach
+// by forgetting; the badge stops when the clock says so, with nothing running.
+//
+// The expiry is enforced in get_public_portfolio(), not here. This only writes
+// a timestamp, so a stale browser tab cannot keep anyone visible.
+function AvailabilityRow({ value, lang, t, onChange }) {
+  const until = value && value.until ? new Date(value.until) : null;
+  const live = !!until && until.getTime() > Date.now();
+  const setFor = (ms) => onChange({ until: new Date(Date.now() + ms).toISOString() });
+  const endOfDay = () => {
+    const d = new Date(); d.setHours(23, 59, 0, 0);
+    // Already past 23:59? Then "rest of today" means an hour, not nothing.
+    onChange({ until: (d.getTime() > Date.now() ? d : new Date(Date.now() + 3600e3)).toISOString() });
+  };
+  const timeText = live
+    ? until.toLocaleTimeString(lang === 'ar' ? 'ar' : 'en-GB', { hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  return (
+    <div className="card-row avail">
+      <div className="avail-state">
+        <span className={`dot ${live ? 'on' : ''}`} aria-hidden="true" />
+        <b>{live ? t('avail_on_until').replace('{time}', timeText) : t('avail_off')}</b>
+      </div>
+      <div className="avail-actions">
+        <Button size="sm" variant="secondary" onClick={() => setFor(3600e3)}>{t('avail_1h')}</Button>
+        <Button size="sm" variant="secondary" onClick={() => setFor(4 * 3600e3)}>{t('avail_4h')}</Button>
+        <Button size="sm" variant="secondary" onClick={endOfDay}>{t('avail_today')}</Button>
+        {live && <Button size="sm" variant="ghost" onClick={() => onChange(null)}>{t('avail_stop')}</Button>}
+      </div>
+      <p className="avail-hint">{t('avail_hint')}</p>
+    </div>
+  );
 }
 
 function StatRow({ stat, lang, onChange, onRemove, onUp, onDown, canUp, canDown, t }) {
@@ -5350,6 +5402,12 @@ function AdminStyles() {
          needing one. */
       .card-row .row-tag { font-size: var(--text-sm); font-weight: 600; color: var(--text-tertiary); }
       .card-row .stat-preview { margin: var(--space-2) 0 0; font-size: var(--text-xl); letter-spacing: 2px; color: var(--accent); }
+      .card-row.avail { display: flex; flex-direction: column; gap: var(--space-3); }
+      .avail-state { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-md); }
+      .avail-state .dot { inline-size: 9px; block-size: 9px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+      .avail-state .dot.on { background: var(--success); }
+      .avail-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+      .avail-hint { margin: 0; font-size: var(--text-sm); color: var(--text-tertiary); line-height: var(--leading-normal); }
       .card-row .row-tabs { direction: ltr; display: inline-flex; gap: 2px; background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 3px; }
       .card-row .row-tabs button { padding: 4px 12px; font-size: 12px; color: var(--text-tertiary); border: none; background: none; border-radius: 5px; cursor: pointer; font-family: inherit; }
       .card-row .row-tabs button.active { background: var(--bg-hover); color: var(--text-primary); }

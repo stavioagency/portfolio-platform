@@ -1,6 +1,29 @@
-# Live availability — NOT BUILT. This is the note, not the feature.
+# Live availability
 
-**Status: proposed, 2026-08-28. Nothing in the codebase implements this.**
+**Status: OPTION 2 IS BUILT (2026-08-28, section-s). Option 1 is not started.**
+
+Feras chose option 2 — manual status with an expiry — with option 1 (Discord
+presence) held until it is actually wanted.
+
+## What shipped
+
+`profile.availability` holds `{"until": timestamptz}` and nothing else. The
+client picks a DURATION in Home Page — 1 hour, 4 hours, rest of today — and a
+green "Available now" badge shows on their card until the clock passes.
+
+Two decisions inside it worth keeping:
+
+* **It is not in the published snapshot.** The public site reads
+  `tenants.published_snapshot`, and serialising availability into it would
+  freeze the badge at whatever it said when the client last pressed Publish —
+  the exact staleness this feature exists to remove.
+  `get_public_portfolio()` merges it live, from the profile row.
+* **Nothing sweeps it.** Expiry is a comparison at read time
+  (`until > now()`), so there is no cron, no job and no stuck state. A client
+  closing their laptop needs to do nothing for the status to become correct.
+
+There is deliberately no ON switch that stays on. Every option is a length,
+because the failure being replaced was a status nobody remembered to turn off.
 
 ## What Feras asked for
 
