@@ -147,6 +147,19 @@ function deleteDialog(t, title, description) {
 // Password reset no longer passes through here at all: it goes to
 // /reset-password with our own token, sent by request-password-reset. The
 // allowlist still matters for the remaining Supabase-issued links (invites).
+// Where to go once signed in. /console sends people here to authenticate, and
+// without this they landed on the dashboard and had to retype the URL. Only a
+// same-origin ABSOLUTE PATH is honoured -- never a full URL -- so this cannot
+// be turned into an open redirect by a crafted link.
+function nextAfterSignIn() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = new URLSearchParams(window.location.search).get('next');
+    if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return null;
+    return raw;
+  } catch (_) { return null; }
+}
+
 function adminRedirectUrl() {
   const isLocal = typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
   const base = process.env.NEXT_PUBLIC_ADMIN_URL
@@ -260,6 +273,13 @@ export default function Admin() {
       if (event === 'SIGNED_IN' && arrivedViaPasswordLink()) { markPasswordPending(); setRecoveryMode(true); }
       // Signing out ends the obligation — the next session decides for itself.
       if (event === 'SIGNED_OUT') { dischargePasswordObligation(); setRecoveryMode(false); }
+      // Someone sent here to authenticate goes back where they came from --
+      // /console does this. Not while a password is still owed: the gate has to
+      // run first, or they would be bounced away mid-obligation.
+      if (event === 'SIGNED_IN' && s && !arrivedViaPasswordLink() && !isPasswordPending()) {
+        const dest = nextAfterSignIn();
+        if (dest) { window.location.replace(dest); return; }
+      }
       setSession(s);
     });
     return () => listener.subscription.unsubscribe();

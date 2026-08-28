@@ -20,6 +20,104 @@ import { supabase } from '../../lib/supabase';
 import { deriveBilling, statusLabel } from '../../lib/billing-status';
 import { Button, Badge, Input, EmptyState, Icon, Skeleton, ToastProvider, useToast, ConfirmProvider, useConfirm } from '../../components/ui';
 
+
+// Bilingual, like everything else the operator sees. Arabic follows the
+// constitution's rule 11: no verb aimed at a person, so these are verbal nouns
+// and statements of state rather than commands. tests/admin-arabic-voice
+// enforces it across the tree, this file included.
+const S = {
+  en: {
+    clients: 'Clients', removed: 'Removed',
+    search: 'Search name, address or email',
+    colClient: 'Client', colEmail: 'Email', colAccess: 'Access', colRemoved: 'Removed',
+    noMatch: 'No client matches that.', noneRemoved: 'Nobody has been removed.',
+    noLogin: 'no login', suspended: 'Suspended', free: 'Free', pieces: 'pieces', was: 'was',
+    portfolio: 'Portfolio', editor: 'Editor', manage: 'Manage',
+    signinTitle: 'Sign in to manage clients',
+    signinDesc: 'Use the same login as the dashboard, then come back here.',
+    signinGo: 'Go to sign in',
+    deniedTitle: 'This area is for the platform owner',
+    deniedDesc: 'Your account manages a portfolio, not the platform.',
+    deniedGo: 'Go to my dashboard',
+    access: 'Access', workspace: 'Workspace', login: 'Login', noAccount: 'no account attached',
+    loginEmail: 'Login email', changeEmail: 'Change email', save: 'Save', cancel: 'Cancel',
+    password: 'Password',
+    passwordDesc: 'A new password is generated and emailed to them. You never see it.',
+    resetPassword: 'Reset password',
+    freeAccess: 'Free access',
+    hasComp: 'This client has complimentary access.',
+    grantDesc: 'Give full access with no payment. Reversible.',
+    grant: 'Grant free access', revoke: 'Revoke free access',
+    removeTitle: 'Remove this client',
+    removeDesc: 'Deletes their portfolio, their content and their login. Their email becomes free to sign up with again. This cannot be undone.',
+    removeBtn: 'Delete permanently',
+    openPortfolio: 'Open portfolio ↗', openEditor: 'Open editor ↗',
+    confirmPrompt: 'This permanently deletes {name}, their portfolio and their login.\nTheir email becomes free to sign up with again. This cannot be undone.\n\nType the address to confirm: {slug}',
+    confirmMismatch: 'That did not match. Nothing was deleted.',
+    del_done: 'Client deleted. Their email is free to use again.',
+    del_blocked_title: 'A subscription is still open',
+    del_blocked_desc: 'PayPal still has a {state} subscription for this client ({env}, {id}). Cancelling it at PayPal first is the clean route. Deleting anyway is allowed — the subscription id is recorded in Removed so it is not lost.',
+    del_force: 'Delete anyway',
+    resetConfirmTitle: 'Reset this password?',
+    resetConfirmDesc: 'A new password will be generated and emailed to {email}. Their current one stops working immediately.',
+    reset: 'Reset',
+    grantTitle: 'Grant free access?',
+    grantConfirmDesc: '{name} gets full access with no payment. Reversible at any time.',
+    revokeTitle: 'Revoke free access?',
+    revokeConfirmDesc: '{name} loses access until they subscribe. Their content is untouched.',
+    noLoginAttached: 'No login account is attached to this client.',
+    passwordSent: 'Password reset and emailed.',
+    emailChanged: 'Login email changed.',
+    granted: 'Free access granted.', revoked: 'Free access revoked.',
+    failDelete: 'Could not delete this client',
+  },
+  ar: {
+    clients: 'العملاء', removed: 'المحذوفون',
+    search: 'بحث بالاسم أو العنوان أو البريد',
+    colClient: 'العميل', colEmail: 'البريد', colAccess: 'الوصول', colRemoved: 'تاريخ الحذف',
+    noMatch: 'لا يوجد عميل مطابق.', noneRemoved: 'لم يُحذف أحد.',
+    noLogin: 'بلا حساب', suspended: 'معلّق', free: 'مجاني', pieces: 'أعمال', was: 'كان',
+    portfolio: 'المعرض', editor: 'المحرّر', manage: 'إدارة',
+    signinTitle: 'تسجيل الدخول لإدارة العملاء',
+    signinDesc: 'نفس حساب لوحة التحكم، ثم الرجوع إلى هنا.',
+    signinGo: 'الانتقال لتسجيل الدخول',
+    deniedTitle: 'هذه المنطقة لمالك المنصّة',
+    deniedDesc: 'حسابك يدير معرضًا، لا المنصّة.',
+    deniedGo: 'الانتقال إلى لوحتي',
+    access: 'الوصول', workspace: 'المساحة', login: 'الحساب', noAccount: 'لا يوجد حساب مرتبط',
+    loginEmail: 'بريد الدخول', changeEmail: 'تغيير البريد', save: 'حفظ', cancel: 'إلغاء',
+    password: 'كلمة المرور',
+    passwordDesc: 'تُنشأ كلمة مرور جديدة وتُرسل إليهم بالبريد. لا تظهر لك أبدًا.',
+    resetPassword: 'إعادة تعيين كلمة المرور',
+    freeAccess: 'الوصول المجاني',
+    hasComp: 'هذا العميل لديه وصول مجاني.',
+    grantDesc: 'وصول كامل بلا دفع. قابل للتراجع.',
+    grant: 'منح وصول مجاني', revoke: 'سحب الوصول المجاني',
+    removeTitle: 'حذف هذا العميل',
+    removeDesc: 'يحذف معرضه ومحتواه وحسابه. بريده يصبح متاحًا للتسجيل من جديد. لا يمكن التراجع عن هذا.',
+    removeBtn: 'حذف نهائي',
+    openPortfolio: 'فتح المعرض ↗', openEditor: 'فتح المحرّر ↗',
+    confirmPrompt: 'هذا يحذف {name} ومعرضه وحسابه نهائيًا.\nبريده يصبح متاحًا للتسجيل من جديد. لا يمكن التراجع.\n\nكتابة العنوان للتأكيد: {slug}',
+    confirmMismatch: 'لم يطابق. لم يُحذف شيء.',
+    del_done: 'تم حذف العميل. بريده متاح للاستخدام من جديد.',
+    del_blocked_title: 'هناك اشتراك ما زال مفتوحًا',
+    del_blocked_desc: 'لدى باي بال اشتراك بحالة {state} لهذا العميل ({env}، {id}). إلغاؤه في باي بال أولًا هو الطريق النظيف. الحذف رغم ذلك متاح — ورقم الاشتراك يُسجَّل في «المحذوفون» حتى لا يضيع.',
+    del_force: 'الحذف رغم ذلك',
+    resetConfirmTitle: 'إعادة تعيين كلمة المرور؟',
+    resetConfirmDesc: 'ستُنشأ كلمة مرور جديدة وتُرسل إلى {email}. كلمتهم الحالية تتوقف فورًا.',
+    reset: 'إعادة التعيين',
+    grantTitle: 'منح وصول مجاني؟',
+    grantConfirmDesc: '{name} يحصل على وصول كامل بلا دفع. قابل للتراجع في أي وقت.',
+    revokeTitle: 'سحب الوصول المجاني؟',
+    revokeConfirmDesc: '{name} يفقد الوصول حتى الاشتراك. محتواه لا يتغيّر.',
+    noLoginAttached: 'لا يوجد حساب دخول مرتبط بهذا العميل.',
+    passwordSent: 'أُعيد تعيين كلمة المرور وأُرسلت.',
+    emailChanged: 'تم تغيير بريد الدخول.',
+    granted: 'تم منح الوصول المجاني.', revoked: 'تم سحب الوصول المجاني.',
+    failDelete: 'تعذّر حذف هذا العميل',
+  },
+};
+
 export default function ConsolePage() {
   return (
     <ToastProvider>
@@ -40,6 +138,19 @@ function Console() {
   const [busy, setBusy] = useState('');
   const [view, setView] = useState('clients');   // clients | archived
   const [archived, setArchived] = useState([]);
+  // Same stored preference the admin writes, so the operator does not switch
+  // language twice. Read after mount: the server cannot know it.
+  const [lang, setLang] = useState('ar');
+  useEffect(() => {
+    try { setLang(localStorage.getItem('lang') === 'en' ? 'en' : 'ar'); } catch (e) { /* default */ }
+  }, []);
+  const ar = lang === 'ar';
+  const t = (k) => (S[lang] || S.en)[k] ?? k;
+  function toggleLang() {
+    const next = ar ? 'en' : 'ar';
+    setLang(next);
+    try { localStorage.setItem('lang', next); } catch (e) { /* ignore */ }
+  }
 
   // Same stored preference the admin uses, applied on mount. _document.js
   // initialises it before paint; this keeps it correct after hydration and is
@@ -57,8 +168,8 @@ function Console() {
     // Bouncing straight to /admin made this look like it had no sign-in at all.
     // Say what is happening instead. There is deliberately no sign-in FORM here:
     // one login screen for the platform is the whole point, and it lives at
-    // /admin. (No ?next= — admin does not read one, and a dead parameter is
-    // worse than an honest link.)
+    // /admin, which reads ?next= and sends them straight back here rather than
+    // dropping them on the dashboard to retype the URL.
     if (!session) { setPhase('signedout'); return; }
     // The database decides. This call returns false for every client.
     const { data: isOwner } = await supabase.rpc('is_platform_owner');
@@ -116,9 +227,9 @@ function Console() {
   async function resetPassword(row) {
     if (!row.member) { toast.error('No login account is attached to this client.'); return; }
     const ok = await confirm({
-      title: 'Reset this password?',
-      description: `A new password will be generated and emailed to ${row.member.email}. Their current one stops working immediately.`,
-      confirmLabel: 'Reset', tone: 'danger',
+      title: t('resetConfirmTitle'),
+      description: t('resetConfirmDesc').replace('{email}', row.member.email),
+      confirmLabel: t('reset'), tone: 'danger',
     });
     if (!ok) return;
     await run(`reset:${row.id}`, async () => {
@@ -126,7 +237,7 @@ function Console() {
         body: { action: 'send_welcome', tenant_id: row.id, user_id: row.member.user_id },
       });
       return error ? (error.message || 'Reset failed') : (data?.error || null);
-    }, 'Password reset and emailed.');
+    }, t('passwordSent'));
   }
 
   async function changeEmail(row, email) {
@@ -135,14 +246,14 @@ function Console() {
         body: { action: 'update_email', user_id: row.member.user_id, email },
       });
       return error ? (error.message || 'Could not change the email') : (data?.error || null);
-    }, 'Login email changed.');
+    }, t('emailChanged'));
   }
 
   async function grantFree(row) {
     const ok = await confirm({
-      title: 'Grant free access?',
-      description: `${row.name || row.slug} gets full access with no payment. Reversible at any time.`,
-      confirmLabel: 'Grant',
+      title: t('grantTitle'),
+      description: t('grantConfirmDesc').replace('{name}', row.name || row.slug),
+      confirmLabel: t('grant'),
     });
     if (!ok) return;
     await run(`comp:${row.id}`, async () => {
@@ -150,14 +261,14 @@ function Console() {
         body: { action: 'grant_comp', tenant_id: row.id, comp_kind: 'convertible' },
       });
       return error ? (error.message || 'Could not grant access') : (data?.error || null);
-    }, 'Free access granted.');
+    }, t('granted'));
   }
 
   async function revokeFree(row) {
     const ok = await confirm({
-      title: 'Revoke free access?',
-      description: `${row.name || row.slug} loses access until they subscribe. Their content is untouched.`,
-      confirmLabel: 'Revoke', tone: 'danger',
+      title: t('revokeTitle'),
+      description: t('revokeConfirmDesc').replace('{name}', row.name || row.slug),
+      confirmLabel: t('revoke'), tone: 'danger',
     });
     if (!ok) return;
     await run(`revoke:${row.id}`, async () => {
@@ -165,7 +276,7 @@ function Console() {
         body: { action: 'cancel', tenant_id: row.id },
       });
       return error ? (error.message || 'Could not revoke') : (data?.error || null);
-    }, 'Free access revoked.');
+    }, t('revoked'));
   }
 
   // Removes the workspace and the client's login outright. The Edge Function
@@ -174,42 +285,65 @@ function Console() {
   // here, because a delete must not trust the browser.
   async function deleteClient(row) {
     const typed = window.prompt(
-      `This permanently deletes ${row.name || row.slug}, their portfolio and their login.\n`
-      + 'Their email becomes free to sign up with again. This cannot be undone.\n\n'
-      + `Type the address to confirm: ${row.slug}`,
+      t('confirmPrompt').replace('{name}', row.name || row.slug).replace('{slug}', row.slug),
     );
     if (typed === null) return;
     if (typed.trim().toLowerCase() !== row.slug.toLowerCase()) {
-      toast.error('That did not match. Nothing was deleted.');
+      toast.error(t('confirmMismatch'));
       return;
     }
-    await run(`del:${row.id}`, async () => {
+    const attempt = async (force) => {
       const { data, error } = await supabase.functions.invoke('delete-client', {
-        body: { tenant_id: row.id, confirm_slug: typed.trim() },
+        body: { tenant_id: row.id, confirm_slug: typed.trim(), ...(force ? { force: true } : {}) },
       });
-      if (error) {
-        // The function returns 409 with the state when money is still live.
-        const detail = await readFnError(error);
-        return detail || 'Could not delete this client';
-      }
-      return data?.error || null;
-    }, 'Client deleted. Their email is free to use again.');
+      if (error) return { blocked: await readFnBlock(error, t) };
+      return { err: data?.error || null };
+    };
+
+    setBusy(`del:${row.id}`);
+    let first;
+    try { first = await attempt(false); } finally { setBusy(''); }
+
+    // 409 means a subscription could still be charged. Offer the override
+    // rather than a dead end -- a live `pending` that was never approved would
+    // otherwise make the workspace undeletable forever. The orphaned id is
+    // recorded in the archive either way.
+    if (first.blocked?.kind === 'subscription_live') {
+      const b = first.blocked;
+      const go = await confirm({
+        title: t('del_blocked_title'),
+        description: t('del_blocked_desc')
+          .replace('{state}', b.state)
+          .replace('{env}', b.environment || '—')
+          .replace('{id}', b.provider_subscription_id || '—'),
+        confirmLabel: t('del_force'),
+        tone: 'danger',
+      });
+      if (!go) return;
+      await run(`del:${row.id}`, async () => (await attempt(true)).err, t('del_done'));
+      setOpenId(null);
+      return;
+    }
+    if (first.blocked) { toast.error(first.blocked.message); return; }
+    if (first.err) { toast.error(first.err); return; }
+    toast.success(t('del_done'));
+    await load();
     setOpenId(null);
   }
 
   // ---- render ---------------------------------------------------------------
 
   if (phase === 'loading') {
-    return <Shell><div className="skel">{[0,1,2,3,4].map((i) => <Skeleton key={i} width="100%" height={52} radius="10px" />)}</div></Shell>;
+    return <Shell lang={lang}><div className="skel">{[0,1,2,3,4].map((i) => <Skeleton key={i} width="100%" height={52} radius="10px" />)}</div></Shell>;
   }
   if (phase === 'signedout') {
     return (
-      <Shell>
+      <Shell lang={lang}>
         <EmptyState
           icon={<Icon name="user" size={24} />}
-          title="Sign in to manage clients"
-          description="Use the same login as the dashboard, then come back here."
-          action={<Button onClick={() => window.location.assign('/admin')}>Go to sign in</Button>}
+          title={t('signinTitle')}
+          description={t('signinDesc')}
+          action={<Button onClick={() => window.location.assign('/admin?next=/console')}>{t('signinGo')}</Button>}
         />
       </Shell>
     );
@@ -217,71 +351,74 @@ function Console() {
 
   if (phase === 'denied') {
     return (
-      <Shell>
+      <Shell lang={lang}>
         <EmptyState
           icon={<Icon name="alert-triangle" size={24} />}
-          title="This area is for the platform owner"
-          description="Your account manages a portfolio, not the platform."
-          action={<Button onClick={() => window.location.assign('/admin')}>Go to my dashboard</Button>}
+          title={t('deniedTitle')}
+          description={t('deniedDesc')}
+          action={<Button onClick={() => window.location.assign('/admin')}>{t('deniedGo')}</Button>}
         />
       </Shell>
     );
   }
 
   return (
-    <Shell>
+    <Shell lang={lang}>
       <div className="head">
         <h1>
-          {view === 'clients' ? 'Clients' : 'Removed'}
+          {view === 'clients' ? t('clients') : t('removed')}
           <span className="count">{view === 'clients' ? rows.length : archived.length}</span>
         </h1>
         <div className="tabs" role="tablist">
           <button type="button" role="tab" aria-selected={view === 'clients'}
-                  className={view === 'clients' ? 'on' : ''} onClick={() => setView('clients')}>Clients</button>
+                  className={view === 'clients' ? 'on' : ''} onClick={() => setView('clients')}>{t('clients')}</button>
           <button type="button" role="tab" aria-selected={view === 'archived'}
-                  className={view === 'archived' ? 'on' : ''} onClick={() => setView('archived')}>Removed</button>
+                  className={view === 'archived' ? 'on' : ''} onClick={() => setView('archived')}>{t('removed')}</button>
         </div>
+        <button type="button" className="lang" onClick={toggleLang} aria-label={ar ? 'Switch to English' : 'التبديل إلى العربية'}>
+          {ar ? 'EN' : 'ع'}
+        </button>
         {view === 'clients' && (
           <input
             className="search" value={q} onChange={(e) => setQ(e.target.value)}
-            placeholder="Search name, address or email" aria-label="Search clients"
+            placeholder={t('search')} aria-label={t('search')}
           />
         )}
       </div>
 
       {view === 'archived' ? (
         archived.length === 0 ? (
-          <EmptyState icon={<Icon name="users" size={24} />} title="Nobody has been removed." compact />
+          <EmptyState icon={<Icon name="users" size={24} />} title={t('noneRemoved')} compact />
         ) : (
           <div className="table" role="table">
             <div className="tr arc th" role="row">
-              <span role="columnheader">Client</span>
-              <span role="columnheader">Email</span>
-              <span role="columnheader">Removed</span>
+              <span role="columnheader">{t('colClient')}</span>
+              <span role="columnheader">{t('colEmail')}</span>
+              <span role="columnheader">{t('colRemoved')}</span>
             </div>
             {archived.map((a) => (
               <div className="tr arc" role="row" key={a.id}>
                 <span role="cell" className="c-name">
                   <b>{a.name || a.slug}</b>
-                  <span className="slug" dir="ltr">/{a.slug} · {a.projects_count} pieces</span>
+                  <span className="slug" dir="ltr">/{a.slug} · {a.projects_count} {t('pieces')}</span>
                 </span>
-                <span role="cell" className="c-email" dir="ltr">{a.email || <i>no login</i>}</span>
+                <span role="cell" className="c-email" dir="ltr">{a.email || <i>{t('noLogin')}</i>}</span>
                 <span role="cell" className="c-email">
                   {new Date(a.deleted_at).toLocaleDateString('en-GB')}
-                  {a.billing_state && <span className="slug"> · was {a.billing_state}</span>}
+                  {a.billing_state && <span className="slug"> · {t('was')} {a.billing_state}</span>}
                 </span>
               </div>
             ))}
           </div>
         )
       ) : filtered.length === 0 ? (
-        <EmptyState icon={<Icon name="users" size={24} />} title="No client matches that." compact />
+        <EmptyState icon={<Icon name="users" size={24} />} title={t('noMatch')} compact />
       ) : (
         <div className="table" role="table">
           <div className="tr th" role="row">
-            <span role="columnheader">Client</span>
-            <span role="columnheader">Email</span>
-            <span role="columnheader">Access</span>
+            <span role="columnheader">{t('colClient')}</span>
+            <span role="columnheader">{t('colEmail')}</span>
+            <span role="columnheader">{t('colAccess')}</span>
             <span role="columnheader" />
           </div>
           {filtered.map((r) => (
@@ -290,15 +427,15 @@ function Console() {
                 <b>{r.name || r.slug}</b>
                 <span className="slug" dir="ltr">/{r.slug}</span>
               </span>
-              <span role="cell" className="c-email" dir="ltr">{r.member?.email || <i>no login</i>}</span>
+              <span role="cell" className="c-email" dir="ltr">{r.member?.email || <i>{t('noLogin')}</i>}</span>
               <span role="cell">
-                <Badge tone={accessTone(r)}>{accessLabel(r)}</Badge>
-                {r.status === 'disabled' && <Badge tone="danger">Suspended</Badge>}
+                <Badge tone={accessTone(r)}>{accessLabel(r, t)}</Badge>
+                {r.status === 'disabled' && <Badge tone="danger">{t('suspended')}</Badge>}
               </span>
               <span role="cell" className="c-act">
-                <Button size="sm" variant="ghost" onClick={() => window.open(`/${r.slug}`, '_blank', 'noopener')}>Portfolio</Button>
-                <Button size="sm" variant="ghost" onClick={() => window.open('/admin', '_blank', 'noopener')}>Editor</Button>
-                <Button size="sm" variant="secondary" onClick={() => setOpenId(r.id)}>Manage</Button>
+                <Button size="sm" variant="ghost" onClick={() => window.open(`/${r.slug}`, '_blank', 'noopener')}>{t('portfolio')}</Button>
+                <Button size="sm" variant="ghost" onClick={() => window.open('/admin', '_blank', 'noopener')}>{t('editor')}</Button>
+                <Button size="sm" variant="secondary" onClick={() => setOpenId(r.id)}>{t('manage')}</Button>
               </span>
             </div>
           ))}
@@ -309,6 +446,8 @@ function Console() {
         <ManagePanel
           row={open}
           busy={busy}
+          t={t}
+          ar={ar}
           onClose={() => setOpenId(null)}
           onResetPassword={() => resetPassword(open)}
           onChangeEmail={(email) => changeEmail(open, email)}
@@ -327,6 +466,9 @@ function Console() {
                        color: var(--text-tertiary); font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
         .tabs button.on { background: var(--bg-elevated); color: var(--text-primary); }
         .tabs button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+        .lang { min-width: 44px; min-height: 40px; padding: 0 12px; background: var(--bg-secondary); border: 1px solid var(--border);
+                border-radius: var(--radius-md); color: var(--text-secondary); font: inherit; font-weight: 700; cursor: pointer; }
+        .lang:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
         .search { margin-inline-start: auto; min-width: 260px; flex: 1 1 260px; max-width: 380px; padding: 10px 14px; min-height: 44px;
                   background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md);
                   color: var(--text-primary); font: inherit; }
@@ -355,103 +497,106 @@ function Console() {
 // supabase-js puts a non-2xx Edge Function body inside error.context. Reading
 // it is what turns "Edge Function returned a non-2xx status code" into the
 // actual reason, which for a delete is usually "the subscription is still live".
-async function readFnError(error) {
+async function readFnBlock(error, t) {
   try {
     const body = await error?.context?.json?.();
-    if (!body) return null;
+    if (!body) return { kind: 'unknown', message: t('failDelete') };
     if (body.error === 'subscription_live') {
-      return `Still has a ${body.state} subscription. Cancel it at PayPal first.`;
+      return {
+        kind: 'subscription_live',
+        state: body.state,
+        environment: body.environment,
+        provider_subscription_id: body.provider_subscription_id,
+      };
     }
-    if (body.error === 'confirm_mismatch') return 'The address did not match.';
-    return body.detail || body.error || null;
-  } catch (e) { return null; }
+    return { kind: body.error, message: body.detail || body.error };
+  } catch (e) {
+    return { kind: 'unknown', message: 'Could not delete this client' };
+  }
 }
 
-function accessLabel(r) {
-  if (r.billing.state === 'comped') return 'Free';
-  return statusLabel(r.billing.state, 'en');
+function accessLabel(r, t) {
+  if (r.billing.state === 'comped') return t('free');
+  return statusLabel(r.billing.state, t('free') === 'Free' ? 'en' : 'ar');
 }
 function accessTone(r) {
   if (r.billing.state === 'comped') return 'accent';
   return r.billing.entitled ? 'success' : 'neutral';
 }
 
-function ManagePanel({ row, busy, onClose, onResetPassword, onChangeEmail, onGrantFree, onRevokeFree, onDelete }) {
+function ManagePanel({ row, busy, t, ar, onClose, onResetPassword, onChangeEmail, onGrantFree, onRevokeFree, onDelete }) {
   const [email, setEmail] = useState(row.member?.email || '');
   const [editing, setEditing] = useState(false);
   const comped = row.billing.state === 'comped';
 
   return (
     <div className="bg" onClick={onClose} role="presentation">
-      <div className="panel" role="dialog" aria-modal="true" aria-label={`Manage ${row.name || row.slug}`} onClick={(e) => e.stopPropagation()}>
+      <div className="panel" role="dialog" aria-modal="true" aria-label={`${t('manage')} ${row.name || row.slug}`} onClick={(e) => e.stopPropagation()}>
         <div className="ph">
           <div>
             <b>{row.name || row.slug}</b>
             <div className="sub" dir="ltr">/{row.slug}</div>
           </div>
-          <button type="button" className="x" onClick={onClose} aria-label="Close">×</button>
+          <button type="button" className="x" onClick={onClose} aria-label={t('cancel')}>×</button>
         </div>
 
         <dl className="facts">
-          <dt>Access</dt><dd>{accessLabel(row)}</dd>
-          <dt>Workspace</dt><dd>{row.status}</dd>
-          <dt>Login</dt><dd dir="ltr">{row.member?.email || 'no account attached'}</dd>
+          <dt>{t('access')}</dt><dd>{accessLabel(row, t)}</dd>
+          <dt>{t('workspace')}</dt><dd>{row.status}</dd>
+          <dt>{t('login')}</dt><dd dir="ltr">{row.member?.email || t('noAccount')}</dd>
         </dl>
 
         {row.member && (
           <section>
-            <h3>Login email</h3>
+            <h3>{t('loginEmail')}</h3>
             {editing ? (
               <form onSubmit={async (e) => { e.preventDefault(); if (await onChangeEmail(email.trim())) setEditing(false); }}>
-                <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required dir="ltr" aria-label="New login email" />
+                <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required dir="ltr" aria-label={t('loginEmail')} />
                 <div className="row">
-                  <Button type="submit" size="sm" loading={busy === `email:${row.id}`}>Save</Button>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => { setEmail(row.member.email || ''); setEditing(false); }}>Cancel</Button>
+                  <Button type="submit" size="sm" loading={busy === `email:${row.id}`}>{t('save')}</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => { setEmail(row.member.email || ''); setEditing(false); }}>{t('cancel')}</Button>
                 </div>
               </form>
             ) : (
-              <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>Change email</Button>
+              <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>{t('changeEmail')}</Button>
             )}
           </section>
         )}
 
         <section>
-          <h3>Password</h3>
-          <p>A new password is generated and emailed to them. You never see it.</p>
+          <h3>{t('password')}</h3>
+          <p>{t('passwordDesc')}</p>
           <Button size="sm" variant="secondary" loading={busy === `reset:${row.id}`} onClick={onResetPassword} disabled={!row.member}>
-            Reset password
+            {t('resetPassword')}
           </Button>
         </section>
 
         <section>
-          <h3>Free access</h3>
+          <h3>{t('freeAccess')}</h3>
           {comped ? (
             <>
-              <p>This client has complimentary access.</p>
-              <Button size="sm" variant="danger" loading={busy === `revoke:${row.id}`} onClick={onRevokeFree}>Revoke free access</Button>
+              <p>{t('hasComp')}</p>
+              <Button size="sm" variant="danger" loading={busy === `revoke:${row.id}`} onClick={onRevokeFree}>{t('revoke')}</Button>
             </>
           ) : (
             <>
-              <p>Give full access with no payment. Reversible.</p>
-              <Button size="sm" variant="secondary" loading={busy === `comp:${row.id}`} onClick={onGrantFree}>Grant free access</Button>
+              <p>{t('grantDesc')}</p>
+              <Button size="sm" variant="secondary" loading={busy === `comp:${row.id}`} onClick={onGrantFree}>{t('grant')}</Button>
             </>
           )}
         </section>
 
         <section className="danger">
-          <h3>Remove this client</h3>
-          <p>
-            Deletes their portfolio, their content and their login. Their email becomes
-            free to sign up with again. This cannot be undone.
-          </p>
+          <h3>{t('removeTitle')}</h3>
+          <p>{t('removeDesc')}</p>
           <Button size="sm" variant="danger" loading={busy === `del:${row.id}`} onClick={onDelete}>
-            Delete permanently
+            {t('removeBtn')}
           </Button>
         </section>
 
         <section className="links">
-          <Button size="sm" variant="ghost" onClick={() => window.open(`/${row.slug}`, '_blank', 'noopener')}>Open portfolio ↗</Button>
-          <Button size="sm" variant="ghost" onClick={() => window.open('/admin', '_blank', 'noopener')}>Open editor ↗</Button>
+          <Button size="sm" variant="ghost" onClick={() => window.open(`/${row.slug}`, '_blank', 'noopener')}>{t('openPortfolio')}</Button>
+          <Button size="sm" variant="ghost" onClick={() => window.open('/admin', '_blank', 'noopener')}>{t('openEditor')}</Button>
         </section>
       </div>
 
@@ -479,14 +624,15 @@ function ManagePanel({ row, busy, onClose, onResetPassword, onChangeEmail, onGra
   );
 }
 
-function Shell({ children }) {
+function Shell({ children, lang = 'ar' }) {
+  const dir = lang === 'ar' ? 'rtl' : 'ltr';
   return (
     <>
       <Head>
         <title>Clients — Designakum</title>
         <meta name="robots" content="noindex, nofollow" />
       </Head>
-      <main className="wrap">{children}</main>
+      <main className="wrap" dir={dir} lang={lang}>{children}</main>
       <style jsx>{`
         .wrap { max-inline-size: 1080px; margin: 0 auto; padding: var(--gutter); }
         @media (max-width: 720px) { .wrap { padding: 16px; } }

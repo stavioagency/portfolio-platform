@@ -43,6 +43,13 @@ const json = (body: unknown, status = 200) =>
 // the browser, because the browser cannot be trusted with a delete.
 const BLOCKING = ["pending", "trialing", "active", "past_due"];
 
+// A SANDBOX subscription never blocks. It cannot charge anyone -- section-O
+// already refuses to let one grant entitlement for exactly that reason -- so
+// there is nothing to strand and no money at risk. Same NULL-safe comparison
+// section-O uses: comps carry environment = null and must not be caught by it.
+const canCharge = (sub: Record<string, unknown> | null) =>
+  !!sub && BLOCKING.includes(String(sub.status)) && String(sub.environment ?? "") !== "sandbox";
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -84,13 +91,22 @@ Deno.serve(async (req: Request) => {
 
   const { data: sub } = await admin
     .from("subscriptions")
-    .select("status, provider_subscription_id")
+    .select("status, environment, provider_subscription_id")
     .eq("tenant_id", tenant_id).maybeSingle();
-  if (sub && BLOCKING.includes(String(sub.status))) {
+
+  // `force` is the deliberate override for the case the guard cannot resolve on
+  // its own: a LIVE subscription stuck at `pending` that was never approved and
+  // never will be. Refusing forever would mean those workspaces can never be
+  // removed. Overriding is allowed, but it is recorded -- the orphaned provider
+  // subscription id goes into deleted_clients, because after this there is no
+  // other place it survives. The operator is told to cancel at PayPal first.
+  const force = body.force === true;
+  if (canCharge(sub) && !force) {
     return json({
       error: "subscription_live",
-      state: sub.status,
-      provider_subscription_id: sub.provider_subscription_id ?? null,
+      state: sub!.status,
+      environment: sub!.environment ?? null,
+      provider_subscription_id: sub!.provider_subscription_id ?? null,
     }, 409);
   }
 
@@ -138,7 +154,14 @@ Deno.serve(async (req: Request) => {
     had_billing: !!sub,
     billing_state: sub ? String(sub.status) : null,
     deleted_by: who.user.id,
-    note: String(body.note ?? "") || null,
+    note: [
+      String(body.note ?? "").trim() || null,
+      // Whatever was overridden must be legible later, not just implied.
+      canCharge(sub)
+        ? `FORCED past a ${sub!.environment ?? "unknown"} ${sub!.status} subscription; `
+          + `provider_subscription_id=${sub!.provider_subscription_id ?? "none"} may still exist at PayPal`
+        : null,
+    ].filter(Boolean).join(" | ") || null,
   });
   if (logErr) return json({ error: "archive_failed", detail: logErr.message }, 500);
 

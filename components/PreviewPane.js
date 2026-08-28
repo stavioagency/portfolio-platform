@@ -29,6 +29,7 @@ export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en'
   // Bumped locally by the Retry button; combined with the save-driven token so
   // both paths force a fresh navigation of the same element.
   const [retryTick, setRetryTick] = useState(0);
+  const retriesRef = useRef(0);
 
   const path = slug ? `/${slug}` : '/';
   const cleanUrl = origin ? `${origin}${path}` : path;               // for "open in new tab" + display
@@ -43,9 +44,28 @@ export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en'
     // While the pane is display:none (below the desktop breakpoint) clientWidth is
     // 0. Bail instead of computing a bogus scale — otherwise crossing into the
     // two-column layout leaves the frame at scale(1) and the preview looks cropped.
-    if (avail <= 0) return;
+    //
+    // BUT BAILING ALONE WAS THE BUG. If the very first measure landed before the
+    // stage had been laid out, nothing ever measured again on a screen that
+    // never fires a resize: scale stayed at its initial 1, a 1280px desktop
+    // frame rendered at 1:1 inside a ~700px column, and the visible sliver of
+    // the page's top-left corner read as "the preview is blank". Retry on the
+    // next frame instead of giving up, bounded so it cannot spin.
+    if (avail <= 0) {
+      if (retriesRef.current < 20) {
+        retriesRef.current += 1;
+        requestAnimationFrame(() => measureRef.current && measureRef.current());
+      }
+      return;
+    }
+    retriesRef.current = 0;
     setScale(Math.min(1, avail / DEVICES[device].w));
   }, [device]);
+
+  // measure() refers to itself through a ref so the retry above does not need it
+  // in its own dependency list.
+  const measureRef = useRef(null);
+  measureRef.current = measure;
 
   // Re-measure on every state transition too (loading -> ready -> error swaps the
   // stage contents), so the frame can never be left at a stale scale.
@@ -79,6 +99,8 @@ export default function PreviewPane({ origin, slug, reloadToken = 0, lang = 'en'
     clearTimeout(timerRef.current);
     // A blank about:blank load (before src is applied) shouldn't flip to ready.
     if (src) setStatus('ready');
+    // The stage definitely has geometry by now.
+    measure();
   };
   const retry = () => setRetryTick(t => t + 1);
 
