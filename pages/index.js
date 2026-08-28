@@ -470,7 +470,16 @@ export default function Home({ slug = null } = {}) {
   const showCustomFields = sections.custom_fields !== false && customFields.length > 0;
   const showAbout = showBio || showCustomFields;
   const showLinks = sections.links !== false; // honor toggle
-  const langSwitcherOn = sections.lang_switcher !== false;
+  // THE SWITCH APPEARS ONLY IF THERE IS SOMETHING TO SWITCH TO.
+  //
+  // It used to be a section toggle, on by default, which meant five of the
+  // seven live portfolios offered a language switch that led to a half-empty
+  // page — an English view with the name filled in and nothing else. Offering
+  // a door to an empty room is worse than having no door.
+  //
+  // A portfolio is in one language unless the client has said they write in
+  // two. profile.bilingual is that statement (section-v).
+  const langSwitcherOn = profile.bilingual === true;
   const avatarSrc = profile.brand_logo || profile.profile_image || null;
   // SEO overrides (admin → Profile → SEO), falling back to auto-derived values
   const seo = profile.seo || {};

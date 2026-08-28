@@ -101,3 +101,10 @@ $function$;
 --    where status = 'comped' and current_period_end is not null;
 -- Expected: 0. If it is not 0, some client is about to lose access and you
 -- should know which one before running this.
+
+
+-- NOTE: the published snapshot must also learn about these three columns, or
+-- they work in the editor's preview (which reads the draft) and do nothing at
+-- all on the live site. That change lives in section-v, which runs last —
+-- publish_tenant() is replaced once there, naming every column from both
+-- sections, rather than twice with the second overwriting the first.

@@ -886,6 +886,11 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tenants, setTenants] = useState([]);
   const [tenant, setTenant] = useState(null);
+  // Does THIS workspace publish in two languages? It lives on the profile row
+  // (so it travels into the published snapshot with everything else), but two
+  // editors need it and hold no profile of their own — so it is read once here
+  // and handed down, rather than fetched again per tab.
+  const [bilingual, setBilingual] = useState(false);
   const [isOwner, setIsOwner] = useState(null); // null = unknown; true = owner; false = client (UX only; RLS is the authority)
   const TENANT_LS_KEY = 'admin_selected_tenant';
   const t = getTranslator(lang);
@@ -948,6 +953,15 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
   // The grouped nav is the single source of truth for tab labels, so the mobile
   // bar and the page header can never drift from the sidebar.
+  useEffect(() => {
+    let cancelled = false;
+    if (!tenant?.id) { setBilingual(false); return undefined; }
+    supabase.from('profile').select('bilingual').eq('tenant_id', tenant.id).maybeSingle()
+      .then(({ data }) => { if (!cancelled) setBilingual(data?.bilingual === true); })
+      .catch(() => { if (!cancelled) setBilingual(false); });
+    return () => { cancelled = true; };
+  }, [tenant?.id]);
+
   const navSections = useMemo(() => navGroups({ isOwner, ar, t }), [isOwner, ar, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const TAB_LABELS = useMemo(() => {
     const out = {};
@@ -1058,7 +1072,7 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
 
   return (
     <DirtyContext.Provider value={dirtyRef}>
-    <TenantContext.Provider value={{ tenant, tenants, setTenant, reloadTenants: loadTenants, isOwner }}>
+    <TenantContext.Provider value={{ tenant, tenants, setTenant, reloadTenants: loadTenants, isOwner, bilingual }}>
     <PreviewContext.Provider value={{ refresh: refreshPreview }}>
     <div className={`dashboard ${theme || 'dark'}`}>
       {/* MOBILE TOP BAR — only visible <720px */}
@@ -1665,6 +1679,15 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
         .extra { margin-inline-start: auto; }
         .unsaved-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--warning); margin-inline-start: 6px; box-shadow: 0 0 6px var(--warning); vertical-align: middle; }
         .hint { font-size: var(--text-sm); color: var(--text-tertiary); }
+        /* One setting that changes how much of the screen there is, so it gets
+           room and a sentence rather than sitting in a row of checkboxes. */
+        .bi-toggle { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4);
+                     border: 1px solid var(--border); border-radius: var(--radius-md);
+                     background: var(--bg-secondary); cursor: pointer; max-width: 640px; }
+        .bi-toggle input { margin-top: 3px; flex-shrink: 0; }
+        .bi-toggle span { display: flex; flex-direction: column; gap: 4px; }
+        .bi-toggle b { font-size: var(--text-md); font-weight: 600; color: var(--text-primary); }
+        .bi-toggle em { font-style: normal; font-size: var(--text-sm); color: var(--text-tertiary); line-height: 1.6; }
         .saved-indicator { font-size: 13px; color: var(--accent); }
         /* On phones, pin the save row to the bottom while there are unsaved changes so it's always reachable */
         @media (max-width: 720px) {
@@ -1688,7 +1711,7 @@ function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
 // =========================================================
 // Profile Editor — single-lang inputs (uses chrome lang)
 // =========================================================
-function ProfileEditor({ t, lang }) {
+function ProfileEditor({ t, lang: uiLang }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [profile, setProfile] = useState({ name: emptyBilingual(), tagline: emptyBilingual(), bio: emptyBilingual(), profile_image: '', default_lang: 'ar', custom_fields: [], sections: { bio: true, custom_fields: true, projects: true, links: true, lang_switcher: true }, seo: { title: emptyBilingual(), description: emptyBilingual(), og_image: '' } });
@@ -1697,6 +1720,19 @@ function ProfileEditor({ t, lang }) {
   const [dirty, setDirty] = useState(false);
   const [showStart, setShowStart] = useState(false);
   const { tenant } = useTenant();
+  // THE LANGUAGE BEING EDITED, which is not always the language of the
+  // interface. `uiLang` is the client's own preference for the dashboard;
+  // `lang` below is which version of their CONTENT the fields write to.
+  //
+  // They used to be the same value, and that was only correct while every
+  // portfolio was bilingual. A client whose portfolio is Arabic but who reads
+  // the dashboard in English would have typed Arabic into the `en` slot and
+  // watched their card stay empty.
+  //
+  // Bilingual off: everything writes to the portfolio's one language, whatever
+  // the dashboard is set to. Bilingual on: unchanged — the dashboard toggle
+  // picks the version, exactly as it always has.
+  const lang = profile.bilingual ? uiLang : (tenant?.default_lang || 'ar');
 
   useEffect(() => { load(); }, []);
   useEffect(() => {
@@ -1711,6 +1747,7 @@ function ProfileEditor({ t, lang }) {
     const { data } = await loadProfile(tenant);
     if (data) {
       setProfile({
+        bilingual: data.bilingual === true,
         name: data.name || emptyBilingual(),
         tagline: data.tagline || emptyBilingual(),
         bio: data.bio || emptyBilingual(),
@@ -1769,6 +1806,7 @@ function ProfileEditor({ t, lang }) {
   }
   function toggleSection(key) { patch({ sections: { ...profile.sections, [key]: !profile.sections[key] } }); }
 
+
   return (
     <div className="editor">
       <PageHeader eyebrow={t('eyebrow_profile')} title={t('nav_profile')} description={t('profile_sub')} />
@@ -1787,7 +1825,25 @@ function ProfileEditor({ t, lang }) {
       )}
 
       <h2>{t('basics')}</h2>
-      <p className="hint">{t('lang_note')}</p>
+
+      {/* THE LANGUAGE OF THE PORTFOLIO, and the one setting on this screen that
+          changes how much of the screen there is. Off — which is the default and
+          what five of the seven live portfolios actually were — every field
+          below is asked for once, and the card carries no language switch. */}
+      <label className="bi-toggle">
+        <input
+          type="checkbox"
+          checked={profile.bilingual === true}
+          onChange={(e) => patch({ bilingual: e.target.checked })}
+        />
+        <span>
+          <b>{t('bilingual_on')}</b>
+          <em>{t('bilingual_hint')}</em>
+        </span>
+      </label>
+
+      {/* Only meaningful when there are two versions to switch between. */}
+      {profile.bilingual && <p className="hint">{t('lang_note')}</p>}
       <Field id="profile-name" label={t('name')}>
         <input id="profile-name" value={pick(profile.name, lang)} onChange={(e) => bilingualPatch('name', e.target.value)} />
       </Field>
@@ -1864,10 +1920,11 @@ function ProfileEditor({ t, lang }) {
 // =========================================================
 // Card Editor
 // =========================================================
-function CardEditor({ t, lang }) {
+function CardEditor({ t, lang: uiLang }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [profile, setProfile] = useState({
+    bilingual: false,
     banners: [], stats: [], cta_buttons: [], brand_logo: '', favicon_url: '', availability: null,
     rating: null, client_count: null, hours: null,
     top_ticker: { enabled: false, text: emptyBilingual(), bg_color: '#9FA7FF', text_color: '#0a0a0c', speed: 'medium' },
@@ -1877,12 +1934,16 @@ function CardEditor({ t, lang }) {
   const [savedMsg, setSavedMsg] = useState('');
   const [dirty, setDirty] = useState(false);
   const { tenant } = useTenant();
+  // See ProfileEditor: the language being EDITED is not always the language of
+  // the interface once a portfolio can be single-language.
+  const lang = profile.bilingual ? uiLang : (tenant?.default_lang || 'ar');
 
   useEffect(() => { load(); }, []);
 
   async function load() {
     const { data } = await loadProfile(tenant);
     if (data) setProfile({
+      bilingual: data.bilingual === true,
       banners: data.banners || [],
       stats: data.stats || [],
       cta_buttons: data.cta_buttons || [],
@@ -2317,13 +2378,16 @@ function ButtonRow({ btn, lang, onChange, onRemove, onUp, onDown, canUp, canDown
 // =========================================================
 // Projects Editor
 // =========================================================
-function ProjectsEditor({ t, lang }) {
+function ProjectsEditor({ t, lang: uiLang }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [projects, setProjects] = useState([]);
   const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(true); // gate the empty state until the first load lands
-  const { tenant } = useTenant();
+  const { tenant, bilingual } = useTenant();
+  // These two editors hold no profile row of their own, so the flag arrives on
+  // the tenant context rather than from a second fetch per tab.
+  const lang = bilingual ? uiLang : (tenant?.default_lang || 'ar');
 
   useEffect(() => { load(); }, []);
   // No tenant means REFUSE, not "fall back to everything" — the same rule
@@ -2579,7 +2643,7 @@ function ProjectEditForm({ project, onSave, onBack, onDelete, t, lang }) {
 // =========================================================
 // Links Editor
 // =========================================================
-function LinksEditor({ t, lang }) {
+function LinksEditor({ t, lang: uiLang }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [links, setLinks] = useState([]);
@@ -2588,7 +2652,10 @@ function LinksEditor({ t, lang }) {
   const [dirty, setDirty] = useState(false);
   const [pickerForId, setPickerForId] = useState(null);
   const [loading, setLoading] = useState(true); // gate the empty state until the first load lands
-  const { tenant } = useTenant();
+  const { tenant, bilingual } = useTenant();
+  // These two editors hold no profile row of their own, so the flag arrives on
+  // the tenant context rather than from a second fetch per tab.
+  const lang = bilingual ? uiLang : (tenant?.default_lang || 'ar');
 
   useEffect(() => { load(); }, []);
   async function load() {
