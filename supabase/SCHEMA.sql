@@ -74,6 +74,20 @@
 --   R  deleted_clients
 --   S  profile.availability
 -- The count below was already wrong before those (it said 14 with 15 tables).
+--
+-- 2026-09-10, NARROW UPDATE — one function, not a full pass:
+--   Y  designakum.site removed from the neutral-host list in
+--      get_public_portfolio(). The apex served a 404 while /designakum served
+--      the portfolio, because the domain was hard-coded as neutral AND mapped
+--      in tenant_domains; the hard-coded test ran first and won.
+--
+--   WHICH SECTION HOLDS THE LIVE DEFINITION OF get_public_portfolio: Y.
+--   Q, S and Y each carry a FULL create-or-replace; T and V only reference it.
+--   The latest letter is the deployed one, and the earlier copies are now
+--   wrong in ways that matter — Q predates both the snapshot null-check and
+--   the availability merge, so re-running it silently deletes a shipped
+--   feature. That nearly happened while fixing Y. Read the deployed definition
+--   with pg_get_functiondef before re-running any older section.
 -- ============================================================================
 
 -- ============================================================================
@@ -300,6 +314,12 @@
 --     misses does NOT fall back to the host), refuses a disabled or unentitled
 --     tenant, returns the published snapshot merged with tenant_id and — live,
 --     never snapshotted — an unexpired profile.availability.
+--     NEUTRAL HOSTS, which own no tenant and resolve to nothing: localhost,
+--     127.0.0.1 and *.vercel.app. designakum.site is NOT among them — it is a
+--     mapped tenant_domains row like f9designer.site and resolves through the
+--     same path (section-y). A preview URL must never resolve to a client's
+--     portfolio, which is the whole reason the neutral list exists.
+--     Live definition: section-y. See the dated note at the top of this file.
 --
 -- touch_updated_at()             -> trigger   NOT security definer
 --     BEFORE UPDATE on billing_customers and subscriptions.
