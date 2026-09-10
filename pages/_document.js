@@ -81,7 +81,13 @@ export default function Document() {
             __html:
               '(function(){try{' +
                 'var p=location.pathname.replace(/\\/+$/,"")||"/";' +
-                'if(p==="/console"){' +
+                'if(p==="/studio"){' +
+                  // The Studio defaults to LIGHT. It is a creative workspace and
+                  // light is the theme being perfected first; a stored preference
+                  // still wins, and it shares admin_theme so a customer who chose
+                  // dark in the current editor keeps it here.
+                  'document.documentElement.setAttribute("data-admin-theme",localStorage.getItem("admin_theme")||"light");' +
+                '}else if(p==="/console"){' +
                   'document.documentElement.setAttribute("data-admin-theme","dark");' +
                 '}else if(p==="/admin"||p==="/signup"||p==="/signup/verify"||p==="/subscribe"||p==="/reset-password"){' +
                   'document.documentElement.setAttribute("data-admin-theme",localStorage.getItem("admin_theme")||"dark");' +

@@ -19,7 +19,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { parseColor, contrastRatio } from '../lib/contrast.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -457,23 +457,42 @@ test('SAFE-1: no approved site still declares a literal 44px', () => {
 // enforces the same thing from the other direction — it fails if anything new
 // adopts the token.
 
-test('SAFE-1: exactly five declarations consume --tap-min, product-wide', () => {
-  // Guards the other direction from the per-file counts: a sixth consumer
-  // appearing anywhere in pages/ or components/ means something unrelated was
-  // converted, which is the failure mode SAFE-1 was scoped to avoid.
-  const roots = ['pages', 'components'];
-  let total = 0;
+test('SAFE-1: --tap-min is consumed only where a tap target was approved', () => {
+  // Guards the other direction from the per-file counts: a consumer appearing
+  // in a file nobody approved means something unrelated was converted, which is
+  // the failure mode SAFE-1 was scoped to avoid.
+  //
+  // THIS USED TO ASSERT A BARE TOTAL OF 5, and a bare total cannot tell a
+  // deliberate new tap target from an accidental conversion — it only says the
+  // number moved. It is now a map, so adding a real tap target is a visible
+  // edit to this list and converting something unrelated still fails.
+  //
+  // components/studio/StudioShell.js was added on 2026-09-10 with the Studio
+  // shell: the mobile bottom-bar tabs and the More sheet's rows are the primary
+  // navigation on a phone, they are pressed with a thumb, and 44px is exactly
+  // the floor this token exists to hold. Two declarations, both deliberate.
+  const APPROVED = {
+    'components/ui/Button.js': 2,        // .md and the .sm mobile promotion
+    'components/ui/Input.js': 1,
+    'components/ui/ConfirmDialog.js': 2, // .req-input and .btn
+    'components/studio/StudioShell.js': 2, // .tab and .row
+  };
+
+  const found = {};
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) { if (!/node_modules|\.next/.test(full)) walk(full); continue; }
       if (!/\.(js|mjs|css)$/.test(entry.name)) continue;
       const body = readFileSync(full, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-      total += [...body.matchAll(/var\(--tap-min\)/g)].length;
+      const n = [...body.matchAll(/var\(--tap-min\)/g)].length;
+      if (n > 0) found[relative(join(HERE, '..'), full)] = n;
     }
   };
-  for (const r of roots) walk(join(HERE, '..', r));
-  assert.equal(total, 5, `${total} declarations consume --tap-min; SAFE-1 approved exactly 5`);
+  for (const r of ['pages', 'components']) walk(join(HERE, '..', r));
+
+  assert.deepEqual(found, APPROVED,
+    'a file consumes --tap-min that SAFE-1 did not approve, or an approved site lost it');
 });
 
 // ========================================================= DS-6 FIX-1/FIX-2 ==
