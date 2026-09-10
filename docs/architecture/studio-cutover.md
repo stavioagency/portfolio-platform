@@ -94,10 +94,47 @@ tool, and it is what an operator reaches for when something is on fire.
 ## 5. What is genuinely finished
 
 - `/studio` — shell, Home, Profile, Work, Appearance, Links, autosave, draft
-  preview, publishing with its requirements, read-only honesty.
+  preview, publishing with its requirements.
+
+### Exercised against production, on `designakum`, draft only (2026-09-10)
+
+Everything below was done through the UI and then put back; the published
+snapshot was never touched and `has_unpublished_changes()` finished false.
+
+| | |
+|---|---|
+| Profile edit | autosaved, reached the database, survived a reload |
+| Add project | row created, editor opened |
+| Title edit | autosaved |
+| Reorder | `display_order` rewritten for **both** rows |
+| Delete | dialog named the piece and its image count; row removed |
+| Image upload | 111,570 B PNG → **6,006 B WebP**, tenant-isolated path, public URL returns 200 |
+| Unpublished changes | detected and cleared correctly, by byte comparison |
+
+Not yet exercised: Links, Appearance, `/client` against real numbers, and
+mobile.
 - `/client` — summary, search, customer list, customer record.
 - Neither reimplements authentication, tenancy, storage, billing or publishing.
   Every one of those is called, not rebuilt.
+
+## 5a. Known issue: deleting never reclaims storage
+
+**Deleting a project removes the row and leaves its images in the bucket.**
+Verified on 2026-09-10: uploaded a cover, deleted the project through the
+Studio, and the object was still in `storage.objects` afterwards.
+
+It is NOT a regression — `/admin` has always behaved this way, and a sweep of
+the bucket found **17 media files no longer referenced by any profile or
+project**. Replacing an image orphans the old one too.
+
+Consequences are cost and tidiness, not correctness: nothing breaks, and no
+customer sees anything wrong. `lib/storage-cleanup.js` exists but runs only when
+a whole tenant is deleted.
+
+**Not fixed here, deliberately.** Deleting a customer's files is a destructive
+operation, it can fail halfway leaving a row without its images, and the right
+shape is probably a sweep an operator triggers rather than a cascade on every
+delete. That is its own decision.
 
 ## 6. What is deliberately absent
 
