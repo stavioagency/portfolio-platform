@@ -249,6 +249,27 @@ const ICONS = {
       <line x1="15.2" y1="15.2" x2="21" y2="21" />
     </>
   ),
+  // Added for the Studio's Work list, which reorders and deletes. Icon returns
+  // null for a name it does not know, so asking for one of these before they
+  // existed produced a button with nothing in it and no error anywhere --
+  // the exact failure this set exists to prevent.
+  //
+  // The chevrons are drawn as a single polyline on the same grid as the rest.
+  // `chevron-left` is DIRECTIONAL: render it with mirror so it points the right
+  // way in Arabic, the way "back" has to.
+  'chevron-up': <polyline points="6 15 12 9 18 15" />,
+  'chevron-down': <polyline points="6 9 12 15 18 9" />,
+  'chevron-left': <polyline points="15 5 8 12 15 19" />,
+  'chevron-right': <polyline points="9 5 16 12 9 19" />,
+  trash: (
+    <>
+      <polyline points="3.5 6.5 20.5 6.5" />
+      <path d="M8.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h4A1.5 1.5 0 0 1 15.5 5v1.5" />
+      <path d="M6.5 6.5 7.4 19a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4l.9-12.5" />
+      <line x1="10.2" y1="10" x2="10.5" y2="17" />
+      <line x1="13.8" y1="10" x2="13.5" y2="17" />
+    </>
+  ),
 };
 
 export const ICON_NAMES = Object.keys(ICONS);

@@ -32,8 +32,11 @@ import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabase';
 import { Button, Icon } from '../../components/ui';
 import StudioShell from '../../components/studio/StudioShell';
+import { Appearance, Links, Profile } from '../../components/studio/sections';
+import { Work } from '../../components/studio/work';
 import { DEFAULT_SECTION, isStudioSection, studioSectionLabel } from '../../lib/studio-nav';
 import { hasPublicContent } from '../../lib/profile-content';
+import { loadProjects } from '../../lib/studio-data';
 
 const THEME_KEY = 'admin_theme';
 const LANG_KEY = 'admin_lang';
@@ -45,6 +48,8 @@ export default function StudioPage() {
   const [session, setSession] = useState(null);
   const [tenant, setTenant] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [projects, setProjects] = useState([]);
   const [lang, setLangState] = useState('ar');
   const [section, setSection] = useState(DEFAULT_SECTION);
 
@@ -105,18 +110,18 @@ export default function StudioPage() {
       const t = tenants[0];
       setTenant(t);
 
-      const [{ data: profile, error: pErr }, { count, error: cErr }] = await Promise.all([
+      /* Projects are loaded in full rather than counted: Work needs the rows,
+         and Home's count must come from the SAME read, or the two screens can
+         disagree about how many projects exist. */
+      const [{ data: profile, error: pErr }, rows] = await Promise.all([
         supabase.from('profile').select('*').eq('tenant_id', t.id).maybeSingle(),
-        supabase.from('projects').select('id', { count: 'exact', head: true }).eq('tenant_id', t.id),
+        loadProjects(t.id),
       ]);
       if (pErr) throw pErr;
-      if (cErr) throw cErr;
 
-      setSnapshot({
-        profile: profile || null,
-        projectCount: count || 0,
-        published: Boolean(t.published_at),
-      });
+      setProfile(profile || null);
+      setProjects(rows);
+      setSnapshot({ published: Boolean(t.published_at) });
       setPhase('ready');
     } catch (e) {
       /* Never a blank screen and never a frozen button: say what happened, say
@@ -135,6 +140,9 @@ export default function StudioPage() {
 
   const status = useMemo(() => {
     if (!snapshot || !tenant) return null;
+    /* hasChanges stays false until Phase 3 wires the draft/publish comparison.
+       Claiming "you have unpublished changes" without knowing is worse than
+       saying nothing, so it says nothing. */
     return { published: snapshot.published, hasChanges: false, slug: tenant.slug };
   }, [snapshot, tenant]);
 
@@ -161,9 +169,26 @@ export default function StudioPage() {
         account={{ email: session?.user?.email || '' }}
         onSignOut={signOut}
       >
-        {section === 'home'
-          ? <Home ar={ar} tenant={tenant} snapshot={snapshot} onSection={goSection} />
-          : <NotYet ar={ar} section={section} />}
+        {section === 'home' && (
+          <Home ar={ar} tenant={tenant} profile={profile} projectCount={projects.length}
+                published={snapshot.published} onSection={goSection} />
+        )}
+        {section === 'profile' && (
+          <Profile ar={ar} uiLang={lang} tenant={tenant} profile={profile} onSaved={setProfile} />
+        )}
+        {section === 'work' && (
+          <Work ar={ar} uiLang={lang} tenant={tenant} profile={profile}
+                projects={projects} onProjects={setProjects} />
+        )}
+        {section === 'appearance' && (
+          <Appearance ar={ar} tenant={tenant} profile={profile} onSaved={setProfile} />
+        )}
+        {section === 'links' && (
+          <Links ar={ar} tenant={tenant} profile={profile} onSaved={setProfile} />
+        )}
+        {['domain', 'visitors', 'plan', 'settings'].includes(section) && (
+          <NotYet ar={ar} section={section} />
+        )}
       </StudioShell>
     </>
   );
@@ -237,8 +262,7 @@ function Gate({ phase, ar, error, onRetry }) {
  * a statistic and nothing is invented — every line is read from the customer's
  * own rows, and hasPublicContent() is the same check the public page already
  * uses to decide whether a portfolio renders at all. */
-function Home({ ar, tenant, snapshot, onSection }) {
-  const { profile, projectCount, published } = snapshot;
+function Home({ ar, tenant, profile, projectCount, published, onSection }) {
   const renderable = hasPublicContent(profile, projectCount);
 
   const steps = [
