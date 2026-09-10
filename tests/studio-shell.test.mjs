@@ -23,6 +23,7 @@ const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm,
 const SHELL = read('components/studio/StudioShell.js');
 const SHELL_CODE = strip(SHELL);
 const PAGE = read('pages/studio/index.js');
+const strip2 = strip;
 const PAGE_CODE = strip(PAGE);
 
 // ── Navigation ───────────────────────────────────────────────────────────
@@ -119,10 +120,29 @@ test('the session is checked before anything is read', () => {
   // Order is the property. Reading first and gating after is how a signed-out
   // request still hits the database.
   const gate = PAGE_CODE.indexOf('getSession()');
-  const read1 = PAGE_CODE.indexOf(".from('tenants')");
+  const read1 = PAGE_CODE.indexOf('loadWorkspaces()');
   assert.ok(gate > -1 && read1 > gate, 'the session check must precede the first read');
   assert.ok(/if \(!s\) \{ setPhase\('signedout'\); return; \}/.test(PAGE_CODE),
     'no session must end the request, not fall through');
+});
+
+test('the workspace list is scoped by membership, never read from `tenants`', () => {
+  // THE BUG THIS PINS. `tenants` carries a PUBLIC read policy — USING (true) —
+  // so selecting from it returns every workspace on the platform to anybody.
+  // The first version did that and took row zero: correct by luck for a
+  // platform owner, and every real customer would have been shown someone
+  // else's portfolio — wrong name, wrong address, and a profile they cannot
+  // read, reported as "this account is missing its setup".
+  //
+  // Found by opening the Studio as a signed-in owner and noticing the list
+  // could only have come from an unscoped read.
+  const DATA = strip(read('lib/studio-data.js'));
+  assert.ok(/\.from\('tenant_admins'\)/.test(DATA),
+    'the list must come through the membership table');
+  assert.ok(!/\.from\('tenants'\)/.test(DATA),
+    '`tenants` is world-readable and must never be the source of the list');
+  assert.ok(!/\.from\('tenants'\)/.test(PAGE_CODE), 'and the page must not do it either');
+  assert.ok(/loadWorkspaces\(\)/.test(PAGE_CODE), 'the page uses the scoped loader');
 });
 
 test('authorization is left to the database', () => {

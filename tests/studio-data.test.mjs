@@ -50,8 +50,11 @@ test('the blocked-write message names the likely cause', () => {
 });
 
 test('the data layer is not a security boundary and does not pretend to be', () => {
+  /* Checked against the CODE, not the prose: the file's comments explain the
+     RLS policies by name, and a guard that fires on its own documentation is a
+     guard the next person deletes. */
   for (const bad of ['is_platform_owner', 'SERVICE_ROLE', 'service_role', 'auth.uid()']) {
-    assert.ok(!DATA.includes(bad), `${bad} has no business in the Studio's data layer`);
+    assert.ok(!DATA_CODE.includes(bad), `${bad} has no business in the Studio's data layer`);
   }
   // Tenant scoping is RLS's job; these .eq() calls are addressing, not authorization.
   assert.ok(/RLS decides|RLS does the filtering/.test(DATA), 'the reasoning must be stated where it can be violated');

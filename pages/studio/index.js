@@ -36,13 +36,14 @@ import { Appearance, Links, Profile } from '../../components/studio/sections';
 import { Work } from '../../components/studio/work';
 import { DEFAULT_SECTION, isStudioSection, studioSectionLabel } from '../../lib/studio-nav';
 import { hasPublicContent } from '../../lib/profile-content';
-import { loadProjects } from '../../lib/studio-data';
+import { loadProjects, loadWorkspaces } from '../../lib/studio-data';
 import { hasUnpublishedChanges, isEntitled } from '../../lib/studio-publish';
 import { PublishPanel, Preview } from '../../components/studio/publish';
 import { NoProfileNotice } from '../../components/studio/notices';
 
 const THEME_KEY = 'admin_theme';
 const LANG_KEY = 'admin_lang';
+const WORKSPACE_KEY = 'studio_workspace';
 
 export default function StudioPage() {
   const router = useRouter();
@@ -59,6 +60,7 @@ export default function StudioPage() {
   const [changes, setChanges] = useState(null);
   const [entitled, setEntitled] = useState(null);
   const [previewToken, setPreviewToken] = useState(0);
+  const [workspaces, setWorkspaces] = useState([]);
   const [lang, setLangState] = useState('ar');
   const [section, setSection] = useState(DEFAULT_SECTION);
 
@@ -107,16 +109,23 @@ export default function StudioPage() {
       if (!s) { setPhase('signedout'); return; }
       setSession(s);
 
-      /* RLS decides what comes back. A customer gets the workspaces they
-         administer; nothing here filters by anything. */
-      const { data: tenants, error: tErr } = await supabase
-        .from('tenants')
-        .select('id, slug, name, status, default_lang, published_at')
-        .order('created_at', { ascending: true });
-      if (tErr) throw tErr;
+      /* Scoped by MEMBERSHIP, not by reading `tenants` directly — that table is
+         world-readable, so an unscoped select hands every customer the whole
+         platform's list. See lib/studio-data.loadWorkspaces. */
+      const tenants = await loadWorkspaces();
       if (!tenants || tenants.length === 0) { setPhase('noworkspace'); return; }
+      setWorkspaces(tenants);
 
-      const t = tenants[0];
+      /* A remembered choice wins, when it is still one of theirs. Without this
+         an owner — who administers every tenant — is returned to whichever row
+         sorts first on every single load, which is not the one they were
+         working on. */
+      let chosen = null;
+      try {
+        const saved = localStorage.getItem(WORKSPACE_KEY);
+        chosen = saved ? tenants.find((x) => x.id === saved) : null;
+      } catch (e) { /* private mode */ }
+      const t = chosen || tenants[0];
       setTenant(t);
 
       /* Projects are loaded in full rather than counted: Work needs the rows,
@@ -201,6 +210,18 @@ export default function StudioPage() {
         onLang={setLang}
         status={status}
         account={{ email: session?.user?.email || '' }}
+        workspace={tenant?.name || tenant?.slug || ''}
+        workspaces={workspaces}
+        workspaceId={tenant?.id || ''}
+        onWorkspace={(id) => {
+          /* A full reload rather than swapping state: every screen holds a
+             draft of the workspace it opened with, and switching underneath
+             them would leave a half-edited Profile pointed at somebody else's
+             portfolio — which is the exact accident this selector exists to
+             prevent. */
+          try { localStorage.setItem(WORKSPACE_KEY, id); } catch (e) { /* ignore */ }
+          window.location.assign('/studio');
+        }}
         onSignOut={signOut}
       >
         {/* Said once, above whichever screen is open, rather than once per

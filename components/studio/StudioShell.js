@@ -36,6 +36,10 @@ export default function StudioShell({
   onLang,
   status = null,        // { published, hasChanges, slug } | null while unknown
   account = null,       // { email }
+  workspace = null,     // the name of the portfolio being edited
+  workspaces = null,    // every portfolio this account may edit
+  workspaceId = null,
+  onWorkspace = () => {},
   onSignOut,
   children,
 }) {
@@ -98,6 +102,23 @@ export default function StudioShell({
         </ul>
 
         <div className="foot">
+          {/* WHICH PORTFOLIO AM I EDITING.
+              A customer has exactly one workspace and sees a label. A platform
+              owner is enrolled as an admin of EVERY tenant, so for them this is
+              a chooser — without it the Studio silently opened whichever row
+              sorted first, which was a real client's portfolio.
+              The prompt's own rule: an operator must never accidentally act on
+              the wrong customer, and identity must be explicit. */}
+          {workspaces && workspaces.length > 1 ? (
+            <label className="pick">
+              <span className="srOnly">{ar ? 'المعرض' : 'Portfolio'}</span>
+              <select value={workspaceId || ''} onChange={(e) => onWorkspace(e.target.value)}>
+                {workspaces.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name || w.slug}</option>
+                ))}
+              </select>
+            </label>
+          ) : workspace ? <p className="ws" title={workspace}>{workspace}</p> : null}
           {account && <p className="who" title={account.email}>{account.email}</p>}
           <div className="footRow">
             {/* Named in the language it switches TO, which is the only label
@@ -226,6 +247,22 @@ export default function StudioShell({
         .item:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
         .foot { margin-top: var(--space-3); }
+        .pick { display: block; margin: 0 var(--space-2) var(--space-2); }
+        .pick select {
+          width: 100%; min-block-size: 36px; padding: 0 8px;
+          border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+          background: var(--surface-input); color: var(--text-primary);
+          font: inherit; font-size: var(--text-xs); font-weight: 600;
+        }
+        .pick select:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+        .ws {
+          margin: 0 0 2px;
+          padding-inline: var(--space-3);
+          font-size: var(--text-xs);
+          font-weight: 600;
+          color: var(--text-secondary);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
         .who {
           margin: 0 0 var(--space-2);
           padding-inline: var(--space-3);
