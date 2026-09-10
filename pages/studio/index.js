@@ -39,6 +39,7 @@ import { hasPublicContent } from '../../lib/profile-content';
 import { loadProjects } from '../../lib/studio-data';
 import { hasUnpublishedChanges, isEntitled } from '../../lib/studio-publish';
 import { PublishPanel, Preview } from '../../components/studio/publish';
+import { NoProfileNotice, ReadOnlyNotice } from '../../components/studio/readonly';
 
 const THEME_KEY = 'admin_theme';
 const LANG_KEY = 'admin_lang';
@@ -165,6 +166,18 @@ export default function StudioPage() {
     window.location.replace('/admin');
   }, []);
 
+  /* WRITES REQUIRE A SUBSCRIPTION IN PRODUCTION — can_edit_tenant() is
+     `owner OR (tenant admin AND entitled)`, and it governs both profile and
+     projects. So an unpaid customer can open every screen and save nothing.
+     Asked once, up front, instead of letting each field discover it.
+
+     `null` (unknown) reads as EDITABLE, deliberately: the database refuses the
+     write on its own, so the cost of being wrong here is one honest error
+     message — whereas showing a paywall because a lookup failed is a paywall
+     shown to someone who has already paid. */
+  const canEdit = entitled !== false;
+  const hasProfileRow = profile !== null;
+
   const status = useMemo(() => {
     if (!snapshot || !tenant) return null;
     return { published: snapshot.published, hasChanges: changes === true, slug: tenant.slug };
@@ -193,6 +206,12 @@ export default function StudioPage() {
         account={{ email: session?.user?.email || '' }}
         onSignOut={signOut}
       >
+        {/* Said once, above whichever screen is open, rather than once per
+            field. A missing profile row outranks the paywall: a subscription
+            would not fix it, so offering one would send them to the wrong shop. */}
+        {!hasProfileRow && <NoProfileNotice ar={ar} />}
+        {hasProfileRow && !canEdit && <ReadOnlyNotice ar={ar} />}
+
         {section === 'home' && (
           <Home ar={ar} tenant={tenant} profile={profile} projectCount={projects.length}
                 published={snapshot.published} entitled={entitled} changes={changes}
@@ -201,17 +220,20 @@ export default function StudioPage() {
                 onPublished={() => { setSnapshot({ published: true }); setChanges(false); }} />
         )}
         {section === 'profile' && (
-          <Profile ar={ar} uiLang={lang} tenant={tenant} profile={profile} onSaved={onProfile} />
+          <Profile ar={ar} uiLang={lang} tenant={tenant} profile={profile} onSaved={onProfile}
+                   canEdit={canEdit && hasProfileRow} />
         )}
         {section === 'work' && (
           <Work ar={ar} uiLang={lang} tenant={tenant} profile={profile}
-                projects={projects} onProjects={onProjectsChanged} />
+                projects={projects} onProjects={onProjectsChanged} canEdit={canEdit} />
         )}
         {section === 'appearance' && (
-          <Appearance ar={ar} tenant={tenant} profile={profile} onSaved={onProfile} />
+          <Appearance ar={ar} tenant={tenant} profile={profile} onSaved={onProfile}
+                      canEdit={canEdit && hasProfileRow} />
         )}
         {section === 'links' && (
-          <Links ar={ar} tenant={tenant} profile={profile} onSaved={onProfile} />
+          <Links ar={ar} tenant={tenant} profile={profile} onSaved={onProfile}
+                 canEdit={canEdit && hasProfileRow} />
         )}
         {['domain', 'visitors', 'plan', 'settings'].includes(section) && (
           <NotYet ar={ar} section={section} />

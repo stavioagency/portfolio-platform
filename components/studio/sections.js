@@ -33,7 +33,7 @@ import {
 
 /* ── PROFILE ─────────────────────────────────────────────────────────── */
 
-export function Profile({ ar, uiLang, tenant, profile, onSaved }) {
+export function Profile({ ar, uiLang, tenant, profile, onSaved, canEdit = true }) {
   const [draft, setDraft] = useState(() => ({
     name: profile?.name || { ar: '', en: '' },
     tagline: profile?.tagline || { ar: '', en: '' },
@@ -56,7 +56,10 @@ export function Profile({ ar, uiLang, tenant, profile, onSaved }) {
   /* Every change schedules a write of the WHOLE draft, not a delta: the newest
      payload supersedes any queued one, which is what makes the queue safe to
      collapse to a single entry. */
-  const patch = (u) => setDraft((prev) => { const next = { ...prev, ...u }; saver.schedule(next); return next; });
+  /* A change is not even scheduled when writing is refused: queueing one
+     would fire the moment a subscription started, writing text the customer
+     typed long ago and has forgotten. */
+  const patch = (u) => { if (!canEdit) return; setDraft((prev) => { const next = { ...prev, ...u }; saver.schedule(next); return next; }); };
 
   /* The language the CONTENT is written in — the rule /admin already follows. */
   const contentLang = draft.bilingual ? uiLang : draft.default_lang;
@@ -167,7 +170,7 @@ export function Profile({ ar, uiLang, tenant, profile, onSaved }) {
 
 /* ── APPEARANCE ──────────────────────────────────────────────────────── */
 
-export function Appearance({ ar, tenant, profile, onSaved }) {
+export function Appearance({ ar, tenant, profile, onSaved, canEdit = true }) {
   const initial = useMemo(() => currentAccent(profile?.appearance), [profile]);
   const [picked, setPicked] = useState(initial.id);
 
@@ -180,7 +183,7 @@ export function Appearance({ ar, tenant, profile, onSaved }) {
 
   /* A colour is a single decisive choice rather than typing, so it writes at
      once instead of waiting out a debounce nobody is filling. */
-  const choose = (id) => { setPicked(id); saver.schedule(id); saver.flush(); };
+  const choose = (id) => { if (!canEdit) return; setPicked(id); saver.schedule(id); saver.flush(); };
 
   return (
     <div className="screen">
@@ -270,7 +273,7 @@ export const LINK_KINDS = [
 
 export const MAX_LINKS = 8;
 
-export function Links({ ar, tenant, profile, onSaved }) {
+export function Links({ ar, tenant, profile, onSaved, canEdit = true }) {
   const [rows, setRows] = useState(() =>
     (Array.isArray(profile?.custom_links) ? profile.custom_links : [])
       .map((l, i) => ({ key: `k${i}`, icon: l.icon || '', href: l.href || '' })));
@@ -284,7 +287,7 @@ export function Links({ ar, tenant, profile, onSaved }) {
     onSaved({ ...profile, custom_links: clean });
   }, [tenant, profile, onSaved]));
 
-  const patch = (next) => { setRows(next); saver.schedule(next); };
+  const patch = (next) => { if (!canEdit) return; setRows(next); saver.schedule(next); };
   const add = () => { if (rows.length < MAX_LINKS) patch([...rows, { key: `k${Date.now()}`, icon: 'whatsapp', href: '' }]); };
   const set = (key, u) => patch(rows.map((r) => (r.key === key ? { ...r, ...u } : r)));
   const drop = (key) => patch(rows.filter((r) => r.key !== key));

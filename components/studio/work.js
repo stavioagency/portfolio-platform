@@ -31,7 +31,7 @@ import {
 export const MAX_PROJECTS = 12;
 export const MAX_GALLERY = 6;
 
-export function Work({ ar, uiLang, tenant, profile, projects, onProjects }) {
+export function Work({ ar, uiLang, tenant, profile, projects, onProjects, canEdit = true }) {
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -41,7 +41,7 @@ export function Work({ ar, uiLang, tenant, profile, projects, onProjects }) {
   const editing = projects.find((p) => p.id === editingId) || null;
 
   const add = useCallback(async () => {
-    if (projects.length >= MAX_PROJECTS) return;
+    if (!canEdit || projects.length >= MAX_PROJECTS) return;
     setBusy('add'); setError('');
     try {
       const row = await createProject(tenant.id, projects.length);
@@ -52,6 +52,7 @@ export function Work({ ar, uiLang, tenant, profile, projects, onProjects }) {
   }, [projects, tenant, onProjects]);
 
   const move = useCallback(async (id, dir) => {
+    if (!canEdit) return;
     const i = projects.findIndex((p) => p.id === id);
     const j = i + dir;
     if (i < 0 || j < 0 || j >= projects.length) return;
@@ -69,6 +70,7 @@ export function Work({ ar, uiLang, tenant, profile, projects, onProjects }) {
   }, [projects, onProjects]);
 
   const doDelete = useCallback(async (project) => {
+    if (!canEdit) return;
     setConfirming(null); setBusy(`del-${project.id}`); setError('');
     try {
       await deleteProject(project.id);
@@ -83,6 +85,7 @@ export function Work({ ar, uiLang, tenant, profile, projects, onProjects }) {
       <ProjectEditor
         ar={ar} contentLang={contentLang} tenant={tenant} project={editing}
         onBack={() => setEditingId(null)}
+        canEdit={canEdit}
         onSaved={(row) => onProjects(projects.map((p) => (p.id === row.id ? row : p)))}
       />
     );
@@ -248,7 +251,7 @@ function ConfirmDelete({ ar, name, imageCount, onCancel, onConfirm }) {
   );
 }
 
-function ProjectEditor({ ar, contentLang, tenant, project, onBack, onSaved }) {
+function ProjectEditor({ ar, contentLang, tenant, project, onBack, onSaved, canEdit = true }) {
   const [draft, setDraft] = useState(() => ({
     title: project.title || { ar: '', en: '' },
     description: project.description || { ar: '', en: '' },
@@ -264,7 +267,7 @@ function ProjectEditor({ ar, contentLang, tenant, project, onBack, onSaved }) {
     onSaved({ ...project, ...d });
   }, [project, onSaved]));
 
-  const patch = (u) => setDraft((prev) => { const next = { ...prev, ...u }; saver.schedule(next); return next; });
+  const patch = (u) => { if (!canEdit) return; setDraft((prev) => { const next = { ...prev, ...u }; saver.schedule(next); return next; }); };
 
   async function upload(kind, file, apply) {
     const rejection = describeRejection(file, ar);
