@@ -1155,6 +1155,19 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
             <Icon name="external" size={13} mirror />
             {t('view_live_site')}
           </a>
+          {/* THE WAY INTO THE NEW STUDIO, and the only change this file has
+              taken for it.
+              /studio is the editor this one is being replaced by. It is not the
+              default yet and the signup funnel still ends here, so without a
+              link it is reachable only by someone who already knows the URL —
+              which makes it impossible to try, and untried is exactly why it
+              cannot become the default.
+              Deliberately quiet and below the live-site link: this editor still
+              works, and nobody using it should feel moved on before the new one
+              has earned it. */}
+          <a href="/studio" className="studio-btn">
+            {ar ? 'تجربة الاستوديو الجديد' : 'Try the new Studio'}
+          </a>
           {/* THE STATE IS ON THE BUTTON, not in a badge beside it. A count of
               pending changes is meaningless to a client — they know what they
               changed — and a separate indicator is a second thing to notice.
@@ -1322,6 +1335,9 @@ function Dashboard({ session, lang, toggleLang, setLang, theme, toggleTheme }) {
         .sidebar-legal a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
         .view-site-btn { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: var(--space-3); padding: 7px 12px; background: var(--bg-hover); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-sm); font-weight: 600; text-decoration: none; transition: var(--transition); }
         .view-site-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+        .studio-btn { display: flex; align-items: center; justify-content: center; margin-top: var(--space-2); padding: 7px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); color: var(--text-tertiary); font-size: var(--text-xs); font-weight: 600; text-decoration: none; transition: var(--transition); }
+        .studio-btn:hover { color: var(--text-secondary); border-color: var(--text-tertiary); }
+        .studio-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         .publish-btn { display: flex; align-items: center; justify-content: center; width: 100%; margin-top: var(--space-2); padding: 9px 12px; min-height: 40px; background: var(--accent); border: 1px solid var(--accent); border-radius: var(--radius-sm); color: var(--accent-fg); font-family: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer; transition: opacity var(--t-ui) var(--ease); }
         .publish-btn:hover:not(:disabled) { opacity: 0.9; }
         /* Nothing to publish is the RESTING state and it is quiet: a filled

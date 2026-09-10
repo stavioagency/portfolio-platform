@@ -14,8 +14,12 @@ switch actually is — so the decision is a decision rather than a discovery.
 ```
 signup  →  verify  →  /admin?plan&lang   ← the funnel still ends here
                           │
-                          └─ /studio is reachable by URL, and by ?next=/studio
+                          ├─ "Try the new Studio", in the admin sidebar
+                          └─ /studio, by URL or ?next=/studio
 ```
+
+The owner has said the funnel SHOULD move to `/studio` once everything is
+finalised. It has not moved yet.
 
 `pages/signup/verify.js` sends a newly verified customer to `/admin`. That is
 **deliberately unchanged**: switching it would put every real new customer into
@@ -27,38 +31,28 @@ five minutes costs a sale.
 
 ---
 
-## 2. The blocker that is not ours to fix
+## 2. The blocker that was — resolved 2026-09-10
 
-**Production RLS says an unpaid customer cannot edit anything.**
+Production RLS used to make editing require a subscription, which contradicted
+the product rule. **Fixed in section-z**, with the owner's decision:
+
+> A customer may build their portfolio for free, and may not PUBLISH it until
+> they pay.
 
 ```
-profile / projects   SELECT  is_tenant_admin(tenant_id)
-profile / projects   ALL     can_edit_tenant(tenant_id)
-
-can_edit_tenant(tid) = is_platform_owner()
-                       OR (is_tenant_admin(tid) AND tenant_has_active_subscription(tid))
+profile / projects   ALL   can_draft_tenant(tenant_id)   membership only
+tenant_domains       ALL   can_edit_tenant(tenant_id)    still needs paying
+publish_tenant()           can_edit_tenant(tid)          still needs paying
 ```
 
-Verified against the live database on 2026-09-10, not read from the section
-files — those are known to drift.
+**The trap that made this more than a one-word change:** `can_edit_tenant()` was
+read in four places, including inside `publish_tenant()`. Relaxing it in place
+would have made publishing free as well — removing the paywall entirely while
+appearing to implement the rule. Two ideas were sharing one name, so they were
+given two.
 
-The master direction says the opposite:
-
-> Free users: CAN create/edit/explore their portfolio. CANNOT publish.
-
-Both cannot be true. Today the product is **pay-then-edit**; the direction wants
-**explore-then-pay**.
-
-**Until that is decided, the Studio tells the truth**: a customer without a
-subscription sees one notice explaining that they can look but not save, and no
-field schedules a write. That behaviour costs nothing if the rule changes — the
-day `can_edit_tenant` stops requiring a subscription, `canEdit` is true for
-everyone and none of it renders.
-
-**This is an RLS change on a live multi-tenant product and needs an explicit
-decision.** It is not a code change anyone should make on inference.
-
----
+Applied to production and verified there. Blast radius on the day: none — all
+seven tenants were comped and already satisfied both predicates.
 
 ## 3. Before switching the funnel to /studio
 
@@ -72,8 +66,6 @@ Each line is a thing to *do*, not a thing to assume:
 - [ ] Publish, then open `/{slug}` in a private window and confirm the change is
       live.
 - [ ] Repeat in Arabic **and** English, and on a real phone.
-- [ ] Confirm §2 is resolved, or accept that new signups land in a read-only
-      Studio and that this is the intended first experience.
 - [ ] Decide what happens to a customer mid-edit in `/admin` when the funnel
       moves — nothing breaks, but two editors will be live at once.
 

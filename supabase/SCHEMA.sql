@@ -81,6 +81,11 @@
 --      the portfolio, because the domain was hard-coded as neutral AND mapped
 --      in tenant_domains; the hard-coded test ran first and won.
 --
+--   Z  can_draft_tenant(); profile/projects writes no longer require a
+--      subscription. A customer may BUILD for free and must pay to PUBLISH.
+--      can_edit_tenant() is unchanged and still gates publish_tenant() and
+--      tenant_domains — the two predicates are deliberately different now.
+--
 --   WHICH SECTION HOLDS THE LIVE DEFINITION OF get_public_portfolio: Y.
 --   Q, S and Y each carry a FULL create-or-replace; T and V only reference it.
 --   The latest letter is the deployed one, and the earlier copies are now
@@ -321,6 +326,12 @@
 --     portfolio, which is the whole reason the neutral list exists.
 --     Live definition: section-y. See the dated note at the top of this file.
 --
+-- can_draft_tenant(tid) -> boolean   authenticated
+--     Write authority for the DRAFT (profile, projects): owner OR tenant admin.
+--     No subscription. Deliberately NOT the same as can_edit_tenant() -- the two
+--     were one predicate until section-z, and merging them again silently makes
+--     publishing free.
+--
 -- touch_updated_at()             -> trigger   NOT security definer
 --     BEFORE UPDATE on billing_customers and subscriptions.
 --
@@ -340,7 +351,12 @@
 --   storage.objects bucket 'media' ...................... USING (bucket_id='media')
 --
 -- WRITE (authenticated):
---   profile, projects, tenant_domains ... ALL  can_edit_tenant(tenant_id)
+--   profile, projects .................. ALL  can_draft_tenant(tenant_id)
+--     Membership only -- NO subscription. A customer builds their portfolio for
+--     free; the paywall is on PUBLISHING, not on typing (section-z).
+--   tenant_domains ..................... ALL  can_edit_tenant(tenant_id)
+--     Still requires paying: a custom domain is a paid feature, and it could not
+--     resolve for an unpublished portfolio anyway.
 --   tenants ............................. INSERT/UPDATE/DELETE  is_platform_owner()
 --   tenant_admins ....................... INSERT/UPDATE/DELETE  is_platform_owner()
 --   storage.objects ..................... INSERT/UPDATE/DELETE  can_write_media(name)
