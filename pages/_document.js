@@ -87,7 +87,11 @@ export default function Document() {
                   // still wins, and it shares admin_theme so a customer who chose
                   // dark in the current editor keeps it here.
                   'document.documentElement.setAttribute("data-admin-theme",localStorage.getItem("admin_theme")||"light");' +
-                '}else if(p==="/console"){' +
+                '}else if(p==="/console"||p==="/client"){' +
+                  // Both operator surfaces are designed dark and neither has a
+                  // toggle. They must not read admin_theme: that is the CLIENT
+                  // editor's setting, so a customer choosing light would have
+                  // repainted the operator's console.
                   'document.documentElement.setAttribute("data-admin-theme","dark");' +
                 '}else if(p==="/admin"||p==="/signup"||p==="/signup/verify"||p==="/subscribe"||p==="/reset-password"){' +
                   'document.documentElement.setAttribute("data-admin-theme",localStorage.getItem("admin_theme")||"dark");' +
