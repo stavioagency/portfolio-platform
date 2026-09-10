@@ -145,6 +145,18 @@ test('the workspace list is scoped by membership, never read from `tenants`', ()
   assert.ok(/loadWorkspaces\(\)/.test(PAGE_CODE), 'the page uses the scoped loader');
 });
 
+test('the open section is read from the address bar, not the router', () => {
+  // THE BUG THIS PINS. On this statically-optimised page router.query was
+  // observed EMPTY while router.isReady was already true and the URL plainly
+  // read ?s=work — so /studio?s=work silently opened Home and every deep link
+  // into a section was broken, with nothing reporting it.
+  // window.location IS the address bar, which is what the customer pasted.
+  assert.ok(/new URLSearchParams\(window\.location\.search\)\.get\('s'\)/.test(PAGE_CODE),
+    'the section must come from the URL itself');
+  assert.ok(!/router\.query\.s/.test(PAGE_CODE), 'router.query is not reliable here');
+  assert.ok(/addEventListener\('popstate'/.test(PAGE_CODE), 'the back button must still work');
+});
+
 test('authorization is left to the database', () => {
   // RLS decides which workspaces come back. A filter here would be a security
   // control in the browser, which is not one.

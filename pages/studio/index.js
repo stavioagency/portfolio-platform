@@ -67,12 +67,24 @@ export default function StudioPage() {
   const ar = lang === 'ar';
 
   /* The section lives in the URL so a screen can be linked, reloaded and
-     shared, and so the back button does what everyone expects. */
+     shared, and so the back button does what everyone expects.
+     READ FROM location.search, NOT router.query. On this page — statically
+     optimised, no getServerSideProps — router.query was observed EMPTY while
+     isReady was already true and the address bar plainly read ?s=work, so
+     /studio?s=work silently opened Home. Deep links into a section were broken
+     and nothing said so. window.location is the address bar, which is the thing
+     the customer actually pasted, and it is right in dev, in production and on
+     first paint. popstate covers the back button. */
   useEffect(() => {
-    if (!router.isReady) return;
-    const q = typeof router.query.s === 'string' ? router.query.s : '';
-    setSection(isStudioSection(q) ? q : DEFAULT_SECTION);
-  }, [router.isReady, router.query.s]);
+    const read = () => {
+      let q = '';
+      try { q = new URLSearchParams(window.location.search).get('s') || ''; } catch (e) { /* ignore */ }
+      setSection(isStudioSection(q) ? q : DEFAULT_SECTION);
+    };
+    read();
+    window.addEventListener('popstate', read);
+    return () => window.removeEventListener('popstate', read);
+  }, []);
 
   const goSection = useCallback((id) => {
     setSection(id);
