@@ -23,6 +23,7 @@ import { useCallback, useState } from 'react';
 import { Button, Icon } from '../ui';
 import { Area, Bilingual, Group, Image, SaveRow, Text } from './fields';
 import { pick } from '../../lib/i18n';
+import { useAutosave } from '../../lib/use-autosave';
 import {
   createProject, deleteProject, describeRejection, reorderProjects, saveProject, uploadImage,
 } from '../../lib/studio-data';
@@ -255,13 +256,15 @@ function ProjectEditor({ ar, contentLang, tenant, project, onBack, onSaved }) {
     cover_image: project.cover_image || '',
     images: Array.isArray(project.images) ? project.images : [],
   }));
-  const [dirty, setDirty] = useState(false);
-  const [state, setState] = useState('idle');
-  const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [imgError, setImgError] = useState('');
 
-  const patch = (u) => { setDraft((p) => ({ ...p, ...u })); setDirty(true); setState('idle'); };
+  const saver = useAutosave(useCallback(async (d) => {
+    await saveProject(project.id, d);
+    onSaved({ ...project, ...d });
+  }, [project, onSaved]));
+
+  const patch = (u) => setDraft((prev) => { const next = { ...prev, ...u }; saver.schedule(next); return next; });
 
   async function upload(kind, file, apply) {
     const rejection = describeRejection(file, ar);
@@ -272,18 +275,11 @@ function ProjectEditor({ ar, contentLang, tenant, project, onBack, onSaved }) {
     finally { setBusy(''); }
   }
 
-  async function save() {
-    setState('saving'); setError('');
-    try {
-      await saveProject(project.id, draft);
-      onSaved({ ...project, ...draft });
-      setDirty(false); setState('saved');
-    } catch (e) { setError(e?.message || String(e)); setState('error'); }
-  }
-
   return (
     <div className="screen">
-      <button type="button" className="back" onClick={onBack}>
+      {/* Leaving flushes rather than warning: the write can simply be sent,
+          and interrupting someone to ask is a worse answer than saving. */}
+      <button type="button" className="back" onClick={() => { saver.flush(); onBack(); }}>
         <Icon name="chevron-left" size={16} mirror />
         {ar ? 'كل الأعمال' : 'All work'}
       </button>
@@ -338,7 +334,7 @@ function ProjectEditor({ ar, contentLang, tenant, project, onBack, onSaved }) {
         )}
       </Group>
 
-      <SaveRow state={state} error={error} dirty={dirty} onSave={save} onRetry={save} ar={ar} />
+      <SaveRow state={saver.state} error={saver.error} onRetry={saver.retry} ar={ar} />
 
       <style jsx>{`
         .screen { max-width: 620px; }

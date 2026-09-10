@@ -37,6 +37,8 @@ import { Work } from '../../components/studio/work';
 import { DEFAULT_SECTION, isStudioSection, studioSectionLabel } from '../../lib/studio-nav';
 import { hasPublicContent } from '../../lib/profile-content';
 import { loadProjects } from '../../lib/studio-data';
+import { hasUnpublishedChanges, isEntitled } from '../../lib/studio-publish';
+import { PublishPanel, Preview } from '../../components/studio/publish';
 
 const THEME_KEY = 'admin_theme';
 const LANG_KEY = 'admin_lang';
@@ -50,6 +52,12 @@ export default function StudioPage() {
   const [snapshot, setSnapshot] = useState(null);
   const [profile, setProfile] = useState(null);
   const [projects, setProjects] = useState([]);
+  /* null means "not answered yet" for both. A status line that says "Published"
+     or a button that says "you cannot" before the database has answered is a
+     claim the screen has not earned. */
+  const [changes, setChanges] = useState(null);
+  const [entitled, setEntitled] = useState(null);
+  const [previewToken, setPreviewToken] = useState(0);
   const [lang, setLangState] = useState('ar');
   const [section, setSection] = useState(DEFAULT_SECTION);
 
@@ -123,6 +131,12 @@ export default function StudioPage() {
       setProjects(rows);
       setSnapshot({ published: Boolean(t.published_at) });
       setPhase('ready');
+
+      /* Asked AFTER the screen is usable, not before: neither answer is needed
+         to render, and blocking the whole Studio on two extra round trips is
+         how a tool starts feeling slow. */
+      hasUnpublishedChanges(t.id).then(setChanges);
+      isEntitled(t.id).then(setEntitled);
     } catch (e) {
       /* Never a blank screen and never a frozen button: say what happened, say
          that nothing was changed, and offer the one action that can help. */
@@ -133,6 +147,19 @@ export default function StudioPage() {
 
   useEffect(() => { boot(); }, [boot]);
 
+  /* The draft changed, so both "is there anything to publish" and the preview
+     are now stale. The check is the database's byte comparison, not a guess
+     from what just happened on screen — a save that wrote the same value back
+     is not a change, and only the database can say so. */
+  const draftChanged = useCallback(() => {
+    if (!tenant) return;
+    setPreviewToken((v) => v + 1);
+    hasUnpublishedChanges(tenant.id).then(setChanges);
+  }, [tenant]);
+
+  const onProfile = useCallback((next) => { setProfile(next); draftChanged(); }, [draftChanged]);
+  const onProjectsChanged = useCallback((next) => { setProjects(next); draftChanged(); }, [draftChanged]);
+
   const signOut = useCallback(async () => {
     try { await supabase.auth.signOut(); } catch (e) { /* ignore */ }
     window.location.replace('/admin');
@@ -140,11 +167,8 @@ export default function StudioPage() {
 
   const status = useMemo(() => {
     if (!snapshot || !tenant) return null;
-    /* hasChanges stays false until Phase 3 wires the draft/publish comparison.
-       Claiming "you have unpublished changes" without knowing is worse than
-       saying nothing, so it says nothing. */
-    return { published: snapshot.published, hasChanges: false, slug: tenant.slug };
-  }, [snapshot, tenant]);
+    return { published: snapshot.published, hasChanges: changes === true, slug: tenant.slug };
+  }, [snapshot, tenant, changes]);
 
   const title = ar ? 'الاستوديو — ديزايناكم' : 'Studio — Designakum';
 
@@ -171,20 +195,23 @@ export default function StudioPage() {
       >
         {section === 'home' && (
           <Home ar={ar} tenant={tenant} profile={profile} projectCount={projects.length}
-                published={snapshot.published} onSection={goSection} />
+                published={snapshot.published} entitled={entitled} changes={changes}
+                previewToken={previewToken} onRefreshPreview={draftChanged}
+                onSection={goSection}
+                onPublished={() => { setSnapshot({ published: true }); setChanges(false); }} />
         )}
         {section === 'profile' && (
-          <Profile ar={ar} uiLang={lang} tenant={tenant} profile={profile} onSaved={setProfile} />
+          <Profile ar={ar} uiLang={lang} tenant={tenant} profile={profile} onSaved={onProfile} />
         )}
         {section === 'work' && (
           <Work ar={ar} uiLang={lang} tenant={tenant} profile={profile}
-                projects={projects} onProjects={setProjects} />
+                projects={projects} onProjects={onProjectsChanged} />
         )}
         {section === 'appearance' && (
-          <Appearance ar={ar} tenant={tenant} profile={profile} onSaved={setProfile} />
+          <Appearance ar={ar} tenant={tenant} profile={profile} onSaved={onProfile} />
         )}
         {section === 'links' && (
-          <Links ar={ar} tenant={tenant} profile={profile} onSaved={setProfile} />
+          <Links ar={ar} tenant={tenant} profile={profile} onSaved={onProfile} />
         )}
         {['domain', 'visitors', 'plan', 'settings'].includes(section) && (
           <NotYet ar={ar} section={section} />
@@ -262,17 +289,14 @@ function Gate({ phase, ar, error, onRetry }) {
  * a statistic and nothing is invented — every line is read from the customer's
  * own rows, and hasPublicContent() is the same check the public page already
  * uses to decide whether a portfolio renders at all. */
-function Home({ ar, tenant, profile, projectCount, published, onSection }) {
+function Home({ ar, tenant, profile, projectCount, published, entitled, changes,
+                previewToken, onRefreshPreview, onSection, onPublished }) {
+  /* hasPublicContent() is the same check the public page uses to decide whether
+     a portfolio renders at all — reused rather than restated, so this screen
+     cannot disagree with the page it describes. The publishing CHECKLIST is not
+     duplicated here: PublishPanel owns the one definition of "ready", because
+     two lists is how a checklist and a button end up contradicting each other. */
   const renderable = hasPublicContent(profile, projectCount);
-
-  const steps = [
-    { id: 'name', ok: hasText(profile?.name), section: 'profile', label: ar ? 'اسمك' : 'Your name' },
-    { id: 'title', ok: hasText(profile?.tagline), section: 'profile', label: ar ? 'مجالك' : 'What you do' },
-    { id: 'projects', ok: projectCount > 0, section: 'work', label: ar ? 'عمل واحد على الأقل' : 'At least one project' },
-    { id: 'links', ok: Array.isArray(profile?.custom_links) && profile.custom_links.length > 0,
-      section: 'links', label: ar ? 'طريقة للتواصل' : 'A way to reach you' },
-  ];
-  const remaining = steps.filter((s) => !s.ok);
 
   return (
     <div className="home">
@@ -300,29 +324,13 @@ function Home({ ar, tenant, profile, projectCount, published, onSection }) {
         </p>
       </section>
 
-      <section className="card">
-        <h2>{ar ? 'الأساسيات' : 'The basics'}</h2>
-        <ul className="checks">
-          {steps.map((s) => (
-            <li key={s.id} className={s.ok ? 'ok' : ''}>
-              <span className="tick" aria-hidden="true">
-                {s.ok ? <Icon name="check" size={14} /> : <span className="empty" />}
-              </span>
-              <span className="lbl">{s.label}</span>
-              {!s.ok && (
-                <button type="button" className="fix" onClick={() => onSection(s.section)}>
-                  {ar ? 'إضافة' : 'Add'}
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-        <p className="note">
-          {remaining.length === 0
-            ? (ar ? 'كل الأساسيات مكتملة.' : 'Every basic is complete.')
-            : (ar ? `بقي ${remaining.length} من ${steps.length}.` : `${remaining.length} of ${steps.length} left.`)}
-        </p>
-      </section>
+      <PublishPanel
+        ar={ar} tenant={tenant} profile={profile} projectCount={projectCount}
+        published={published} entitled={entitled} hasChanges={changes === true}
+        onSection={onSection} onPublished={onPublished}
+      />
+
+      <Preview ar={ar} slug={tenant.slug} token={previewToken} onRefresh={onRefreshPreview} />
 
       <section className="card">
         <h2>{ar ? 'أعمالك' : 'Your work'}</h2>
@@ -393,9 +401,3 @@ function NotYet({ ar, section }) {
   );
 }
 
-function hasText(v) {
-  if (v == null) return false;
-  if (typeof v === 'string') return v.trim() !== '';
-  if (typeof v !== 'object') return false;
-  return Object.values(v).some((s) => typeof s === 'string' && s.trim() !== '');
-}

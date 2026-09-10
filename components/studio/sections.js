@@ -16,29 +16,20 @@
 // the screen says so, because "will this delete my Arabic?" is the first thing
 // anyone sensibly asks before pressing it.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Button, Icon } from '../ui';
 import { Area, Bilingual, Group, Image, SaveRow, Text } from './fields';
 import { pick } from '../../lib/i18n';
+import { useAutosave } from '../../lib/use-autosave';
 import { ACCENTS, accentPatch, currentAccent } from '../../lib/studio-appearance';
 import {
   createProject, deleteProject as removeProject, describeRejection,
   reorderProjects, saveProfile, saveProject, uploadImage,
 } from '../../lib/studio-data';
 
-/* Shared save behaviour. Kept here rather than in each screen because the
-   error path is the part that gets forgotten, and forgetting it once means a
-   customer believes work was saved that was not. */
-function useSaver(save) {
-  const [state, setState] = useState('idle');   // idle | saving | saved | error
-  const [error, setError] = useState('');
-  const run = useCallback(async (payload) => {
-    setState('saving'); setError('');
-    try { await save(payload); setState('saved'); return true; }
-    catch (e) { setError(e?.message || String(e)); setState('error'); return false; }
-  }, [save]);
-  return { state, error, run, reset: () => { setState('idle'); setError(''); } };
-}
+/* Shared save behaviour: autosave, with the race safety in lib/use-autosave.
+   Kept in one place because the error path is the part that gets forgotten, and
+   forgetting it once means a customer believes work was saved that was not. */
 
 /* ── PROFILE ─────────────────────────────────────────────────────────── */
 
@@ -51,19 +42,21 @@ export function Profile({ ar, uiLang, tenant, profile, onSaved }) {
     bilingual: profile?.bilingual === true,
     default_lang: profile?.default_lang || tenant?.default_lang || 'ar',
   }));
-  const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [imgError, setImgError] = useState('');
 
-  const saver = useSaver(async (d) => {
+  const saver = useAutosave(useCallback(async (d) => {
     await saveProfile(tenant.id, {
       name: d.name, tagline: d.tagline, bio: d.bio,
       profile_image: d.profile_image, bilingual: d.bilingual, default_lang: d.default_lang,
     });
     onSaved({ ...profile, ...d });
-  });
+  }, [tenant, profile, onSaved]));
 
-  const patch = (u) => { setDraft((p) => ({ ...p, ...u })); setDirty(true); saver.reset(); };
+  /* Every change schedules a write of the WHOLE draft, not a delta: the newest
+     payload supersedes any queued one, which is what makes the queue safe to
+     collapse to a single entry. */
+  const patch = (u) => setDraft((prev) => { const next = { ...prev, ...u }; saver.schedule(next); return next; });
 
   /* The language the CONTENT is written in — the rule /admin already follows. */
   const contentLang = draft.bilingual ? uiLang : draft.default_lang;
@@ -76,8 +69,6 @@ export function Profile({ ar, uiLang, tenant, profile, onSaved }) {
     catch (e) { setImgError(e?.message || String(e)); }
     finally { setBusy(false); }
   }
-
-  const save = async () => { if (await saver.run(draft)) setDirty(false); };
 
   return (
     <div className="screen">
@@ -153,7 +144,7 @@ export function Profile({ ar, uiLang, tenant, profile, onSaved }) {
         />
       </Group>
 
-      <SaveRow state={saver.state} error={saver.error} dirty={dirty} onSave={save} onRetry={save} ar={ar} />
+      <SaveRow state={saver.state} error={saver.error} onRetry={saver.retry} ar={ar} />
 
       <style jsx>{`
         .screen { max-width: 620px; }
@@ -179,16 +170,17 @@ export function Profile({ ar, uiLang, tenant, profile, onSaved }) {
 export function Appearance({ ar, tenant, profile, onSaved }) {
   const initial = useMemo(() => currentAccent(profile?.appearance), [profile]);
   const [picked, setPicked] = useState(initial.id);
-  const [dirty, setDirty] = useState(false);
 
-  const saver = useSaver(async (id) => {
+  const saver = useAutosave(useCallback(async (id) => {
     const next = accentPatch(profile?.appearance, id);
     if (!next) throw new Error('Unknown colour');
     await saveProfile(tenant.id, { appearance: next });
     onSaved({ ...profile, appearance: next });
-  });
+  }, [tenant, profile, onSaved]));
 
-  const save = async () => { if (await saver.run(picked)) setDirty(false); };
+  /* A colour is a single decisive choice rather than typing, so it writes at
+     once instead of waiting out a debounce nobody is filling. */
+  const choose = (id) => { setPicked(id); saver.schedule(id); saver.flush(); };
 
   return (
     <div className="screen">
@@ -211,7 +203,7 @@ export function Appearance({ ar, tenant, profile, onSaved }) {
               role="radio"
               aria-checked={picked === a.id}
               className={picked === a.id ? 'sw on' : 'sw'}
-              onClick={() => { setPicked(a.id); setDirty(true); saver.reset(); }}
+              onClick={() => choose(a.id)}
             >
               <span className="dot" style={{ background: a.hex }} aria-hidden="true">
                 {picked === a.id && <Icon name="check" size={14} />}
@@ -232,7 +224,7 @@ export function Appearance({ ar, tenant, profile, onSaved }) {
         )}
       </Group>
 
-      <SaveRow state={saver.state} error={saver.error} dirty={dirty && Boolean(picked)} onSave={save} onRetry={save} ar={ar} />
+      <SaveRow state={saver.state} error={saver.error} onRetry={saver.retry} ar={ar} />
 
       <style jsx>{`
         .screen { max-width: 620px; }
@@ -282,9 +274,7 @@ export function Links({ ar, tenant, profile, onSaved }) {
   const [rows, setRows] = useState(() =>
     (Array.isArray(profile?.custom_links) ? profile.custom_links : [])
       .map((l, i) => ({ key: `k${i}`, icon: l.icon || '', href: l.href || '' })));
-  const [dirty, setDirty] = useState(false);
-
-  const saver = useSaver(async (list) => {
+  const saver = useAutosave(useCallback(async (list) => {
     /* Only rows with a destination are written. An empty row is someone who
        started and changed their mind, not a link, and a blank entry on a public
        page is an invisible target a visitor can press by accident. */
@@ -292,14 +282,12 @@ export function Links({ ar, tenant, profile, onSaved }) {
       .map((r) => ({ icon: r.icon, href: r.href.trim(), label: '' }));
     await saveProfile(tenant.id, { custom_links: clean });
     onSaved({ ...profile, custom_links: clean });
-  });
+  }, [tenant, profile, onSaved]));
 
-  const patch = (next) => { setRows(next); setDirty(true); saver.reset(); };
+  const patch = (next) => { setRows(next); saver.schedule(next); };
   const add = () => { if (rows.length < MAX_LINKS) patch([...rows, { key: `k${Date.now()}`, icon: 'whatsapp', href: '' }]); };
   const set = (key, u) => patch(rows.map((r) => (r.key === key ? { ...r, ...u } : r)));
   const drop = (key) => patch(rows.filter((r) => r.key !== key));
-
-  const save = async () => { if (await saver.run(rows)) setDirty(false); };
 
   return (
     <div className="screen">
@@ -349,7 +337,7 @@ export function Links({ ar, tenant, profile, onSaved }) {
         </>
       )}
 
-      <SaveRow state={saver.state} error={saver.error} dirty={dirty} onSave={save} onRetry={save} ar={ar} />
+      <SaveRow state={saver.state} error={saver.error} onRetry={saver.retry} ar={ar} />
 
       <style jsx>{`
         .screen { max-width: 620px; }

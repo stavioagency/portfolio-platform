@@ -217,44 +217,56 @@ export function Image({ label, value, onChange, onFile, hint, busy, error, ar, r
 
 /* The save state, in one line, at the bottom of a screen.
  *
- * FOUR STATES AND NONE OF THEM IS SILENCE. A button that does nothing visible
- * when pressed is the complaint the old editor earned most often: people press
- * it again, and the second press is the one that races the first. */
-export function SaveRow({ state, error, dirty, onSave, onRetry, ar }) {
-  const busy = state === 'saving';
+ * AUTOSAVE MEANS THERE IS USUALLY NO BUTTON. The customer should not have to
+ * think about saving, so the ordinary states are reports rather than controls:
+ * "Saving…", then "Saved". A button appears only when something needs a person
+ * — a failed write, which autosave deliberately does not retry on its own.
+ *
+ * FIVE STATES AND NONE OF THEM IS SILENCE. A screen that shows nothing while it
+ * writes is the complaint the old editor earned most often: people press again,
+ * and the second press is the one that races the first. */
+export function SaveRow({ state, error, onRetry, ar }) {
+  const said = {
+    idle: '',
+    dirty: ar ? 'لم يُحفظ بعد…' : 'Not saved yet…',
+    saving: ar ? 'جارٍ الحفظ…' : 'Saving…',
+    saved: ar ? 'تم الحفظ' : 'Saved',
+    error: '',
+  }[state];
+
   return (
-    <div className="saveRow">
-      <button type="button" className="save" disabled={busy || !dirty} onClick={onSave}>
-        {busy ? (ar ? 'جارٍ الحفظ…' : 'Saving…') : (ar ? 'حفظ' : 'Save')}
-      </button>
-      {state === 'saved' && !dirty && <span className="ok">{ar ? 'تم الحفظ' : 'Saved'}</span>}
-      {state === 'error' && (
+    <div className="saveRow" aria-live="polite">
+      {state === 'error' ? (
         <span className="bad" role="alert">
-          {error}
+          <span className="what">{ar ? 'لم يُحفظ' : 'Not saved'}</span>
+          {error && <span className="why">{error}</span>}
           <button type="button" onClick={onRetry}>{ar ? 'إعادة المحاولة' : 'Try again'}</button>
         </span>
-      )}
+      ) : said ? (
+        <span className={state === 'saved' ? 'ok' : 'busy'}>
+          {state === 'saving' && <span className="spin" aria-hidden="true" />}
+          {said}
+        </span>
+      ) : null}
       <style jsx>{`
         .saveRow {
           position: sticky; inset-block-end: 0;
-          display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3);
-          padding: var(--space-3) 0;
+          display: flex; align-items: center; gap: var(--space-3);
+          min-height: 46px; padding: var(--space-2) 0;
           background: linear-gradient(to top, var(--bg-primary) 70%, transparent);
+          font-size: var(--text-sm);
         }
-        .save {
-          min-height: 42px; padding: 0 var(--space-5);
-          border: 0; border-radius: var(--radius-md);
-          background: var(--action-primary-bg); color: var(--action-primary-fg);
-          font: inherit; font-size: var(--text-sm); font-weight: 700; cursor: pointer;
-        }
-        .save:hover:not(:disabled) { background: var(--action-primary-bg-hover); }
-        .save:disabled { opacity: 0.5; cursor: default; }
-        .save:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
-        .ok { font-size: var(--text-sm); color: var(--success-ink); }
-        .bad { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px;
-               font-size: var(--text-sm); color: var(--danger-ink); }
+        .ok { color: var(--success-ink); }
+        .busy { display: inline-flex; align-items: center; gap: 8px; color: var(--text-tertiary); }
+        .spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--border-default);
+                border-top-color: var(--text-secondary); animation: sp var(--t-spin) linear infinite; }
+        @keyframes sp { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+        .bad { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--danger-ink); }
+        .why { color: var(--text-secondary); font-size: var(--text-xs); }
         .bad button { border: 0; background: none; color: var(--text-link); font: inherit;
-                      font-weight: 600; cursor: pointer; padding: 2px 4px; }
+                      font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); }
+        .bad button:hover { background: var(--surface-hover); }
         .bad button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
       `}</style>
     </div>
