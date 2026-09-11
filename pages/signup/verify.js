@@ -39,11 +39,30 @@ export default function VerifySignup() {
   // stranger all over again. Dropping it here is how an English customer ends
   // up on an Arabic dashboard — which is exactly what used to happen, because
   // the Continue link passed `plan` and nothing else.
-  const adminHref = useMemo(() => {
+  /* ── WHERE A NEWLY VERIFIED CUSTOMER LANDS ──────────────────────────────
+     The Studio, as of 2026-09-11. It was /admin until then, and the switch
+     waited on one thing: /studio had to be able to receive what this link
+     carries. It could not. `plan` was routed to a "not yet" placeholder and
+     `lang` was ignored, so flipping this line earlier would have dropped a
+     paying customer's chosen plan and shown them a screen with no way to pay --
+     a funnel with a hole exactly where the revenue is.
+
+     BOTH PARAMETERS STILL RIDE ALONG, and both are now consumed:
+       plan — /studio opens Plan with it preselected, one press from /subscribe
+       lang — /studio renders in it, rather than defaulting to Arabic
+
+     They survive the sign-in bounce too. The customer has no session on this
+     device, so /studio shows its gate; that gate now carries the whole query
+     into ?next= instead of a bare /studio, which is what makes this link work
+     for someone opening it on a phone they have never signed in on.
+
+     /admin is NOT retired and stays reachable -- it remains the editor for
+     everyone mid-flight, and the only sign-in screen. */
+  const continueHref = useMemo(() => {
     const params = new URLSearchParams();
     if (plan) params.set('plan', plan);
     params.set('lang', lang);
-    return `/admin?${params.toString()}`;
+    return `/studio?${params.toString()}`;
   }, [plan, lang]);
   const signupHref = useMemo(() => `/signup?lang=${encodeURIComponent(lang)}`, [lang]);
 
@@ -145,11 +164,11 @@ export default function VerifySignup() {
                     have not signed in on this device — the link may have been
                     opened on a phone. */}
                 {/* Sign-in has to happen first, so the plan rides in the URL
-                    rather than being acted on here: /admin reads it and opens
-                    Billing with that plan selected. Checkout is one press
-                    away, and still a press — nobody is sent to PayPal by a
-                    link they clicked in their inbox. */}
-                <a href={adminHref} className="vf-btn">{t('verify_continue')}</a>
+                    rather than being acted on here: /studio reads it and opens
+                    Plan with that plan selected. Checkout is one press away,
+                    and still a press — nobody is sent to PayPal by a link they
+                    clicked in their inbox. */}
+                <a href={continueHref} className="vf-btn">{t('verify_continue')}</a>
                 <p className="vf-muted vf-small">{t('verify_next_hint')}</p>
               </div>
             )}

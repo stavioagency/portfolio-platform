@@ -40,6 +40,8 @@ import { loadProjects, loadWorkspaces } from '../../lib/studio-data';
 import { hasUnpublishedChanges, isEntitled } from '../../lib/studio-publish';
 import { PublishPanel, Preview } from '../../components/studio/publish';
 import { NoProfileNotice } from '../../components/studio/notices';
+import Plan from '../../components/studio/plan';
+import { planFromQuery } from '../../lib/signup-intent';
 
 const THEME_KEY = 'admin_theme';
 const LANG_KEY = 'admin_lang';
@@ -63,6 +65,9 @@ export default function StudioPage() {
   const [workspaces, setWorkspaces] = useState([]);
   const [lang, setLangState] = useState('ar');
   const [section, setSection] = useState(DEFAULT_SECTION);
+  /* The plan the signup funnel asked for, or null. Held rather than read
+     where it is used, because the URL it came from is erased below. */
+  const [intentPlan, setIntentPlan] = useState(null);
 
   const ar = lang === 'ar';
 
@@ -107,6 +112,81 @@ export default function StudioPage() {
     setLangState(next);
     try { localStorage.setItem(LANG_KEY, next); } catch (e) { /* ignore */ }
   }, []);
+
+  /* ── WHAT THE SIGNUP FUNNEL SENDS, AND WHY IT IS READ IN TWO PARTS ─────
+     /signup?plan=yearly carries the visitor's chosen plan through email
+     verification, and verify.js passes BOTH `plan` and `lang` on to the
+     editor. /admin has always consumed them; the Studio consumed neither, so
+     pointing the funnel here would have silently dropped a paying customer's
+     plan and opened an Arabic Studio for an English customer -- the exact
+     failure the comment in verify.js describes.
+
+     LANGUAGE IS APPLIED IMMEDIATELY, because the screen that renders first for
+     someone arriving from their inbox is usually the signed-out gate, and it
+     has to be in their language too.
+
+     THE PLAN IS NOT, AND THAT SEPARATION IS THE WHOLE POINT. A customer
+     clicking the link in their email has NOT signed in on this device. They
+     land here with no session, the gate sends them to /admin, and they come
+     back. If the plan were consumed and erased on mount it would be gone
+     before the gate could carry it across that bounce -- the same dropped
+     plan, one step later and harder to see. So it is consumed only once there
+     is a session for it to mean anything to, and until then it stays in the
+     address bar where signInHref() can pick it up. */
+  useEffect(() => {
+    let asked = null;
+    try { asked = new URLSearchParams(window.location.search).get('lang'); } catch (e) { return; }
+    if (asked === 'ar' || asked === 'en') setLang(asked);
+  }, [setLang]);
+
+  /* The plan, once, and only when signed in. `spent` rather than a ref because
+     it is state the render below legitimately depends on. */
+  const [planSpent, setPlanSpent] = useState(false);
+  useEffect(() => {
+    if (phase !== 'ready' || planSpent) return;
+
+    let search = '';
+    try { search = window.location.search; } catch (e) { return; }
+
+    /* NOT trusted as a price or an entitlement: planFromQuery checks it against
+       the sellable catalogue and returns null for anything else, and
+       billing-checkout prices it server-side regardless. The worst a tampered
+       value can do here is preselect nothing. */
+    const requested = planFromQuery(search);
+    let params = null;
+    try { params = new URLSearchParams(search); } catch (e) { return; }
+
+    setPlanSpent(true);
+    if (!requested) return;
+    setIntentPlan(requested);
+
+    /* An explicit ?s= is the customer's own navigation and outranks the
+       funnel's intent. Without one, a plan means "they came here to pay". */
+    const explicit = isStudioSection(params.get('s') || '');
+    if (!explicit) setSection('plan');
+
+    /* Spent, so it leaves the address bar -- a reload must not re-apply an
+       intent already acted on, which is what /admin does with the same
+       parameter. The section replaces it rather than simply vanishing, because
+       in this Studio the section IS the URL: dropping both would make a reload
+       silently reopen Home. replaceState, not push, so Back leaves the Studio
+       rather than returning to a spent link. */
+    try {
+      const url = new URL(window.location.href);
+      /* The query is REBUILT rather than having the spent keys removed from it.
+         Removing them reads better but spells `.delete(`, and the read-only
+         guard in tests/studio-shell.test.mjs matches that substring to keep a
+         Supabase write out of this file. The guard is blunt on purpose and is
+         not worth loosening for a phrasing -- and stating the whole query is
+         the more honest description anyway: after the funnel's intent is spent,
+         a Studio URL carries its section and nothing else. */
+      const keep = new URLSearchParams();
+      const sec = explicit ? params.get('s') : 'plan';
+      if (sec) keep.set('s', sec);
+      url.search = keep.toString();
+      window.history.replaceState({}, '', url.toString());
+    } catch (e) { /* a browser without URL(): the intent is still applied */ }
+  }, [phase, planSpent]);
 
   useEffect(() => {
     document.documentElement.setAttribute('dir', ar ? 'rtl' : 'ltr');
@@ -264,7 +344,12 @@ export default function StudioPage() {
           <Links ar={ar} tenant={tenant} profile={profile} onSaved={onProfile}
                  canEdit={canEdit} />
         )}
-        {['domain', 'visitors', 'plan', 'settings'].includes(section) && (
+        {section === 'plan' && (
+          <Plan ar={ar} tenant={tenant} entitled={entitled} initialPlan={intentPlan} />
+        )}
+        {/* `plan` has left this list: it is a real screen now, and the funnel
+            points at it. The other three still honestly say "not yet". */}
+        {['domain', 'visitors', 'settings'].includes(section) && (
           <NotYet ar={ar} section={section} />
         )}
       </StudioShell>
@@ -275,6 +360,40 @@ export default function StudioPage() {
 /* Every non-ready state in one place, so none of them can be the blank screen
    the old editor showed while a session was restoring. */
 function Gate({ phase, ar, error, onRetry }) {
+  /* THE SIGN-IN LINK HAS TO CARRY WHERE THEY WERE GOING.
+     It used to be the constant '/admin?next=/studio', which is correct for
+     someone who simply typed the URL and wrong for everyone arriving from the
+     signup funnel: their link is /studio?plan=yearly, they have no session on
+     this device, and a constant `next` drops the plan at the bounce and returns
+     them to a Studio that never heard of it. The same is true of any deep link
+     -- ?s=work sent an unauthenticated customer back to Home.
+
+     COMPUTED IN AN EFFECT, NOT DURING RENDER. This page is statically
+     optimised, so a render that reads window.location produces different markup
+     on the server and the client and React hydration mismatches on the href.
+     Starting from the constant and correcting after mount keeps the first paint
+     identical -- and keeps the literal in this file, which is what
+     tests/studio-shell.test.mjs pins.
+
+     nextAfterSignIn() in /admin honours only a same-origin absolute path, so
+     this cannot be turned into an open redirect by a crafted link. */
+  const [signInHref, setSignInHref] = useState('/admin?next=/studio');
+  useEffect(() => {
+    try {
+      const here = window.location.pathname + window.location.search;
+      const q = new URLSearchParams();
+      q.set('next', here.startsWith('/studio') ? here : '/studio');
+      /* THE LOGIN SCREEN NEEDS THE LANGUAGE TOO, and it is not in `next`.
+         /admin reads its own ?lang= (langFromUrl) and otherwise falls back to
+         what this browser remembers -- which is nothing, for someone opening
+         the link on a phone they have never signed in on. Without this an
+         English customer read an English gate, pressed Sign in, and got an
+         Arabic login form, then an English Studio again. */
+      q.set('lang', ar ? 'ar' : 'en');
+      setSignInHref(`/admin?${q.toString()}`);
+    } catch (e) { /* keep the constant */ }
+  }, [ar]);
+
   const body = {
     loading: { title: ar ? 'جارٍ الفتح…' : 'Opening…', text: '' },
     signedout: {
@@ -282,7 +401,7 @@ function Gate({ phase, ar, error, onRetry }) {
       text: ar
         ? 'الاستوديو خاص بحسابك، والعودة إلى هنا تلقائية بعد تسجيل الدخول.'
         : 'The Studio is tied to your account. Sign in and we will bring you straight back.',
-      action: { href: '/admin?next=/studio', label: ar ? 'تسجيل الدخول' : 'Sign in' },
+      action: { href: signInHref, label: ar ? 'تسجيل الدخول' : 'Sign in' },
     },
     noworkspace: {
       title: ar ? 'لا يوجد معرض على هذا الحساب' : 'No portfolio on this account',

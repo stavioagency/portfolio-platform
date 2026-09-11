@@ -485,6 +485,12 @@ test('SAFE-1: --tap-min is consumed only where a tap target was approved', () =>
     // the token is the floor, not a new size for the component.
     'components/studio/fields.js': 1,     // .up and .rm -- upload and remove an image
     'components/studio/publish.js': 1,    // .ctl button and .rf -- the preview controls
+    // Added with the Studio's Plan screen. Both are on the one path a
+    // customer reaches straight from a link in their inbox, on a phone:
+    // .pay starts checkout and .go opens invoices. Not a mobile promotion
+    // like the rest -- these are declared at the floor outright, because
+    // a primary payment action has no size at which 32px is right.
+    'components/studio/plan.js': 2,       // .pay and .go
     'components/studio/sections.js': 2,   // .del -- remove a link (width + height)
     'components/studio/work.js': 2,       // .acts button -- reorder and delete a project
     'pages/client/index.js': 3,           // .chip, and the record's close button

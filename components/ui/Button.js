@@ -8,13 +8,39 @@ export default function Button({
   loading = false,
   disabled = false,
   className = '',
+  as,
+  href,
   children,
   ...rest
 }) {
+  /* ── WHY THIS COMPONENT CAN BE AN ANCHOR ──────────────────────────────────
+     Two call sites already asked for it — `<Button as="a" href=...>` in the
+     Studio's gate and on its placeholder screens — and until now `as` and
+     `href` were simply spread onto a <button>, where both are inert. The
+     Studio's "Sign in" control and the placeholders' "Open the current editor"
+     rendered perfectly and did NOTHING when pressed. A button carrying an href
+     is not a link; it is a dead end that looks like a link.
+
+     Navigation is an anchor. That is not pedantry here: only an anchor is
+     reachable by keyboard as a link, announced as one, opened in a new tab with
+     the middle button, and — the thing that actually broke — followed at all.
+
+     A <button> is still the default, so every existing call site is byte-
+     identical. Only `as="a"` changes anything. */
+  const Tag = as === 'a' ? 'a' : 'button';
+  const isLink = Tag === 'a';
+  const inert = disabled || loading;
+
   return (
-    <button
-      type="button"
-      disabled={disabled || loading}
+    <Tag
+      /* `type` and `disabled` are button-only attributes; on an anchor React
+         would emit invalid HTML. A link that must not be followed loses its
+         href and says so to assistive technology instead — dropping only the
+         visual would leave it clickable. */
+      type={isLink ? undefined : 'button'}
+      disabled={isLink ? undefined : inert}
+      aria-disabled={isLink && inert ? true : undefined}
+      href={isLink && !inert ? href : undefined}
       // A loading button goes disabled and grows a spinner, both of which are
       // purely visual — a screen reader otherwise announces it as an ordinary
       // disabled button with no indication that work is in flight.
@@ -98,6 +124,6 @@ export default function Button({
           animation: spin var(--t-spin) linear infinite;
         }
       `}</style>
-    </button>
+    </Tag>
   );
 }
