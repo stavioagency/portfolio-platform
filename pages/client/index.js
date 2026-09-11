@@ -166,7 +166,7 @@ export default function ClientConsole() {
       </div>
 
       <style jsx>{`
-        .con { min-height: 100vh; background: var(--bg-primary); color: var(--text-primary);
+        .con { min-height: 100vh; min-height: 100dvh; background: var(--bg-primary); color: var(--text-primary);
                font-family: var(--font-body); padding: var(--space-5) var(--gutter) var(--space-10);
                max-width: 900px; margin-inline: auto; }
         .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-3);
@@ -187,8 +187,10 @@ export default function ClientConsole() {
                       padding: 0 var(--space-3); min-block-size: 42px;
                       border: 1px solid var(--border-default); border-radius: var(--radius-md);
                       background: var(--surface-input); color: var(--text-tertiary); }
+        /* --field-text-compact, not --text-sm: 16px on a phone, so focusing
+           the search box does not zoom the console. */
         .find input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text-primary);
-                      font: inherit; font-size: var(--text-sm); }
+                      font: inherit; font-size: var(--field-text-compact); }
         .find input:focus { outline: none; }
         .find label:focus-within { outline: 2px solid var(--border-focus); outline-offset: 1px; }
         .count { margin: 0; font-size: var(--text-xs); color: var(--text-tertiary); }
@@ -328,6 +330,14 @@ function Detail({ c, ar, lang, onClose }) {
                         border: 0; border-radius: var(--radius-sm); background: none;
                         color: var(--text-tertiary); cursor: pointer; }
         header button:hover { background: var(--surface-hover); color: var(--text-primary); }
+
+        /* THUMB TARGETS. Every control here is comfortably clickable with a
+           mouse and too small for a finger: --tap-min is 44px and these sit at
+           32-38. Raised only on a phone, so the desktop layout is unchanged. */
+        @media (max-width: 720px) {
+          .chip { min-height: var(--tap-min); }
+          header button { width: var(--tap-min); height: var(--tap-min); }
+        }
         header button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
         dl { margin: 0 0 var(--space-4); display: flex; flex-direction: column; gap: 8px; }
         dl div { display: flex; gap: var(--space-3); font-size: var(--text-sm); }
@@ -412,7 +422,7 @@ function Gate({ phase, ar, error, onRetry }) {
         {phase === 'error' && <button type="button" onClick={onRetry}>{ar ? 'إعادة المحاولة' : 'Try again'}</button>}
       </div>
       <style jsx>{`
-        .gate { min-height: 100vh; display: grid; place-items: center; padding: var(--gutter);
+        .gate { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: var(--gutter);
                 background: var(--bg-primary); color: var(--text-primary); font-family: var(--font-body); }
         .box { max-width: 42ch; text-align: center; display: flex; flex-direction: column;
                align-items: center; gap: var(--space-3); }

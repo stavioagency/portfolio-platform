@@ -236,6 +236,13 @@ export function Preview({ ar, slug, token, onRefresh }) {
               background: var(--action-secondary-bg); color: var(--action-secondary-fg);
               font: inherit; font-size: var(--text-xs); font-weight: 600; cursor: pointer; }
         .rf:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+        /* THUMB TARGETS. Every control here is comfortably clickable with a
+           mouse and too small for a finger: --tap-min is 44px and these sit at
+           32-38. Raised only on a phone, so the desktop layout is unchanged. */
+        @media (max-width: 720px) {
+          .ctl button, .rf { min-height: var(--tap-min); }
+        }
         .note { margin: 0 0 var(--space-3); font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.6; }
         .stage { display: flex; justify-content: center; }
         .frame { position: relative; height: 560px; border: 1px solid var(--border-default);

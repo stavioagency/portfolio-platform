@@ -220,6 +220,19 @@
      component. */
   --tap-min: 44px;
 
+  /* FORM CONTROL TEXT SIZE. Two tokens, because the controls are two sizes on
+     a desktop: the Studio's own fields sit at --text-md and the compact rows
+     (a link's URL, the /client search) at --text-sm.
+
+     They exist so a PHONE can raise both to 16px without changing either
+     desktop value. Mobile Safari zooms the whole page when a focused control
+     is under 16px, and it does not zoom back out -- so on an iPhone, tapping
+     the first field in a product made entirely of text fields leaves the
+     customer editing a page that no longer fits the screen. The override is in
+     the narrow-viewport block at the end of this file. */
+  --field-text: var(--text-md);
+  --field-text-compact: var(--text-sm);
+
   /* ---- Line height -------------------------------------------------------
      Arabic is NOT set at the Latin line height. Ascenders, descenders and
      diacritics collide, and the text reads cramped. This is the most common
@@ -640,5 +653,30 @@ button:active, a:active, [role='button']:active, summary:active {
   }
   [data-motion='loading'], [data-motion='loading']::before, [data-motion='loading']::after {
     animation-duration: 1.6s !important;
+  }
+}
+
+/* ---- Narrow viewports ----------------------------------------------------
+   REDUCE THE GUTTER, NEVER THE CONTENT. The design system specifies --gutter
+   as 28px dropping to 16px at <=720px (docs/ux/designakum-design-system-final.md
+   §"Layout"), and the token's own comment above says so — but the override was
+   never written, so every surface that pays the gutter rendered 28px at 375px
+   and gave back 24px of content width it did not have to spare.
+
+   It is declared here rather than beside the token because the token blocks are
+   theme blocks: the design-token test brace-counts `:root` and `[data-admin-
+   theme='light']` to read their declarations, and a media query nested inside
+   either one would put a responsive value into the theme it parses.
+
+   Consumed by the Studio body and bottom bar, /client, /console and the Studio
+   loading and gate screens — every one of which is the full width of a phone. */
+@media (max-width: 720px) {
+  :root {
+    --gutter: 16px;
+
+    /* 16px exactly: the threshold under which mobile Safari zooms a focused
+       field. Not larger -- the controls should still look like themselves. */
+    --field-text: 16px;
+    --field-text-compact: 16px;
   }
 }

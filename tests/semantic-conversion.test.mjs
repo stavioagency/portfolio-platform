@@ -476,6 +476,18 @@ test('SAFE-1: --tap-min is consumed only where a tap target was approved', () =>
     'components/ui/Input.js': 1,
     'components/ui/ConfirmDialog.js': 2, // .req-input and .btn
     'components/studio/StudioShell.js': 2, // .tab and .row
+
+    // Added 2026-09-11, when the Studio and /client were first looked at on a
+    // 375px viewport. Every one of these is a control a customer or an operator
+    // presses with a thumb, and every one measured 32-38px -- under the floor
+    // this token exists to hold. All five are raised inside a
+    // `@media (max-width: 720px)` block ONLY, so no desktop measurement moved;
+    // the token is the floor, not a new size for the component.
+    'components/studio/fields.js': 1,     // .up and .rm -- upload and remove an image
+    'components/studio/publish.js': 1,    // .ctl button and .rf -- the preview controls
+    'components/studio/sections.js': 2,   // .del -- remove a link (width + height)
+    'components/studio/work.js': 2,       // .acts button -- reorder and delete a project
+    'pages/client/index.js': 3,           // .chip, and the record's close button
   };
 
   const found = {};

@@ -190,7 +190,11 @@ export default function StudioShell({
 
       <style jsx>{`
         .studio {
+          /* dvh, with vh kept above it as the fallback: on a phone 100vh counts
+             the strip behind the URL bar, so the shell claimed more height than
+             was ever visible underneath a fixed bottom bar. */
           min-height: 100vh;
+          min-height: 100dvh;
           display: flex;
           background: var(--bg-primary);
           color: var(--text-primary);

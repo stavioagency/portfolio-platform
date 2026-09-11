@@ -315,7 +315,7 @@ function Gate({ phase, ar, error, onRetry }) {
         )}
       </div>
       <style jsx>{`
-        .gate { min-height: 100vh; display: grid; place-items: center;
+        .gate { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center;
                 background: var(--bg-primary); color: var(--text-primary);
                 font-family: var(--font-body); padding: var(--gutter); }
         .box { max-width: 40ch; text-align: center; display: flex; flex-direction: column;

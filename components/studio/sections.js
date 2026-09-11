@@ -359,7 +359,8 @@ export function Links({ ar, tenant, profile, onSaved, canEdit = true }) {
           width: 100%; min-block-size: 42px; padding: 0 var(--space-3);
           border: 1px solid var(--border-default); border-radius: var(--radius-md);
           background: var(--surface-input); color: var(--text-primary);
-          font: inherit; font-size: var(--text-sm);
+          /* 16px on a phone, so tapping a link's URL does not zoom the page. */
+          font: inherit; font-size: var(--field-text-compact);
         }
         select { min-width: 120px; }
         select:focus-visible, input:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
@@ -368,6 +369,13 @@ export function Links({ ar, tenant, profile, onSaved, canEdit = true }) {
                color: var(--text-tertiary); cursor: pointer; }
         .del:hover { background: var(--danger-bg); color: var(--danger-ink); }
         .del:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+
+        /* THUMB TARGETS. Every control here is comfortably clickable with a
+           mouse and too small for a finger: --tap-min is 44px and these sit at
+           32-38. Raised only on a phone, so the desktop layout is unchanged. */
+        @media (max-width: 720px) {
+          .del { width: var(--tap-min); height: var(--tap-min); }
+        }
         .cap { margin: 0; font-size: var(--text-xs); color: var(--text-tertiary); }
         .srOnly { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
                   border: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }

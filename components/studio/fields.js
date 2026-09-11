@@ -68,7 +68,9 @@ const inputCss = `
   background: var(--surface-input);
   color: var(--text-primary);
   font: inherit;
-  font-size: var(--text-md);
+  /* Token, not --text-md: it becomes 16px on a phone so focusing the field
+     does not zoom the page. Same 14px everywhere else. */
+  font-size: var(--field-text);
   /* Logical, so an Arabic field aligns to the right without a second rule. */
   text-align: start;
   transition: border-color var(--t-ui) var(--ease);
@@ -208,6 +210,13 @@ export function Image({ label, value, onChange, onFile, hint, busy, error, ar, r
         }
         .rm:hover { background: var(--danger-bg); }
         .rm:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+
+        /* THUMB TARGETS. Every control here is comfortably clickable with a
+           mouse and too small for a finger: --tap-min is 44px and these sit at
+           32-38. Raised only on a phone, so the desktop layout is unchanged. */
+        @media (max-width: 720px) {
+          .up, .rm { min-height: var(--tap-min); }
+        }
         .msg { margin: 0; font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.6; }
         .msg.bad { color: var(--danger-ink); }
       `}</style>

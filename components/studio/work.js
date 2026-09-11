@@ -198,6 +198,13 @@ export function Work({ ar, uiLang, tenant, profile, projects, onProjects, canEdi
                        cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
         .acts button:hover:not(:disabled) { background: var(--surface-hover); color: var(--text-primary); }
         .acts button:disabled { opacity: 0.35; cursor: default; }
+
+        /* THUMB TARGETS. Every control here is comfortably clickable with a
+           mouse and too small for a finger: --tap-min is 44px and these sit at
+           32-38. Raised only on a phone, so the desktop layout is unchanged. */
+        @media (max-width: 720px) {
+          .acts button { min-width: var(--tap-min); min-height: var(--tap-min); }
+        }
         .acts button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
         .acts .danger:hover:not(:disabled) { background: var(--danger-bg); color: var(--danger-ink); }
         .cap { margin: 0; font-size: var(--text-xs); color: var(--text-tertiary); }
