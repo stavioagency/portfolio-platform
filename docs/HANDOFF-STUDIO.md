@@ -152,13 +152,23 @@ Everything buildable is built. What remains needs a real customer or a decision.
 3. **`/console` is still not redirected, and must not be yet.** It keeps the
    force-delete path, invitations and the deleted-clients archive. Those move
    first; the redirect is last.
-4. **The accent palette cannot be fixed in the palette.** The two requirements
-   do not overlap: white-on-fill needs luminance ≤ 0.1833, accent-text-on-card
-   needs ≥ 0.2132. The renderer already has `--pf-accent-ink` (lightness clamped
-   0.55–0.88) and uses it for the avatar ring; the footer link at
-   `pages/index.js:1350` uses the raw accent. Pointing that one declaration at
-   the clamped token fixes all ten accents — **and it is a change to the frozen
-   public page, so it is the owner's call.**
+4. ~~The accent palette cannot be fixed in the palette.~~ **Fixed 2026-09-13**,
+   with the owner's go-ahead, as one declaration on the frozen page:
+   `.cta-icon` takes `--pf-accent-ink` instead of the raw accent.
+
+   Two corrections to how this was recorded before. The bar is **3:1, not
+   4.5:1** — there is no accent *text* anywhere on the public page, only
+   non-text UI — and the declaration is an icon on the CTA's raised surface,
+   not text on the card. At the right threshold four of the ten already passed.
+   The clamped token fixes the other six (slate 2.05→3.38, indigo 2.63→3.13,
+   olive 2.72→3.52, violet 2.90→3.00, magenta 2.96→3.07, crimson 2.98→3.08).
+
+   **No live page changed.** Both client accents sit above the 0.55 floor, so
+   the clamp is a no-op; `/designakum` was loaded against production data and
+   the icon painted `#5B8DEF` exactly, as before. Measured in a browser, not
+   computed — `--pf-accent-ink` is relative `oklch()` and `lib/contrast.js`
+   cannot evaluate it.
+
 5. **Two skipped tests**, pre-existing: a P1 contract that arms itself when
    `lib/portfolio-view.js` exists.
 
