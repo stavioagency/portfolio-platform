@@ -31,7 +31,7 @@ this repo did exactly that and was deleted in full at the owner's request.
 - 7 tenants, all `comped`, all entitled, all published, none disabled.
 - Owner account is enrolled as a `tenant_admin` of **every** tenant
   (`trg_enroll_platform_owners`), so the owner sees all 7 workspaces in Studio.
-- Tests: `npm test` → **676 tests, 674 pass, 0 fail, 2 skipped**. The 2 skips are
+- Tests: `npm test` → **702 tests, 700 pass, 0 fail, 2 skipped**. The 2 skips are
   a pre-existing P1 contract that arms itself when `lib/portfolio-view.js` exists.
 
 ## 3. Git state
@@ -93,7 +93,10 @@ throughout (logical CSS properties only; a test forbids physical `left`/`right`)
 - **Work** — create, edit, reorder, delete, cover + gallery
 - **Appearance** — accent only (see §7)
 - **Links** — up to 8
-- Domain / Visitors / Plan / Settings still show an honest placeholder → `/admin`
+- **Plan** — the sellable catalogue, handing off to `/subscribe`
+- **Visitors** — visits, visitors, project views, contact clicks, per-day chart
+- **Domain** — add, verify, re-point; the DNS record to create; removal stays in `/admin`
+- **Settings** — password change; email shown, changed only by an operator
 
 **`/client`** — summary (every number is a filter), search, customer record.
 **Read-only by design**; a test asserts no insert/update/delete and no
@@ -133,13 +136,12 @@ Everything was put back; the published snapshot was never touched.
 
 ## 8. Open items
 
-1. **Three Studio sections are still placeholders.** Domain, Visitors and
-   Settings render `NotYet` and send the customer to `/admin`. This mattered
-   less when `/studio` was opt-in; since the funnel moved, every new customer
-   lands here by default, so the first time one wants a custom domain or needs
-   to change their password they are pushed into an editor they have never
-   seen. This is the largest remaining gap and the reason "one editor" is not
-   yet true.
+1. ~~Three Studio sections are still placeholders.~~ **Done 2026-09-13.**
+   Visitors, Domain and Settings are real screens and `NotYet` is deleted. The
+   Studio has no placeholders left and "one editor" is now true for everything
+   except the three things listed below, which are genuinely `/admin`'s:
+   removing a domain, invoices, and changing an account's email.
+
 2. **No real payment has ever run through the new Plan screen.** All seven
    tenants are comped. The hop builds the same `?plan=&tenant=` URL that
    `/admin`'s Billing tab has always built, so the risk is low — but the first
