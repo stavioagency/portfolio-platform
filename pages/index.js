@@ -1347,7 +1347,21 @@ export default function Home({ slug = null } = {}) {
         .cta-icon {
           flex: 0 0 auto;
           display: flex; align-items: center; justify-content: center;
-          color: var(--pf-accent);
+          /* --pf-accent-ink, NOT the raw accent, for the same reason the mark's
+             ring uses it: a dark accent draws an invisible glyph and the client
+             has no way to know why their button lost its icon. The token clamps
+             lightness into 0.55-0.88 and keeps the hue, so the colour is still
+             theirs.
+
+             MEASURED, not assumed (2026-09-13, against --pf-raised #1e1e27,
+             3:1 for non-text UI). Six of the ten offered accents failed on the
+             raw value and all six pass on the clamped one:
+               slate 2.05 -> 3.38   indigo 2.63 -> 3.13   olive 2.72 -> 3.52
+               violet 2.90 -> 3.00  magenta 2.96 -> 3.07  crimson 2.98 -> 3.08
+             Both accents on live client sites are already above 0.55, so the
+             clamp is a no-op for them and neither page changes: #5B8DEF stays
+             5.12 and #8b86d2 stays 5.07. */
+          color: var(--pf-accent-ink);
         }
         .cta-icon.tinted { color: var(--brand); }
         .cta-label {
