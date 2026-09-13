@@ -194,10 +194,25 @@ export function Appearance({ ar, tenant, profile, onSaved, canEdit = true }) {
           : 'Designakum owns the layout, spacing and type. The colour is yours. That is what keeps every portfolio tidy whatever you pick.'}
       </p>
 
+      {/* WHAT THIS NOTE USED TO SAY, AND WHY IT WAS WRONG:
+          "Used for buttons, links and the highlighted details." The buttons
+          part stopped being true when the public page's one action became a
+          ghost button (pages/index.js, "THE ONE ACTION") -- the accent reaches
+          it only as a focus ring now. The page uses the colour in four small
+          places: the ring around the picture, the glow at the foot, the work
+          dots, and one line of text.
+
+          Naming them is not pedantry. A customer who is promised "buttons"
+          picks crimson, sees a thin ring and a slightly different glow, and
+          concludes the control is broken -- which is exactly what happened.
+          The glow also takes only the HUE: its lightness is pinned at 0.55 and
+          its chroma capped at 0.09, so every accent produces a glow of the same
+          brightness. Promising more than the renderer does is how a working
+          control gets reported as a bug. */}
       <Group title={ar ? 'لون التمييز' : 'Accent colour'}
              note={ar
-               ? 'يُستخدم في الأزرار والروابط والتفاصيل المميّزة في صفحتك.'
-               : 'Used for buttons, links and the highlighted details on your page.'}>
+               ? 'يظهر في الإطار حول صورتك، والتوهّج أسفل الصفحة، ونقاط الأعمال، وسطر في التذييل. التخطيط والأزرار من تصميم ديزايناكم ولا يتغيّران.'
+               : 'It shows in the ring around your picture, the glow at the foot of the page, the work dots, and one line in the footer. The layout and buttons are Designakum\u2019s and do not change.'}>
         <div className="swatches" role="radiogroup" aria-label={ar ? 'لون التمييز' : 'Accent colour'}>
           {ACCENTS.map((a) => (
             <button
@@ -215,6 +230,20 @@ export function Appearance({ ar, tenant, profile, onSaved, canEdit = true }) {
             </button>
           ))}
         </div>
+
+        {/* THE CHANGE IS NOT LIVE YET, and this screen is where that is least
+            obvious. Every other section edits words the customer can re-read;
+            this one edits how the page LOOKS, so the instinct after picking is
+            to go and look at the published page -- where nothing has changed,
+            because nothing reaches a visitor before Publish. The shell's status
+            line says "you have unpublished changes", but that is a general
+            signal on every screen and it is not what someone comparing two
+            colours is reading. */}
+        <p className="draftnote">
+          {ar
+            ? 'اللون محفوظ في مسودّتك. الزوّار يرونه بعد النشر.'
+            : 'The colour is saved to your draft. Visitors see it after you publish.'}
+        </p>
 
         {/* A colour saved before this list existed is not silently reassigned to
             one of ours — the customer is told what they have and chooses. */}
@@ -234,6 +263,8 @@ export function Appearance({ ar, tenant, profile, onSaved, canEdit = true }) {
         h1 { margin: 0 0 4px; font-size: var(--text-2xl); font-family: var(--font-heading); }
         .lede { margin: 0 0 var(--space-5); color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.7; }
         .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+        .draftnote { margin: var(--space-3) 0 0; font-size: var(--text-xs);
+                     color: var(--text-tertiary); line-height: 1.6; }
         .sw {
           display: flex; align-items: center; gap: var(--space-3);
           min-height: 46px; padding: 0 var(--space-3);

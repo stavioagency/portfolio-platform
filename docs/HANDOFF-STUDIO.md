@@ -31,14 +31,18 @@ this repo did exactly that and was deleted in full at the owner's request.
 - 7 tenants, all `comped`, all entitled, all published, none disabled.
 - Owner account is enrolled as a `tenant_admin` of **every** tenant
   (`trg_enroll_platform_owners`), so the owner sees all 7 workspaces in Studio.
-- Tests: `npm test` → **666 tests, 664 pass, 0 fail, 2 skipped**. The 2 skips are
+- Tests: `npm test` → **676 tests, 674 pass, 0 fail, 2 skipped**. The 2 skips are
   a pre-existing P1 contract that arms itself when `lib/portfolio-view.js` exists.
 
 ## 3. Git state
 
-**9 commits ahead of `origin/main`, none pushed.** `origin/main` is at `92abb0b`.
+**Everything is pushed. `origin/main` is at `f49e95f`.** Deployed via Vercel,
+which builds `main`, so `/studio`, `/client` and the admin link are all live.
 
 ```
+f49e95f The signup funnel ends at the Studio, and the Studio can receive it
+6a5cc78 The Studio and /client stop being desktop-only at 375px
+192ed44 Handoff: the state of the Studio and Client work, as facts
 68a4283 Image upload works; deleting a project does not reclaim its storage
 f69bf92 Deep links into a Studio section silently opened Home
 142bf6f Studio opened the wrong customer's portfolio — twice, for two reasons
@@ -50,7 +54,12 @@ e41e0c5 /client: one owner console, over the data /console already reads
 fcdbfc5 Studio gets a shell, and Home tells the truth about the portfolio
 ```
 
-**Do not push without the owner saying so.**
+**Pushing is now routine; the owner lifted the hold on 2026-09-11.** A push
+still ships to production immediately, so it is not a casual act.
+
+NOTE: there are TWO clones of this repo on the owner's machine.
+`~/Projects/portfolio-platform` is the working one. `~/Documents/GitHub/portfolio-platform`
+is what GitHub Desktop opens and it was 12 commits behind as of 2026-09-13.
 
 ## 4. Production changes already applied
 
@@ -114,22 +123,49 @@ Everything was put back; the published snapshot was never touched.
   adding one is a new destructive operation and a separate decision.
 - **No free hex colour field.** A free hex is what put an unreadable accent on a
   live site. Ten curated accents, each contrast-checked.
-- **The signup funnel still ends at `/admin`.** Moving it is one line in
-  `pages/signup/verify.js`; the owner wants it moved only once everything is
-  finalised.
+- **The signup funnel ends at `/studio`** as of 2026-09-11. It was not the
+  one-line change the cutover doc described: `/studio` consumed neither `?plan`
+  nor `?lang`, and `plan` was routed to the NotYet placeholder, so flipping the
+  line alone would have dropped a paying customer's plan and shown them a screen
+  with no way to pay. Plan is a real screen now (`components/studio/plan.js`)
+  and hands off to `/subscribe`. `/admin` stays reachable and is still the only
+  sign-in screen.
 
 ## 8. Open items
 
-1. **Mobile is untested.** `resize_window` moved the window but not the viewport,
-   so the 375px breakpoint never engaged. Needs a real phone or DevTools.
-2. **Deleting a project leaves its images in storage.** Pre-existing, shared with
-   `/admin`; 17 unreferenced media objects exist. Cost and tidiness, not
+1. **Three Studio sections are still placeholders.** Domain, Visitors and
+   Settings render `NotYet` and send the customer to `/admin`. This mattered
+   less when `/studio` was opt-in; since the funnel moved, every new customer
+   lands here by default, so the first time one wants a custom domain or needs
+   to change their password they are pushed into an editor they have never
+   seen. This is the largest remaining gap and the reason "one editor" is not
+   yet true.
+2. **No real payment has ever run through the new Plan screen.** All seven
+   tenants are comped. The hop builds the same `?plan=&tenant=` URL that
+   `/admin`'s Billing tab has always built, so the risk is low — but the first
+   real signup is the test, and it is the revenue path.
+3. **Deleting a project leaves its images in storage.** Pre-existing, shared
+   with `/admin`; 17 unreferenced media objects. Cost and tidiness, not
    correctness. Fix shape is probably an operator-triggered sweep.
-3. **Both live portfolios use an accent that fails contrast** against the white
-   text on it (`#5B8DEF` = 3.23:1, `#8b86d2` = 3.26:1; AA needs 4.5). Changing a
-   client's brand colour is the owner's call.
-4. **Deploy has not been discussed.** Vercel deploys from `main`, so a push ships
-   Studio, `/client` and the admin link together.
+4. **`/console` → `/client` is untouched.** `/client` is still read-only.
+   Concrete prerequisite: it reads only `tenants`, `subscriptions` and
+   `free_access_invites`, so it holds no member data — password reset and email
+   change cannot be wired without adding that read.
+5. **The accent does far less than the Appearance screen used to claim.** On
+   the frozen public page the tenant accent reaches only four small places: the
+   2px ring around the picture, the foot glow (HUE ONLY — lightness pinned at
+   0.55, chroma capped at 0.09), the work dots, and one footer line. The old
+   copy promised "buttons", which stopped being true when the public CTA became
+   a ghost button. Corrected 2026-09-13 after the owner reported the colours as
+   broken; they were not, the screen was overpromising. If the accent should do
+   more, that is a change to the FROZEN renderer and a separate decision.
+6. **The curated palette is validated against the wrong ink.** All ten accents
+   in `lib/studio-appearance.js` score below 4.5:1 as text on the dark public
+   card (`slate` 2.23, the default `royal` 3.50). They are checked against
+   white-on-fill, which is correct for app chrome and not for the surface the
+   public renderer paints. The two live client accents (#5B8DEF 5.56, #8b86d2
+   5.50) both PASS there — the handoff's old "fails contrast" note measured
+   them against white, an ink the public page no longer puts on the accent.
 
 ## 9. Working rules that were agreed
 
@@ -142,8 +178,8 @@ Everything was put back; the published snapshot was never touched.
   «أضِف»). A test enforces it.
 - Test on `designakum` only. Every other tenant is a real client. Draft edits are
   invisible to visitors; **only Publish changes a live page.**
-- Do not push, do not deploy, do not run destructive SQL without explicit
-  approval.
+- Destructive SQL and RLS changes still need explicit approval. Pushing no
+  longer does — but a push deploys to production the moment it lands.
 
 ## 10. How to run it
 

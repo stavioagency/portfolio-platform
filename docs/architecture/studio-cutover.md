@@ -1,6 +1,10 @@
 # Cutover: /admin → /studio, /console → /client
 
-**Status: not cut over. Nothing in this document has been done.**
+**Status: the funnel is cut over. `/console` is not.**
+
+Updated 2026-09-13. §3 (the funnel → `/studio`) was done on 2026-09-11 and is
+live. §4 (`/console` → `/client`) is untouched and `/console` remains the only
+place any destructive operation exists.
 
 The Studio and the owner console are built and tested. Neither has replaced
 anything, and both existing surfaces are untouched and still authoritative.
@@ -18,16 +22,33 @@ signup  →  verify  →  /admin?plan&lang   ← the funnel still ends here
                           └─ /studio, by URL or ?next=/studio
 ```
 
-The owner has said the funnel SHOULD move to `/studio` once everything is
-finalised. It has not moved yet.
+**It moved on 2026-09-11.** `verify.js` now builds a `/studio` URL.
+
+AND IT WAS NOT ONE LINE. This document said it was, and that was the most
+expensive sentence in it. `/admin` consumed `?plan` (planFromQuery) and opened
+Billing with it selected; `/studio` consumed neither `plan` nor `lang`, and
+`plan` was one of four ids routed to the NotYet placeholder. Flipping the line
+alone would have sent every new paying customer to a screen that says "not yet"
+with no way to pay, and opened an Arabic Studio for English customers.
+
+What the switch actually required: a real Plan screen handing off to
+`/subscribe`; consuming `?plan` and `?lang`; spending the plan only once a
+session exists, because the customer arrives with none and bounces through
+`/admin`; and the gate carrying its whole query into `?next=`. Two dead buttons
+turned up on that path — `components/ui/Button.js` had no `as` prop, so the
+gate's "Sign in" and every placeholder's "Open the current editor" rendered
+correctly and did nothing when pressed.
+
+Pinned by `tests/signup-funnel.test.mjs`, which did not exist before: nothing
+anywhere recorded where the funnel pointed, which is how it came to look like a
+one-line change.
 
 `pages/signup/verify.js` sends a newly verified customer to `/admin`. That is
 **deliberately unchanged**: switching it would put every real new customer into
 a Studio nobody has used yet, and the funnel is the one path where a bad first
 five minutes costs a sale.
 
-**The switch is one line** — `adminHref` in `pages/signup/verify.js` becomes
-`/studio?...`. It should not be made until §3 is satisfied.
+~~**The switch is one line**~~ — it was not. See above.
 
 ---
 
@@ -54,7 +75,7 @@ given two.
 Applied to production and verified there. Blast radius on the day: none — all
 seven tenants were comped and already satisfied both predicates.
 
-## 3. Before switching the funnel to /studio
+## 3. Before switching the funnel to /studio — DONE 2026-09-11
 
 Each line is a thing to *do*, not a thing to assume:
 
