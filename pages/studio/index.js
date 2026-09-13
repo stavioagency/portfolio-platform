@@ -41,6 +41,7 @@ import { hasUnpublishedChanges, isEntitled } from '../../lib/studio-publish';
 import { PublishPanel, Preview } from '../../components/studio/publish';
 import { NoProfileNotice } from '../../components/studio/notices';
 import Plan from '../../components/studio/plan';
+import Visitors from '../../components/studio/visitors';
 import { planFromQuery } from '../../lib/signup-intent';
 
 const THEME_KEY = 'admin_theme';
@@ -349,7 +350,10 @@ export default function StudioPage() {
         )}
         {/* `plan` has left this list: it is a real screen now, and the funnel
             points at it. The other three still honestly say "not yet". */}
-        {['domain', 'visitors', 'settings'].includes(section) && (
+        {section === 'visitors' && (
+          <Visitors ar={ar} tenant={tenant} published={snapshot.published} />
+        )}
+        {['domain', 'settings'].includes(section) && (
           <NotYet ar={ar} section={section} />
         )}
       </StudioShell>

@@ -491,6 +491,10 @@ test('SAFE-1: --tap-min is consumed only where a tap target was approved', () =>
     // like the rest -- these are declared at the floor outright, because
     // a primary payment action has no size at which 32px is right.
     'components/studio/plan.js': 2,       // .pay and .go
+    // The Visitors range pills. Four small controls in a row is exactly the
+    // shape a thumb misses, and this screen is read on a phone more than
+    // any other -- it is the one a customer opens after sharing their link.
+    'components/studio/visitors.js': 1,   // .range
     'components/studio/sections.js': 2,   // .del -- remove a link (width + height)
     'components/studio/work.js': 2,       // .acts button -- reorder and delete a project
     'pages/client/index.js': 3,           // .chip, and the record's close button
