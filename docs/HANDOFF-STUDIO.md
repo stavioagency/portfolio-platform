@@ -31,7 +31,7 @@ this repo did exactly that and was deleted in full at the owner's request.
 - 7 tenants, all `comped`, all entitled, all published, none disabled.
 - Owner account is enrolled as a `tenant_admin` of **every** tenant
   (`trg_enroll_platform_owners`), so the owner sees all 7 workspaces in Studio.
-- Tests: `npm test` → **718 tests, 716 pass, 0 fail, 2 skipped**. The 2 skips are
+- Tests: `npm test` → **734 tests, 732 pass, 0 fail, 2 skipped**. The 2 skips are
   a pre-existing P1 contract that arms itself when `lib/portfolio-view.js` exists.
 
 ## 3. Git state
@@ -137,43 +137,30 @@ Everything was put back; the published snapshot was never touched.
 
 ## 8. Open items
 
-1. ~~Three Studio sections are still placeholders.~~ **Done 2026-09-13.**
-   Visitors, Domain and Settings are real screens and `NotYet` is deleted. The
-   Studio has no placeholders left and "one editor" is now true for everything
-   except the three things listed below, which are genuinely `/admin`'s:
-   removing a domain, invoices, and changing an account's email.
+Everything buildable is built. What remains needs a real customer or a decision.
 
-2. **No real payment has ever run through the new Plan screen.** All seven
-   tenants are comped. The hop builds the same `?plan=&tenant=` URL that
-   `/admin`'s Billing tab has always built, so the risk is low — but the first
-   real signup is the test, and it is the revenue path.
-3. **Deleting a project leaves its images in storage.** Pre-existing, shared
-   with `/admin`; 17 unreferenced media objects. Cost and tidiness, not
-   correctness. Fix shape is probably an operator-triggered sweep.
-4. **`/console` → `/client`: the operations moved 2026-09-13, the redirect has
-   not.** `/client` reads member data and performs reset, email change, grant,
-   extend, revoke and delete through `lib/client-operations.js`, which
-   `/console` now calls too. Still unique to `/console`: forcing a delete past
-   a live subscription, invitations, and the deleted-clients archive. **Do not
-   redirect `/console` until those move** — it is what an operator reaches for
-   when something is on fire. None of the new operations has been run against a
-   real customer; they are pinned by tests for row targeting only.
-
-5. **The accent does far less than the Appearance screen used to claim.** On
-   the frozen public page the tenant accent reaches only four small places: the
-   2px ring around the picture, the foot glow (HUE ONLY — lightness pinned at
-   0.55, chroma capped at 0.09), the work dots, and one footer line. The old
-   copy promised "buttons", which stopped being true when the public CTA became
-   a ghost button. Corrected 2026-09-13 after the owner reported the colours as
-   broken; they were not, the screen was overpromising. If the accent should do
-   more, that is a change to the FROZEN renderer and a separate decision.
-6. **The curated palette is validated against the wrong ink.** All ten accents
-   in `lib/studio-appearance.js` score below 4.5:1 as text on the dark public
-   card (`slate` 2.23, the default `royal` 3.50). They are checked against
-   white-on-fill, which is correct for app chrome and not for the surface the
-   public renderer paints. The two live client accents (#5B8DEF 5.56, #8b86d2
-   5.50) both PASS there — the handoff's old "fails contrast" note measured
-   them against white, an ink the public page no longer puts on the accent.
+1. **Nothing has been used in anger.** The Studio's signed-in screens have never
+   been looked at on a phone; Plan, Domain, Settings and Visitors have never
+   been used by a customer; and no operator action in `/client` — grant, revoke,
+   reset, delete, sweep — has been run against a real workspace. All of it is
+   covered by tests and none of it is covered by experience. **Do one reversible
+   round on `designakum` before trusting any of it:** grant 30 days, confirm
+   `/console` agrees, revoke it.
+2. **No real payment has run through the new Plan screen.** All seven tenants
+   are comped, so the first paying signup is the first test of the revenue path.
+   It builds the same `?plan=&tenant=` URL `/admin` has always built.
+3. **`/console` is still not redirected, and must not be yet.** It keeps the
+   force-delete path, invitations and the deleted-clients archive. Those move
+   first; the redirect is last.
+4. **The accent palette cannot be fixed in the palette.** The two requirements
+   do not overlap: white-on-fill needs luminance ≤ 0.1833, accent-text-on-card
+   needs ≥ 0.2132. The renderer already has `--pf-accent-ink` (lightness clamped
+   0.55–0.88) and uses it for the avatar ring; the footer link at
+   `pages/index.js:1350` uses the raw accent. Pointing that one declaration at
+   the clamped token fixes all ten accents — **and it is a change to the frozen
+   public page, so it is the owner's call.**
+5. **Two skipped tests**, pre-existing: a P1 contract that arms itself when
+   `lib/portfolio-view.js` exists.
 
 ## 9. Working rules that were agreed
 
