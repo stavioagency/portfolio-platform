@@ -503,6 +503,8 @@ test('SAFE-1: --tap-min is consumed only where a tap target was approved', () =>
     // The owner's operations on a customer. An operator triaging on a phone
     // is pressing controls that delete workspaces; 44px is not optional there.
     'components/client/operations.js': 2, // the two inputs, and every button
+    // The storage sweep's scan/remove pair, in the same record panel.
+    'components/client/sweep.js': 1,      // scan and remove
     'components/studio/sections.js': 2,   // .del -- remove a link (width + height)
     'components/studio/work.js': 2,       // .acts button -- reorder and delete a project
     'pages/client/index.js': 3,           // .chip, and the record's close button

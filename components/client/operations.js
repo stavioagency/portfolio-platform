@@ -26,6 +26,7 @@ import {
   resetPasswordCall, changeEmailCall, grantFreeCall, setCompPeriodCall,
   revokeFreeCall, deleteClientCall, slugConfirmed, canOperate,
 } from '../../lib/client-operations';
+import StorageSweep from './sweep';
 
 export default function ClientOperations({ ar, row, onDone }) {
   const [armed, setArmed] = useState('');      // which irreversible action is armed
@@ -164,6 +165,9 @@ export default function ClientOperations({ ar, row, onDone }) {
           />
         </div>
       </section>
+
+      {/* ---- reclaiming storage ----------------------------------------- */}
+      <StorageSweep ar={ar} row={row} />
 
       {/* ---- the one that cannot be undone ------------------------------ */}
       <section className="last">
