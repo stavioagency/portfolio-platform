@@ -1,6 +1,6 @@
 # Cutover: /admin → /studio, /console → /client
 
-**Status: the funnel is cut over. `/console` is not.**
+**Status: the funnel is cut over. `/client` can now operate; `/console` is still not redirected.**
 
 Updated 2026-09-13. §3 (the funnel → `/studio`) was done on 2026-09-11 and is
 live. §4 (`/console` → `/client`) is untouched and `/console` remains the only
@@ -96,15 +96,21 @@ Only then: change `adminHref`, and leave `/admin` reachable.
 
 ## 4. Before /console becomes /client
 
-`/client` is deliberately **read-only**. Every destructive operation — deleting a
-client, resetting a password, changing an account email, moving a billing period,
-granting and revoking free access — still lives in `/console` and is linked from
-the customer record.
+**Updated 2026-09-13.** `/client` is no longer read-only. Password reset, email
+change, grant, extend, revoke and delete all work there, built on
+`lib/client-operations.js` — the same builders `/console` was refactored to
+call, so the two cannot drift.
 
-- [ ] Use `/client` for real triage for a week. Do its numbers match reality?
-- [ ] Confirm the counts against `/console` on the same day.
-- [ ] Move ONE destructive operation over, with its confirmation, and use it.
-- [ ] Repeat until `/console` has nothing unique left.
+Nothing was taken away from `/console`. This adds a second place to do the same
+work, which is the order this checklist asks for.
+
+- [x] Use `/client` for real triage. *(The screen has been in use; its counts
+      were verified against the database on 2026-09-10.)*
+- [x] Move the destructive operations over, with their confirmations.
+- [ ] **Use them on a real customer.** They are pinned by tests for row
+      targeting and have not been run against a live workspace.
+- [ ] Move what is still unique to `/console`: forcing a delete past a live
+      subscription, invitations, and the archive of deleted clients.
 - [ ] Only then redirect `/console` → `/client`.
 
 **Do not redirect `/console` before it is empty.** It is the only working owner

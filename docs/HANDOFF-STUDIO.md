@@ -31,7 +31,7 @@ this repo did exactly that and was deleted in full at the owner's request.
 - 7 tenants, all `comped`, all entitled, all published, none disabled.
 - Owner account is enrolled as a `tenant_admin` of **every** tenant
   (`trg_enroll_platform_owners`), so the owner sees all 7 workspaces in Studio.
-- Tests: `npm test` → **702 tests, 700 pass, 0 fail, 2 skipped**. The 2 skips are
+- Tests: `npm test` → **718 tests, 716 pass, 0 fail, 2 skipped**. The 2 skips are
   a pre-existing P1 contract that arms itself when `lib/portfolio-view.js` exists.
 
 ## 3. Git state
@@ -98,9 +98,10 @@ throughout (logical CSS properties only; a test forbids physical `left`/`right`)
 - **Domain** — add, verify, re-point; the DNS record to create; removal stays in `/admin`
 - **Settings** — password change; email shown, changed only by an operator
 
-**`/client`** — summary (every number is a filter), search, customer record.
-**Read-only by design**; a test asserts no insert/update/delete and no
-edge-function call. Destructive operations stay in `/console` and are linked.
+**`/client`** — summary (every number is a filter), search, customer record,
+and the operator actions: password link, email change, grant / extend / revoke
+free access, and delete behind a typed slug. Built on the shared builders
+`/console` also calls.
 
 ## 6. Verified against production (2026-09-10), on `designakum`, draft only
 
@@ -149,10 +150,15 @@ Everything was put back; the published snapshot was never touched.
 3. **Deleting a project leaves its images in storage.** Pre-existing, shared
    with `/admin`; 17 unreferenced media objects. Cost and tidiness, not
    correctness. Fix shape is probably an operator-triggered sweep.
-4. **`/console` → `/client` is untouched.** `/client` is still read-only.
-   Concrete prerequisite: it reads only `tenants`, `subscriptions` and
-   `free_access_invites`, so it holds no member data — password reset and email
-   change cannot be wired without adding that read.
+4. **`/console` → `/client`: the operations moved 2026-09-13, the redirect has
+   not.** `/client` reads member data and performs reset, email change, grant,
+   extend, revoke and delete through `lib/client-operations.js`, which
+   `/console` now calls too. Still unique to `/console`: forcing a delete past
+   a live subscription, invitations, and the deleted-clients archive. **Do not
+   redirect `/console` until those move** — it is what an operator reaches for
+   when something is on fire. None of the new operations has been run against a
+   real customer; they are pinned by tests for row targeting only.
+
 5. **The accent does far less than the Appearance screen used to claim.** On
    the frozen public page the tenant accent reaches only four small places: the
    2px ring around the picture, the foot glow (HUE ONLY — lightness pinned at
