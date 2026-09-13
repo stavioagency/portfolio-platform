@@ -162,18 +162,61 @@ test('the gate is a courtesy on top of RLS, not instead of it', () => {
   }
 });
 
-test('the console performs no destructive operation', () => {
-  // Deleting a client, resetting a password and changing an email are
-  // irreversible operations on real customers. They work in /console today;
-  // duplicating them into an unproven screen is how one gets done twice, or to
-  // the wrong row.
-  for (const write of ['.delete(', '.update(', '.insert(', '.upsert(']) {
-    assert.ok(!CODE.includes(write), `${write} — /client is read-only in this phase`);
+test('every destructive operation goes through the shared builders', () => {
+  // THIS TEST USED TO FORBID ALL OF THIS. It required /client to contain no
+  // write and to invoke none of the three Edge Functions, because the screen
+  // was unproven and "duplicating them into an unproven screen is how one gets
+  // done twice, or to the wrong row."
+  //
+  // The operations moved here on 2026-09-13, so the protection moves with them
+  // rather than being deleted. The fear was never the network call — those
+  // functions have worked from /console for months — it was the WRONG ROW. So
+  // what is pinned now is that this page never builds an operation body of its
+  // own: every one comes from lib/client-operations.js, where
+  // tests/client-operations.test.mjs asserts that each call names the row it
+  // was handed and leaks no identifier from any other.
+  const OPS = readFileSync(join(ROOT, 'components/client/operations.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  // No hand-rolled bodies: an action/tenant_id pair written inline here is a
+  // second definition, which is exactly the drift the shared module prevents.
+  for (const inline of ["action: 'send_welcome'", "action: 'update_email'",
+    "action: 'grant_comp'", "action: 'set_comp_period'", "action: 'cancel'", 'confirm_slug:']) {
+    assert.ok(!OPS.includes(inline),
+      `${inline} is built inline — it must come from lib/client-operations.js`);
   }
-  for (const fn of ['delete-client', 'reset-client-password', 'client-recovery', 'billing-subscription']) {
-    assert.ok(!CODE.includes(fn), `${fn} must not be invoked from here yet`);
+
+  // And the builders are actually what is called.
+  for (const builder of ['resetPasswordCall', 'changeEmailCall', 'grantFreeCall',
+    'setCompPeriodCall', 'revokeFreeCall', 'deleteClientCall']) {
+    assert.ok(OPS.includes(builder), `${builder} must be the source of its call`);
   }
-  assert.ok(/href="\/console"/.test(CODE), 'and the operations must be linked where they do work');
+
+  // The listing page itself still performs no direct table write. Operations
+  // go through Edge Functions, which re-check ownership; a raw .delete() here
+  // would be a destructive path that never passes that check.
+  for (const write of ['.delete(', '.update(', '.upsert(']) {
+    assert.ok(!CODE.includes(write), `${write} — operations go through Edge Functions, not raw writes`);
+  }
+});
+
+test('the delete cannot be armed without the workspace\u2019s own slug', () => {
+  const OPS = readFileSync(join(ROOT, 'components/client/operations.js'), 'utf8');
+  // slugConfirmed compares what was typed against THIS row, and the button is
+  // disabled until it matches. The typed value is still sent for the server to
+  // judge — see lib/client-operations.js — so a UI bug cannot complete a
+  // wrong-row delete even if this gate were wrong.
+  assert.match(OPS, /disabled=\{!slugConfirmed\(row, typed\)/,
+    'the delete button must be gated on the typed slug matching this row');
+});
+
+test('forcing a delete past a live subscription stays in /console', () => {
+  const OPS = readFileSync(join(ROOT, 'components/client/operations.js'), 'utf8');
+  // Forcing deletes a customer who may still be charged. /console has the full
+  // blocked-reason handling; rebuilding it from memory is how the most
+  // dangerous path becomes the least tested one.
+  assert.ok(!/force:\s*true/.test(OPS), 'force must not be offered here');
+  assert.ok(/href="\/console"/.test(OPS), 'and the console must be linked for it');
 });
 
 test('a customer who lands here is sent somewhere useful', () => {

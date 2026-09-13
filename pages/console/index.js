@@ -19,6 +19,13 @@ import Head from 'next/head';
 import { supabase } from '../../lib/supabase';
 import { deriveBilling, statusLabel, formatBillingDate } from '../../lib/billing-status';
 import { formatAmount, DISPLAY_CURRENCY } from '../../lib/billing-plans';
+// The operation bodies moved to lib/client-operations.js so /client can offer
+// them without a second copy. Same calls, built in one place, and a test
+// there asserts each one names the row it was handed.
+import {
+  resetPasswordCall, changeEmailCall, grantFreeCall, setCompPeriodCall,
+  revokeFreeCall, deleteClientCall,
+} from '../../lib/client-operations';
 import { Button, Badge, Input, EmptyState, Icon, Skeleton, Money, ToastProvider, useToast, ConfirmProvider, useConfirm } from '../../components/ui';
 
 
@@ -322,18 +329,18 @@ function Console() {
     });
     if (!ok) return;
     await run(`reset:${row.id}`, async () => {
-      const { data, error } = await supabase.functions.invoke('client-recovery', {
-        body: { action: 'send_welcome', tenant_id: row.id, user_id: row.member.user_id },
-      });
+      const call = resetPasswordCall(row);
+      if (!call) return 'No login account is attached to this client.';
+      const { data, error } = await supabase.functions.invoke(call.fn, { body: call.body });
       return error ? (error.message || 'Reset failed') : (data?.error || null);
     }, t('passwordSent'));
   }
 
   async function changeEmail(row, email) {
     return run(`email:${row.id}`, async () => {
-      const { data, error } = await supabase.functions.invoke('client-recovery', {
-        body: { action: 'update_email', user_id: row.member.user_id, email },
-      });
+      const call = changeEmailCall(row, email);
+      if (!call) return 'Could not change the email';
+      const { data, error } = await supabase.functions.invoke(call.fn, { body: call.body });
       return error ? (error.message || 'Could not change the email') : (data?.error || null);
     }, t('emailChanged'));
   }
@@ -346,12 +353,8 @@ function Console() {
     });
     if (!ok) return;
     await run(`comp:${row.id}`, async () => {
-      const { data, error } = await supabase.functions.invoke('billing-subscription', {
-        // days null means no end date. 'convertible' rather than 'grandfather'
-        // because a grant made today is meant to become a paying subscription;
-        // the pre-billing seven are the grandfathered ones.
-        body: { action: 'grant_comp', tenant_id: row.id, comp_kind: 'convertible', days },
-      });
+      const call = grantFreeCall(row, days);
+      const { data, error } = await supabase.functions.invoke(call.fn, { body: call.body });
       return error ? (error.message || 'Could not grant access') : (data?.error || null);
     }, t('granted'));
   }
@@ -361,9 +364,8 @@ function Console() {
   // a client who still has twelve days does not quietly take those twelve away.
   async function setCompPeriod(row, days) {
     await run(`period:${row.id}`, async () => {
-      const { data, error } = await supabase.functions.invoke('billing-subscription', {
-        body: { action: 'set_comp_period', tenant_id: row.id, days },
-      });
+      const call = setCompPeriodCall(row, days);
+      const { data, error } = await supabase.functions.invoke(call.fn, { body: call.body });
       return error ? (error.message || 'Could not update free access') : (data?.error || null);
     }, t('periodSet'));
   }
@@ -376,9 +378,8 @@ function Console() {
     });
     if (!ok) return;
     await run(`revoke:${row.id}`, async () => {
-      const { data, error } = await supabase.functions.invoke('billing-subscription', {
-        body: { action: 'cancel', tenant_id: row.id },
-      });
+      const call = revokeFreeCall(row);
+      const { data, error } = await supabase.functions.invoke(call.fn, { body: call.body });
       return error ? (error.message || 'Could not revoke') : (data?.error || null);
     }, t('revoked'));
   }
@@ -397,9 +398,9 @@ function Console() {
       return;
     }
     const attempt = async (force) => {
-      const { data, error } = await supabase.functions.invoke('delete-client', {
-        body: { tenant_id: row.id, confirm_slug: typed.trim(), ...(force ? { force: true } : {}) },
-      });
+      const call = deleteClientCall(row, typed, { force });
+      if (!call) return { err: 'Nothing typed' };
+      const { data, error } = await supabase.functions.invoke(call.fn, { body: call.body });
       if (error) return { blocked: await readFnBlock(error, t) };
       return { err: data?.error || null };
     };

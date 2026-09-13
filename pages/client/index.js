@@ -26,6 +26,7 @@ import Head from 'next/head';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Icon } from '../../components/ui';
+import ClientOperations from '../../components/client/operations';
 import {
   FILTERS, applyFilter, endingSoon, rankCustomers, searchCustomers, summarise, toCustomer,
 } from '../../lib/client-overview';
@@ -64,19 +65,37 @@ export default function ClientConsole() {
       const { data: isOwner } = await supabase.rpc('is_platform_owner');
       if (isOwner !== true) { setPhase('denied'); return; }
 
-      const [{ data: tenants, error: tErr }, { data: subs, error: sErr }, { data: inv }] = await Promise.all([
-        supabase.from('tenants')
-          .select('id, slug, name, status, created_at, published_at')
-          .order('created_at', { ascending: false }),
-        supabase.from('subscriptions').select('*'),
-        supabase.from('free_access_invites').select('*').is('claimed_at', null)
-          .order('created_at', { ascending: false }),
-      ]);
+      const [{ data: tenants, error: tErr }, { data: subs, error: sErr }, { data: inv }, { data: members }] =
+        await Promise.all([
+          supabase.from('tenants')
+            .select('id, slug, name, status, created_at, published_at')
+            .order('created_at', { ascending: false }),
+          supabase.from('subscriptions').select('*'),
+          supabase.from('free_access_invites').select('*').is('claimed_at', null)
+            .order('created_at', { ascending: false }),
+          /* The login attached to each workspace, read the same way /console
+             reads it — through the Edge Function, because auth.users is not a
+             table this or any browser may select from. It FAILS SOFT: a
+             workspace with no member is a real state (an invite never claimed),
+             and losing this read must cost the account operations, not the
+             whole screen. */
+          supabase.functions.invoke('client-recovery', { body: { action: 'list_orphans' } })
+            .then((r) => ({ data: (r && r.data && r.data.members) || [] }), () => ({ data: [] })),
+        ]);
       if (tErr) throw tErr;
       if (sErr) throw sErr;
 
       const byTenant = new Map((subs || []).map((s) => [s.tenant_id, s]));
-      setRows((tenants || []).map((t) => toCustomer(t, byTenant.get(t.id))));
+      const memberByTenant = new Map(
+        (members || []).filter((m) => m && m.tenant_id).map((m) => [m.tenant_id, m]),
+      );
+      setRows((tenants || []).map((t) => ({
+        ...toCustomer(t, byTenant.get(t.id)),
+        /* Carried alongside the derived customer rather than inside it:
+           toCustomer() is pure and tested, and the login is not part of what a
+           customer IS — it is what an operator needs to act on one. */
+        member: memberByTenant.get(t.id) || null,
+      })));
       setInvites(inv || []);
       setPhase('ready');
     } catch (e) {
@@ -162,7 +181,20 @@ export default function ClientConsole() {
 
         <Invites invites={invites} ar={ar} />
 
-        {open && <Detail c={open} ar={ar} lang={lang} onClose={() => setOpenId(null)} />}
+        {open && (
+          <Detail
+            c={open}
+            ar={ar}
+            lang={lang}
+            onClose={() => setOpenId(null)}
+            /* Re-read after an operation: every number on the summary behind
+               this panel may have just changed. A DELETED customer needs
+               nothing extra — `open` is derived from rows.find, so once the row
+               is gone this panel unmounts on its own rather than sitting over a
+               record that no longer exists. */
+            onChanged={boot}
+          />
+        )}
       </div>
 
       <style jsx>{`
@@ -276,7 +308,7 @@ function StateChip({ c, ar }) {
 /* The customer record. READ ONLY, on purpose — see the file header.
    Every destructive operation is named and linked to /console, where it works
    today, rather than being duplicated into a screen nobody has used yet. */
-function Detail({ c, ar, lang, onClose }) {
+function Detail({ c, ar, lang, onClose, onChanged }) {
   const rows = [
     { k: ar ? 'العنوان' : 'Address', v: `designakum.site/${c.slug}` },
     { k: ar ? 'الحالة' : 'Status', v: c.live ? (ar ? 'مباشر' : 'Live') : (ar ? 'غير مرئي للزوّار' : 'Not visible to visitors') },
@@ -312,12 +344,13 @@ function Detail({ c, ar, lang, onClose }) {
           <a className="go" href={`/${c.slug}`} target="_blank" rel="noreferrer">
             {ar ? 'فتح المعرض' : 'Open portfolio'}<Icon name="external" size={13} />
           </a>
-          {/* Deliberately a link, not a button: these operations live in
-              /console until this screen has been proven. */}
-          <a className="go quiet" href="/console">
-            {ar ? 'الاشتراك، كلمة المرور، الحذف' : 'Subscription, password, deletion'}
-          </a>
         </div>
+
+        {/* The operations used to be a LINK to /console, because this screen was
+            read-only for a whole phase while it proved itself. They are here
+            now, built on the same lib/client-operations.js builders /console
+            calls, so the two cannot drift. */}
+        <ClientOperations ar={ar} row={c} onDone={onChanged} />
       </div>
       <style jsx>{`
         .wrap { position: fixed; inset: 0; z-index: var(--z-modal); background: rgba(0,0,0,0.6);
