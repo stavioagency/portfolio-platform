@@ -60,15 +60,27 @@ test('the Studio reads the language it is now sent', () => {
 });
 
 test('Plan is a real screen and no longer a placeholder', () => {
-  // The exact failure the funnel move would have caused: `plan` listed among
-  // the ids routed to NotYet means a paying customer is shown "not yet".
-  const notYet = STUDIO.match(/\[([^\]]*)\]\.includes\(section\)/);
-  assert.ok(notYet, 'the placeholder list must still be findable');
-  assert.ok(!/'plan'/.test(notYet[1]),
-    'plan must not be routed to the NotYet placeholder while the funnel points at it');
-  assert.match(STUDIO, /section === 'plan'/, 'and it must render a Plan screen');
+  // The exact failure the funnel move would have caused: a paying customer
+  // shown "not yet" on the screen they were sent to in order to pay.
+  assert.match(STUDIO, /section === 'plan'/, 'it must render a Plan screen');
   // Still a known section, or a deep link to it would fall back to Home.
   assert.ok(STUDIO_SECTIONS.includes('plan'), 'plan must remain a real section id');
+});
+
+test('every section in the nav renders something of its own', () => {
+  // Strengthened once domain, visitors and settings became real: the old
+  // version of this checked only that `plan` had left the placeholder list.
+  // There IS no placeholder list now, so the property worth pinning is the
+  // stronger one -- every id the navigation offers has a branch that renders
+  // it. A section in the nav with no branch is a blank screen, which is the
+  // one outcome worse than an honest "not yet".
+  for (const id of STUDIO_SECTIONS) {
+    assert.ok(
+      new RegExp(`section === '${id}'`).test(STUDIO),
+      `${id} is in the nav but nothing renders it`,
+    );
+  }
+  assert.ok(!/NotYet/.test(STUDIO), 'the placeholder component should be gone');
 });
 
 test('the plan is spent only once there is a session to spend it on', () => {

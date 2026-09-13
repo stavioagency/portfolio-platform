@@ -42,6 +42,8 @@ import { PublishPanel, Preview } from '../../components/studio/publish';
 import { NoProfileNotice } from '../../components/studio/notices';
 import Plan from '../../components/studio/plan';
 import Visitors from '../../components/studio/visitors';
+import Domain from '../../components/studio/domain';
+import Settings from '../../components/studio/settings';
 import { planFromQuery } from '../../lib/signup-intent';
 
 const THEME_KEY = 'admin_theme';
@@ -353,8 +355,11 @@ export default function StudioPage() {
         {section === 'visitors' && (
           <Visitors ar={ar} tenant={tenant} published={snapshot.published} />
         )}
-        {['domain', 'settings'].includes(section) && (
-          <NotYet ar={ar} section={section} />
+        {section === 'domain' && (
+          <Domain ar={ar} tenant={tenant} entitled={entitled} />
+        )}
+        {section === 'settings' && (
+          <Settings ar={ar} email={session?.user?.email || ''} />
         )}
       </StudioShell>
     </>
@@ -555,23 +560,10 @@ function Home({ ar, tenant, profile, projectCount, published, entitled, changes,
    so this says where the customer can do the thing today rather than showing an
    empty frame that reads as broken. It is deleted screen by screen as each is
    built and must never become a permanent part of the product. */
-function NotYet({ ar, section }) {
-  return (
-    <div className="notyet">
-      <h1>{studioSectionLabel(section, ar)}</h1>
-      <p>
-        {ar
-          ? 'هذا القسم قيد البناء في الاستوديو الجديد. حتى ذلك الحين يمكنك إدارته من المحرر الحالي.'
-          : 'This section is being built in the new Studio. Until then you can manage it in the current editor.'}
-      </p>
-      <Button as="a" href="/admin">{ar ? 'فتح المحرر الحالي' : 'Open the current editor'}</Button>
-      <style jsx>{`
-        .notyet { max-width: 46ch; display: flex; flex-direction: column; gap: var(--space-3);
-                  align-items: flex-start; padding-top: var(--space-5); }
-        h1 { margin: 0; font-size: var(--text-xl); font-family: var(--font-heading); }
-        p { margin: 0; color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.7; }
-      `}</style>
-    </div>
-  );
-}
+/* NotYet stood here. It rendered "this section is being built" for domain,
+   visitors, plan and settings and sent the customer to /admin. All four are
+   real screens now, so the component had no caller left -- and a placeholder
+   with no caller is worse than none: the next person to add a section finds a
+   ready-made way to ship a signpost instead of a screen. */
+
 

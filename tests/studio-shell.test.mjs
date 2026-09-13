@@ -195,11 +195,22 @@ test('nothing on Home is invented', () => {
   assert.ok(/projectCount === 0/.test(PAGE_CODE), 'an empty portfolio must read as empty, not as zero-of-something');
 });
 
-test('the placeholder is marked as temporary and points somewhere that works', () => {
-  // A placeholder with no exit is a dead end, and one with no note becomes
-  // permanent. Both are recorded so this is removed rather than forgotten.
-  assert.ok(/function NotYet/.test(PAGE_CODE));
-  assert.ok(/href="\/admin"/.test(PAGE_CODE), 'it must point at the editor that works today');
-  assert.ok(/must never become a permanent part of the product/.test(PAGE),
-    'the placeholder must carry its own removal note');
+test('the placeholder is gone, because every section is a real screen now', () => {
+  // THIS TEST USED TO ASSERT THE OPPOSITE. It required NotYet to exist, to
+  // point at /admin, and to carry its own removal note -- the right guard while
+  // four of the nine sections were signposts, because a placeholder with no
+  // exit is a dead end and one with no note becomes permanent.
+  //
+  // The note worked: all four were built (plan 2026-09-11, visitors, domain and
+  // settings 2026-09-13) and the component has no caller left. Keeping the old
+  // assertion would now force a placeholder to be kept alive for a test, which
+  // is the tail wagging the dog. The obligation it encoded is inverted here
+  // instead: nothing may render a "not yet" screen, and
+  // tests/signup-funnel.test.mjs separately requires every navigable section to
+  // have a branch that renders it -- so a section cannot quietly become blank
+  // now that there is no placeholder to catch it.
+  assert.ok(!/function NotYet/.test(PAGE_CODE),
+    'NotYet has no caller; a ready-made way to ship a signpost instead of a screen');
+  assert.ok(!/being built in the new Studio|قيد البناء/.test(PAGE),
+    'no section may still tell the customer it is not built yet');
 });

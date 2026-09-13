@@ -4,6 +4,12 @@ import { useRouter } from 'next/router';
 import ReactCrop, { centerCrop, makeAspectCrop } from 'react-image-crop';
 import { supabase } from '../lib/supabase';
 import { normalizeHost } from '../lib/tenant';
+// Moved to lib/domains.js so the Studio can offer custom domains without a
+// second implementation of DNS verification. Same code, imported back.
+import {
+  VERCEL_A_RECORD, VERCEL_CNAME, normalizeDomain, isApexDomain,
+  checkDomainDns, domainStatusMeta,
+} from '../lib/domains';
 import { getTranslator, resolveLang, isLang } from '../lib/translations';
 import { pick, setLangValue, emptyBilingual } from '../lib/i18n';
 import { BRAND_ICONS, BRAND_KEYS, normalizeIcon, brandColor } from '../lib/brand-icons';
@@ -1738,13 +1744,6 @@ const RESERVED_SLUGS = ['admin', 'privacy', 'terms', 'api', '_next', '404', '500
 function normalizeSlug(v) {
   return String(v || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 }
-// Host only: strip scheme/path here, then delegate to the resolver's own normalizeHost
-// so a stored domain is normalized EXACTLY like an incoming request host. (Duplicating
-// this logic would let a saved domain silently never match at runtime.)
-function normalizeDomain(v) {
-  return normalizeHost(String(v || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
-}
-
 function SaveBar({ saving, savedMsg, onSave, t, dirty, extra }) {
   const dirtyRef = useContext(DirtyContext);
   const { refresh: refreshPreview } = usePreview();
@@ -3339,48 +3338,6 @@ function TableCard({ title, headLabel, headValue, rows }) {
 // ---- Custom domains (Phase 4) -------------------------------------------------
 // DNS targets for the Portfolio Platform Vercel project. Apex domains need an A
 // record; subdomains use a CNAME. We do NOT automate Vercel — instructions only.
-const VERCEL_A_RECORD = '76.76.21.21';
-const VERCEL_CNAME = 'cname.vercel-dns.com';
-
-function isApexDomain(d) {
-  return String(d || '').split('.').filter(Boolean).length <= 2;
-}
-
-// Verify DNS straight from the browser via public DNS-over-HTTPS — no backend needed.
-// IMPORTANT: distinguish "lookup failed" from "no records". If the DNS API is
-// unreachable (offline, blocked by an extension/network), we must NOT treat that as
-// "no DNS" — otherwise Verify would downgrade a perfectly working domain.
-async function checkDomainDns(domain) {
-  const q = async (type) => {
-    // Abort a stalled DoH request so Verify can't spin forever on a flaky network.
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
-    try {
-      const r = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`, { signal: ctrl.signal });
-      if (!r.ok) throw new Error(`dns http ${r.status}`);
-      const j = await r.json();
-      return (j.Answer || []).map((a) => String(a.data || '').replace(/\.$/, '').toLowerCase());
-    } finally {
-      clearTimeout(timer);
-    }
-  };
-  try {
-    const [cname, a] = await Promise.all([q('CNAME'), q('A')]);
-    const ok = cname.some((v) => v.includes('vercel-dns.com')) || a.includes(VERCEL_A_RECORD);
-    return { reachable: true, ok, hasAnyRecord: cname.length > 0 || a.length > 0 };
-  } catch (_) {
-    return { reachable: false, ok: false, hasAnyRecord: false };
-  }
-}
-
-// `tone` maps onto the Badge primitive; `dot` is kept for the couple of places
-// that render the status inline inside a sentence rather than as a pill.
-function domainStatusMeta(status, ar) {
-  if (status === 'active') return { tone: 'success', label: ar ? 'نشط' : 'Active' };
-  if (status === 'error') return { tone: 'danger', label: ar ? 'فشل' : 'Failed' };
-  return { tone: 'warning', label: ar ? 'بانتظار DNS' : 'Waiting for DNS' };
-}
-
 function DomainStatusBadge({ status, ar }) {
   const meta = domainStatusMeta(status, ar);
   return <Badge tone={meta.tone} dot>{meta.label}</Badge>;

@@ -495,6 +495,11 @@ test('SAFE-1: --tap-min is consumed only where a tap target was approved', () =>
     // shape a thumb misses, and this screen is read on a phone more than
     // any other -- it is the one a customer opens after sharing their link.
     'components/studio/visitors.js': 1,   // .range
+    // Domain and Settings, added when the last two placeholders became real
+    // screens. Both are forms: a field a thumb misses is worse than a button
+    // a thumb misses, because the miss lands in the wrong field silently.
+    'components/studio/domain.js': 3,     // the add field, its button, the row actions
+    'components/studio/settings.js': 2,   // the password fields and the submit
     'components/studio/sections.js': 2,   // .del -- remove a link (width + height)
     'components/studio/work.js': 2,       // .acts button -- reorder and delete a project
     'pages/client/index.js': 3,           // .chip, and the record's close button
