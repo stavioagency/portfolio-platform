@@ -34,3 +34,6 @@ supabase/.temp/
 .vscode/
 .idea/
 *.swp
+
+# graphify knowledge graph output
+graphify-out/
