@@ -36,6 +36,7 @@ import { Appearance, Links, Profile } from '../../components/studio/sections';
 import { Facts } from '../../components/studio/facts';
 import { PageParts, SiteIdentity } from '../../components/studio/pagebits';
 import { Workspace, Guide } from '../../components/studio/workspace';
+import { History } from '../../components/studio/history';
 import { Work } from '../../components/studio/work';
 import { DEFAULT_SECTION, isStudioSection, studioSectionLabel } from '../../lib/studio-nav';
 import { hasPublicContent } from '../../lib/profile-content';
@@ -400,6 +401,10 @@ export default function StudioPage() {
                           onSaved={onProfile} canEdit={canEdit} />
             <Workspace ar={ar} tenant={tenant} canEdit={canEdit}
                        onRenamed={(n) => setTenant((prev) => (prev ? { ...prev, name: n } : prev))} />
+            {/* Section AB captures a version on every publish; this is where a
+                client reads them and puts one back. */}
+            <History ar={ar} tenant={tenant} canEdit={canEdit}
+                     onRestored={() => { setSnapshot({ published: true }); setChanges(false); }} />
           </>
         )}
       </StudioShell>
