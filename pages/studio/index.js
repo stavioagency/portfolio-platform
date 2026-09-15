@@ -33,6 +33,7 @@ import { supabase } from '../../lib/supabase';
 import { Button, Icon } from '../../components/ui';
 import StudioShell from '../../components/studio/StudioShell';
 import { Appearance, Links, Profile } from '../../components/studio/sections';
+import { Facts } from '../../components/studio/facts';
 import { Work } from '../../components/studio/work';
 import { DEFAULT_SECTION, isStudioSection, studioSectionLabel } from '../../lib/studio-nav';
 import { hasPublicContent } from '../../lib/profile-content';
@@ -332,8 +333,15 @@ export default function StudioPage() {
                 onPublished={() => { setSnapshot({ published: true }); setChanges(false); }} />
         )}
         {section === 'profile' && (
-          <Profile ar={ar} uiLang={lang} tenant={tenant} profile={profile} onSaved={onProfile}
-                   canEdit={canEdit} />
+          <>
+            <Profile ar={ar} uiLang={lang} tenant={tenant} profile={profile} onSaved={onProfile}
+                     canEdit={canEdit} />
+            {/* The quick facts live under Profile because that is where a
+                client looks for "the strip at the top of my page". They were
+                editable only in /admin until now, which is one of the nine
+                columns keeping the legacy editor alive. */}
+            <Facts ar={ar} tenant={tenant} profile={profile} onSaved={onProfile} canEdit={canEdit} />
+          </>
         )}
         {section === 'work' && (
           <Work ar={ar} uiLang={lang} tenant={tenant} profile={profile}

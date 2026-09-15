@@ -483,6 +483,14 @@ test('SAFE-1: --tap-min is consumed only where a tap target was approved', () =>
     // client's appeal. One declaration, deliberate.
     'components/console/desk.js': 1,       // .row-btn
 
+    // Added 2026-09-15 with Quick Facts, the first of /admin's nine
+    // Studio-less columns to be ported. Both are controls a thumb presses on
+    // the screen a client opens to fix their own page: the day pills are seven
+    // small targets in a row, which is exactly the shape a thumb misses, and
+    // the rating/count/time inputs are fields -- a miss that lands in the wrong
+    // field is worse than one that misses a button, because it is silent.
+    'components/studio/facts.js': 2,       // the inputs and .day
+
     // Added 2026-09-11, when the Studio and /client were first looked at on a
     // 375px viewport. Every one of these is a control a customer or an operator
     // presses with a thumb, and every one measured 32-38px -- under the floor
