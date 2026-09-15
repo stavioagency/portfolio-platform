@@ -17,3 +17,8 @@ create table if not exists tenants (
   published_snapshot jsonb,
   published_at timestamptz
 );
+
+-- Enough of the auth and permission surface for Section AB to be tried locally.
+create schema if not exists auth;
+create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
+create or replace function can_edit_tenant(tid uuid) returns boolean language sql stable as $$ select true $$;
