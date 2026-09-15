@@ -13,6 +13,8 @@
 import { useCallback, useState } from 'react';
 import { saveProfile, uploadImage, describeRejection } from '../../lib/studio-data';
 import { useAutosave } from '../../lib/use-autosave';
+import { supabase } from '../../lib/supabase';
+import { offeredLangs, liveLangs } from '../../lib/published-langs';
 
 const bi = (v) => (v && typeof v === 'object' ? v : { ar: '', en: '' });
 
@@ -68,6 +70,47 @@ export function PageParts({ ar, uiLang, tenant, profile, onSaved, canEdit = true
           </label>
         ))}
       </fieldset>
+
+      {/* Which languages are LIVE, which is not the same as which the client
+          writes in. Only shown when there are two to choose between: a control
+          offering one option is a control that does nothing. */}
+      {offeredLangs(profile).length > 1 && (
+        <fieldset>
+          <legend>{ar ? 'اللغات المنشورة' : 'Published languages'}</legend>
+          <p className="hint">
+            {ar
+              ? 'يمكن نشر لغة والاحتفاظ بالأخرى قيد الكتابة.'
+              : 'You can publish one language while the other is still being written.'}
+          </p>
+          {offeredLangs(profile).map((code) => {
+            const live = liveLangs(profile, tenant);
+            const on = live.includes(code);
+            const lastOne = on && live.length === 1;
+            return (
+              <label key={code} className="check">
+                <input
+                  type="checkbox" checked={on}
+                  /* The last live language cannot be switched off: a page in
+                     no language is a blank page, and the database ignores such
+                     a subset anyway -- so the control says so rather than
+                     accepting a click that does nothing. */
+                  disabled={!canEdit || lastOne}
+                  onChange={(ev) => {
+                    const next = ev.target.checked
+                      ? [...live, code]
+                      : live.filter((l) => l !== code);
+                    void supabase.from('tenants')
+                      .update({ published_langs: next })
+                      .eq('id', tenant.id)
+                      .then(() => onSaved({ ...profile }));
+                  }}
+                />
+                <span>{code === 'ar' ? (ar ? 'العربية' : 'Arabic') : (ar ? 'الإنجليزية' : 'English')}</span>
+              </label>
+            );
+          })}
+        </fieldset>
+      )}
 
       <fieldset>
         <legend>{ar ? 'الشريط العلوي' : 'Top ticker'}</legend>

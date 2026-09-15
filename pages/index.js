@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import { supabase } from '../lib/supabase';
+import { switcherOn, openingLang } from '../lib/published-langs';
 import { getTranslator } from '../lib/translations';
 import { pick } from '../lib/i18n';
 import { fetchPublicPortfolio } from '../lib/tenant';
@@ -69,6 +70,7 @@ const PF_FONT = "'Manrope', 'Tajawal', 'IBM Plex Sans Arabic', system-ui, sans-s
 
 export default function Home({ slug = null } = {}) {
   const [profile, setProfile] = useState(null);
+  const [publishedTenant, setPublishedTenant] = useState(null);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -179,6 +181,9 @@ export default function Home({ slug = null } = {}) {
       if (!portfolio) { setNotFound(true); return; }
 
       setTenantId(portfolio.tenant_id || null);
+      // The tenant half of the snapshot, kept so the renderer can read
+      // published_langs without a second query.
+      setPublishedTenant(portfolio.tenant || null);
       // The snapshot carries the same field names the tables did, so everything
       // downstream of here is unchanged.
       const profileData = portfolio.profile || null;
@@ -186,7 +191,9 @@ export default function Home({ slug = null } = {}) {
 
       if (profileData) {
         setProfile(profileData);
-        setLang(storedLangRef.current || profileData.default_lang || 'ar');
+        // Open in the visitor's language only if it is one of the live ones.
+        setLang(openingLang(profileData, portfolio.tenant || null,
+                            storedLangRef.current || profileData.default_lang || 'ar'));
       }
       setProjects(projectsData);
     } catch (e) {
@@ -499,7 +506,13 @@ export default function Home({ slug = null } = {}) {
   //
   // A portfolio is in one language unless the client has said they write in
   // two. profile.bilingual is that statement (section-v).
-  const langSwitcherOn = profile.bilingual === true;
+  // Writing in two languages and being LIVE in two are different facts, and
+  // they used to be the same one: flipping `bilingual` published a
+  // half-translated English view immediately. tenants.published_langs (section
+  // AA) separates them, and liveLangs() honours a subset only where it overlaps
+  // what is actually written -- and ignores one that would leave the page in no
+  // language at all.
+  const langSwitcherOn = switcherOn(profile, publishedTenant);
   const avatarSrc = profile.brand_logo || profile.profile_image || null;
   // SEO overrides (admin → Profile → SEO), falling back to auto-derived values
   const seo = profile.seo || {};
