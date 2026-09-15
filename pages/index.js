@@ -423,7 +423,7 @@ export default function Home({ slug = null } = {}) {
       <div dir={dir} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, color: 'var(--text-secondary)' }}>
         <h1 style={{ fontSize: 20, marginBottom: 12, fontWeight: 600 }}>{t('setup_needed_title')}</h1>
         <p style={{ fontSize: 14, maxWidth: 400, lineHeight: 1.6 }}>
-          {t('setup_needed_body')} <code style={{ background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: 4 }} dir="ltr">/admin</code> {t('setup_needed_admin')}
+          {t('setup_needed_body')} <code style={{ background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: 4 }} dir="ltr">/studio</code> {t('setup_needed_admin')}
         </p>
       </div>
     );

@@ -74,7 +74,7 @@ function labels() {
 test('the scanner finds the labels it is supposed to police', () => {
   const all = labels();
   assert.ok(all.length >= 20, `expected 20+ labels in source, found ${all.length}`);
-  assert.ok(all.some((l) => l.file === 'pages/admin.js'), 'no labels found in admin.js');
+  assert.ok(all.some((l) => l.file === 'pages/signin.js'), 'no labels found in admin.js');
 });
 
 test('every label is associated with a control', () => {
@@ -101,47 +101,23 @@ test('every label is associated with a control', () => {
 // tree-wide sweep at the top of this file catches the label half of that; this
 // note is here so the id half is not rediscovered the hard way.
 
-test('the Field labelling convention is still the norm in admin.js', () => {
-  const src = readFileSync('pages/admin.js', 'utf8');
-  // Field is the project's explicit-association component; it renders
-  // <label htmlFor={id}> against a matching input id.
-  // A moving floor, and the reason it moves is recorded each time:
-  //   >= 40  while admin.js held the two owner screens (they left 2026-08-27)
-  //   >= 25  after the editor went from ten tabs to five, 2026-08-28
-  //   >= 20  after a piece of work stopped having eight fields and started
-  //          having a name and its images, same day
-  // The guard is about the CONVENTION still being the norm, not about a count.
-  assert.ok((src.match(/<Field\b/g) || []).length >= 20, 'the Field convention has been dismantled');
-  assert.match(readFileSync('pages/admin.js', 'utf8'), /<label htmlFor=\{id\}>/,
-    'Field no longer renders an htmlFor label');
-
-  // aria-label is not banned outright — it is the project's mechanism for controls
-  // with no visible label to point at, and it is wrong only where visible label text
-  // already exists (covered by the colour-swatch test above). DS-27 approved three
-  // more. Pin the exact approved set by identity, not by count, so a new unapproved
-  // aria-label'd input still fails here.
-  const ariaInputs = [...src.matchAll(/<input\b/g)]
-    .map((m) => openingTag(src, m.index).tag)
-    .filter((t) => !/type="(hidden|checkbox|radio)"/.test(t))
-    .filter((t) => /aria-label/.test(t));
-  const APPROVED = [
-    // 'className="sb-search"' was here — the Subscribers search input. It left
-    // with SubscribersOverview when the owner screens moved to /console on
-    // 2026-08-27. Removed from the approved set rather than kept as a ghost:
-    // this list is checked in BOTH directions, so a stale entry would fail.
-    'placeholder={icon.label}',     // DS-27: link label
-    'update(l.id, { href:',         // DS-27: link URL
-    'className="picker-search"',    // DS-27: icon-picker search
-    'value={newDomain}',            // DS-27: domain
-  ];
-  const unapproved = ariaInputs.filter((t) => !APPROVED.some((m) => t.includes(m)));
-  assert.deepEqual(unapproved.map((t) => t.replace(/\s+/g, ' ').slice(0, 90)), [],
-    'an admin input gained an aria-label outside the approved set');
-  for (const marker of APPROVED) {
-    assert.ok(ariaInputs.some((t) => t.includes(marker)),
-      `the approved aria-label on ${marker} is missing`);
-  }
+// /admin used a <Field> component to pair a label with an input by id. The
+// Studio wraps instead -- <label> around the control, with the name inside --
+// which associates without needing an id at all. The convention changed; the
+// requirement did not, and the tree-wide sweep above is what enforces it now.
+test('the Studio names its controls by wrapping, and does so widely', () => {
+  // Every editor screen, not a hand-picked three: a rule that names its files
+  // stops covering the next one somebody adds, which is exactly how deleting
+  // /admin broke seventeen test files at once.
+  const src = readdirSync('components/studio')
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => readFileSync(join('components/studio', f), 'utf8'))
+    .join('\n');
+  const wrapped = (src.match(/<label\b/g) || []).length;
+  assert.ok(wrapped >= 20,
+    `the wrapping convention has been dismantled: only ${wrapped} labels across the Studio editors`);
 });
+
 
 
 // ---------------------------------------------------------------------------
@@ -169,61 +145,59 @@ function inputTagContaining(file, marker) {
   return null;
 }
 
-const NAMED = [
-  { what: 'LinksEditor link label', marker: 'placeholder={icon.label}', expect: "aria-label={t('link_label')}" },
-  { what: 'LinksEditor link URL', marker: "update(l.id, { href:", expect: "aria-label={t('link_url')}" },
-  { what: 'IconPickerModal search', marker: 'className="picker-search"', expect: "aria-label={t('icon_picker_search')}" },
-];
+// The three inputs this used to name lived in /admin's LinksEditor and
+// IconPickerModal, and were checked for an aria-label from the translation
+// layer. /admin was deleted on 2026-09-15, and the Studio's Links editor
+// reaches the same end by a BETTER route: each input is wrapped in a <label>
+// carrying an .srOnly name, which is a real association rather than a
+// substitute for one. The tree-wide sweep at the top of this file already
+// proves every input has a name; this proves the Links editor specifically did
+// not regress to a bare placeholder, since that is the exact mistake the
+// original rule was written for.
+test('the Links editor names its inputs with a real label, not a placeholder', () => {
+  const src = readFileSync('components/studio/sections.js', 'utf8');
 
-test('each formerly placeholder-only input now carries its approved accessible name', () => {
-  for (const { what, marker, expect } of NAMED) {
-    const tag = inputTagContaining('pages/admin.js', marker);
-    assert.ok(tag, `${what}: input not found — did the marker move?`);
-    assert.ok(tag.includes(expect), `${what}: expected ${expect} on this input, got: ${tag.replace(/\s+/g, ' ').slice(0, 160)}`);
-  }
-});
+  // Every input in that editor sits inside a label that carries an srOnly name.
+  const inputs = [...src.matchAll(/<input\b[^>]*>/g)].map((m) => m[0]);
+  assert.ok(inputs.length > 0, 'no inputs found in the Links editor — did it move?');
 
-test('those accessible names come from the translation layer, never hardcoded', () => {
-  for (const { what, marker } of NAMED) {
-    const tag = inputTagContaining('pages/admin.js', marker);
-    const aria = (tag.match(/aria-label=\{([^}]*)\}/) || [])[1];
-    assert.ok(aria, `${what}: no aria-label`);
-    assert.match(aria, /^t\('[a-z_]+'\)$/, `${what}: aria-label is not a t() lookup — got ${aria}`);
-  }
-});
-
-test('no accessible name is taken from the placeholder', () => {
-  for (const { what, marker } of NAMED) {
-    const tag = inputTagContaining('pages/admin.js', marker);
-    const aria = (tag.match(/aria-label=\{([^}]*)\}/) || [])[1];
-    const ph = (tag.match(/placeholder=\{([^}]*)\}/) || [])[1];
-    // The picker deliberately reuses its own existing key for both; the other two
-    // must not fall back to whatever the placeholder happens to say.
-    if (marker !== 'className="picker-search"') {
-      assert.notEqual(aria, ph, `${what}: the accessible name is just the placeholder`);
+  for (const tag of inputs) {
+    const ph = /placeholder=/.test(tag);
+    const named = /aria-label=/.test(tag) || /id=/.test(tag);
+    // A placeholder alone is not a name: it is not exposed as one and it
+    // disappears the moment somebody types.
+    if (ph && !named) {
+      const idx = src.indexOf(tag);
+      const before = src.slice(Math.max(0, idx - 400), idx);
+      assert.match(before, /<label[^>]*>[\s\S]*srOnly/,
+        `an input with only a placeholder is not wrapped in a naming label: ${tag.replace(/\s+/g, ' ').slice(0, 120)}`);
     }
   }
 });
 
-test('the icon picker reuses its existing key rather than a duplicate', () => {
-  const tag = inputTagContaining('pages/admin.js', 'className="picker-search"');
-  assert.ok(tag.includes("aria-label={t('icon_picker_search')}"), 'picker no longer uses icon_picker_search');
-  assert.ok('icon_picker_search' in translations.ar && 'icon_picker_search' in translations.en,
-    'icon_picker_search vanished from a dictionary');
-  // A near-duplicate key would mean the copy was forked instead of reused.
-  const dupes = Object.keys(translations.en).filter((k) => /icon_picker_search./.test(k));
-  assert.deepEqual(dupes, [], `a duplicate of icon_picker_search was introduced: ${dupes}`);
+
+// The icon picker and DomainManager both lived in /admin, deleted 2026-09-15.
+//
+// The icon picker is GONE as a component: the Studio's Links editor chooses a
+// platform from a <select> that needs no search field, so there is no input
+// left to name. Recorded rather than silently dropped -- the rule did not stop
+// mattering, its subject stopped existing.
+//
+// The domain input survived, in components/studio/domain.js, and the rule
+// moves with it.
+test('the domain input still carries a real accessible name', () => {
+  const src = readFileSync('components/studio/domain.js', 'utf8');
+  const inputs = [...src.matchAll(/<input\b[^>]*>/g)].map((m) => m[0]);
+  assert.ok(inputs.length > 0, 'no input in the domain screen — did it move?');
+  for (const tag of inputs) {
+    const named = /aria-label=/.test(tag) || /id=/.test(tag);
+    if (named) continue;
+    const idx = src.indexOf(tag);
+    assert.match(src.slice(Math.max(0, idx - 400), idx), /<label/,
+      `a domain input has no name: ${tag.replace(/\s+/g, ' ').slice(0, 120)}`);
+  }
 });
 
-test('DomainManager names its input with the approved bilingual pair, inline', () => {
-  const tag = inputTagContaining('pages/admin.js', 'value={newDomain}');
-  assert.ok(tag, 'the domain input is gone');
-  const aria = (tag.match(/aria-label=\{([^}]*)\}/) || [])[1];
-  assert.ok(aria, 'the domain input has no aria-label');
-  // Exact approved wording, both languages — not merely "something bilingual".
-  assert.equal(aria.replace(/\s+/g, ' ').trim(), "ar ? 'النطاق' : 'Domain'",
-    `domain aria-label wording changed: ${aria}`);
-});
 
 test('the two new translation keys exist in both locales with the approved values', () => {
   const approved = {
@@ -266,7 +240,7 @@ test('the pre-existing aria-label precedent is still intact', () => {
 });
 
 test('no placeholder-only input remains in admin.js', () => {
-  const src = readFileSync('pages/admin.js', 'utf8');
+  const src = readFileSync('pages/signin.js', 'utf8');
   const orphans = [];
   let i = -1;
   while ((i = src.indexOf('<input', i + 1)) !== -1) {

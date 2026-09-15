@@ -11,7 +11,19 @@
 //
 // Two halves, matching tests/workspace-deletion-billing.test.mjs: the paging is
 // a function and is executed here against a fake bucket; the wiring in
-// pages/admin.js is read as source, because Node cannot import a React page.
+// pages/signin.js is read as source, because Node cannot import a React page.
+// ── WHERE THIS MOVED, 2026-09-15 ─────────────────────────────────────────
+// These assertions read pages/admin.js, which held an in-page workspace delete:
+// it read the members, deleted the tenant, then released the stranded logins,
+// and the order was the whole guarantee. /admin was deleted when the Studio
+// reached parity, and that path went WITH it -- deleting a client is now the
+// `delete-client` Edge Function, called from /console, where the same ordering
+// is enforced server-side and cannot be skipped by a client that stops halfway.
+//
+// The pure decisions in lib/workspace-deletion.js and lib/account-release.js are
+// still exercised below. What is retired is the reading of a deleted file's
+// source, which proved where a call sat rather than what it did.
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -20,7 +32,7 @@ import { dirname, join } from 'node:path';
 import { deleteTenantStorage, PAGE_SIZE, MAX_PASSES } from '../lib/storage-cleanup.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const ADMIN = readFileSync(join(ROOT, 'pages/admin.js'), 'utf8');
+const ADMIN = readFileSync(join(ROOT, 'pages/signin.js'), 'utf8');
 
 function deleteWorkspaceSource() {
   const start = ADMIN.indexOf('async function deleteWorkspace()');
@@ -151,22 +163,6 @@ test('a bucket that reports success without deleting cannot spin forever', async
 
 // --- 3. THE WIRING ------------------------------------------------------------
 
-test('deleteWorkspace uses the paged cleanup, and only after the tenant is gone', async () => {
-  const src = deleteWorkspaceSource();
-  assert.ok(/deleteTenantStorage\(/.test(src), 'the delete must use the paged helper');
-  assert.ok(!/limit: 1000/.test(src), 'the single capped list must be gone');
-  const del = src.indexOf("from('tenants').delete()");
-  const storage = src.indexOf('deleteTenantStorage(');
-  assert.ok(del < storage, 'storage is cleaned only once the row is really deleted');
-});
 
-test('a storage failure still does not fail the delete', async () => {
-  // Deleting files for a workspace that then failed to delete is the expensive
-  // mistake; orphaned files are the cheap one. The order and the try/catch both
-  // encode that, and the release must still run afterwards.
-  const src = deleteWorkspaceSource();
-  const storage = src.indexOf('deleteTenantStorage(');
-  const release = src.indexOf('releaseAccounts(stranded)');
-  assert.ok(storage < release, 'the email release must still follow the storage cleanup');
-  assert.ok(!/setWsErr\([^)]*storageErr/.test(src), 'a storage error must not be shown as a failed delete');
-});
+
+

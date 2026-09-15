@@ -1,4 +1,4 @@
-// The set-password gate in pages/admin.js — the invariants that stop the
+// The set-password gate in pages/signin.js — the invariants that stop the
 // "asked to set a password again" loop from coming back.
 //
 // THE BUG THIS GUARDS
@@ -25,7 +25,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const src = readFileSync(new URL('../pages/admin.js', import.meta.url), 'utf8');
+const src = readFileSync(new URL('../pages/signin.js', import.meta.url), 'utf8');
 // Comments carry the words this file greps for, in the notes explaining them.
 const code = src.replace(/^\s*\/\/.*$/gm, '');
 

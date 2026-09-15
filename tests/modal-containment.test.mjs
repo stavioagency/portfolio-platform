@@ -13,6 +13,18 @@
 // meant to be contained?" is a product decision, not something source can be scanned
 // for. CropperModal joined the list in DS-23, once its focus target was decided.
 
+// ── WHAT WENT WITH /admin, 2026-09-15 ────────────────────────────────────
+// Five assertions here policed the image CROPPER: its aria keys in both
+// dictionaries, its backdrop dismissal, and the copy of FOCUSABLE it carried.
+// The cropper is not ported to the Studio and that is recorded, not accidental
+// -- uploadImage already compresses and fits an avatar on the way up, so the
+// crop it produced happens anyway, and a hand-crop can return on its own
+// merits rather than as a reason to keep 5,172 lines alive.
+//
+// FOCUSABLE now has one definition, in ConfirmDialog, because the components
+// that held the other copies are gone. A rule about copies staying identical
+// has nothing left to compare.
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -23,17 +35,26 @@ import { translations } from '../lib/translations.js';
 // password, so there is nothing to hand over and no modal to hand it over in.
 // The contract it demonstrated is unchanged and still enforced on every surface
 // below; there is simply one fewer surface.
+// IconPickerModal and CropperModal lived in /admin, deleted 2026-09-15. Neither
+// capability was lost the way it looks: the Studio picks a platform from a
+// <select> that needs no searchable modal, and uploads are fitted automatically
+// rather than hand-cropped. What is left is the gate that still exists, and
+// ConfirmDialog, which is the primitive every destructive action in the console
+// goes through -- so the contract is now checked where it is actually used
+// rather than on two components that no longer exist.
 const SURFACES = [
-  { name: 'SetPasswordGate',    file: 'pages/admin.js', component: 'SetPasswordGate',  container: 'panelRef',  canonical: false },
-  { name: 'IconPickerModal',    file: 'pages/admin.js', component: 'IconPickerModal',  container: 'pickerRef', canonical: true },
-  { name: 'CropperModal',       file: 'pages/admin.js', component: 'CropperModal',     container: 'cmRef',     canonical: true },
+  { name: 'SetPasswordGate', file: 'pages/signin.js',                  component: 'SetPasswordGate', container: 'panelRef', canonical: false },
+  { name: 'ConfirmDialog',   file: 'components/ui/ConfirmDialog.js',   component: 'ConfirmProvider', container: 'dialogRef', canonical: true },
 ];
 
 // admin.js holds several contained surfaces, so a whole-file scan would only ever
 // see the first one. Narrow to the component before looking for its handler.
 function componentSource(src, component) {
   if (!component) return src;
-  const start = src.indexOf(`function ${component}(`);
+  // `export function X(` as well as `function X(`: the surviving surfaces are
+  // exported components, where the old ones were locals inside admin.js.
+  let start = src.indexOf(`export function ${component}(`);
+  if (start === -1) start = src.indexOf(`function ${component}(`);
   assert.notEqual(start, -1, `component ${component} not found`);
   const rest = src.slice(start + 1);
   const next = rest.search(/\nfunction [A-Za-z]/);
@@ -42,7 +63,10 @@ function componentSource(src, component) {
 
 function tabHandler(surface) {
   const src = componentSource(readFileSync(surface.file, 'utf8'), surface.component);
-  for (const m of src.matchAll(/function onKey\s*\([^)]*\)\s*\{/g)) {
+  // Both declaration forms. /admin wrote `function onKey(e) {`; the surviving
+  // components write `const onKeyDown = (e) => {`, which is the same handler
+  // and was invisible to a matcher that only knew the first shape.
+  for (const m of src.matchAll(/(?:function\s+onKey\w*\s*\([^)]*\)|const\s+onKey\w*\s*=\s*\([^)]*\)\s*=>)\s*\{/g)) {
     let depth = 0, i = src.indexOf('{', m.index);
     for (; i < src.length; i++) {
       if (src[i] === '{') depth++;
@@ -112,109 +136,22 @@ test('surfaces on the canonical contract exclude disabled and hidden controls', 
   }
 });
 
-test('every copy of FOCUSABLE is identical to ConfirmDialog\'s', () => {
-  const read = (f) => (readFileSync(f, 'utf8').match(/^const FOCUSABLE = (.*);$/m) || [])[1];
-  const canonical = read('components/ui/ConfirmDialog.js');
-  assert.ok(canonical, 'ConfirmDialog no longer defines FOCUSABLE');
-  assert.match(canonical, /button:not\(\[disabled\]\)/, 'canonical selector stopped excluding disabled buttons');
-  for (const f of ['pages/admin.js']) {
-    assert.equal(read(f), canonical, `${f}: FOCUSABLE has drifted from ConfirmDialog`);
-  }
-});
-
-test('IconPickerModal captures its opener before autoFocus and restores it', () => {
-  const src = componentSource(readFileSync('pages/admin.js', 'utf8'), 'IconPickerModal');
-  // React applies autoFocus in commitMount, before passive effects, so an effect-time
-  // read of activeElement would return the search field instead of the opener.
-  const capture = src.indexOf('openerRef.current = document.activeElement');
-  assert.notEqual(capture, -1, 'IconPickerModal no longer captures its opener');
-  assert.ok(capture < src.indexOf('useEffect'),
-    'opener capture moved inside/after an effect — autoFocus will have moved focus by then');
-  // Must match the JSX attribute, not the word: the comment above the capture
-  // mentions autoFocus, so a bare /autoFocus/ would pass even if the prop were gone.
-  assert.match(src, /<input\s+autoFocus\b/, 'the search field lost its autoFocus prop');
-  assert.match(src, /opener\.isConnected/, 'restoration no longer guards against a detached opener');
-  assert.match(src, /opener\.focus\(\)/, 'opener is captured but never restored');
-});
-
-test('DS-17/18/19 contracts were not displaced', () => {
-  // The four CredentialsHandoff pins that stood here (capture-phase Escape and
-  // its matching removal, prevOverflow, opener restoration) named a file that
-  // no longer exists. Their CONTRACTS are not gone: the sweep above asserts
-  // every one of them across every remaining contained surface, which is where
-  // the enforcement always actually lived. These were extra pins on one
-  // example, and the example was deleted.
-  //
-  // The DS-17 clipboard pin went the same way — see tests/clipboard-guard.
-  const admin = readFileSync('pages/admin.js', 'utf8');
-  // The DS-17 stacking-order pin and the DS-18 mount-scoped-focus pin both named
-  // ClientPanel, which was deleted with the owner screens on 2026-08-27. The
-  // contracts they protected are still enforced for every REMAINING surface by
-  // the sweep above; there is simply no ClientPanel left to pin.
-  // Escape must still close these two; containment must not have swallowed it.
-  for (const s of SURFACES.filter((x) => ['IconPickerModal'].includes(x.name))) {
-    assert.match(tabHandler(s), /e\.key === 'Escape'/, `${s.name}: Escape handling lost from the handler`);
-  }
-});
-
-test('backdrop dismissal is preserved on the surfaces that had it', () => {
-  // Containment was added without changing how these close. cm-bg is CropperModal,
-  // which DS-21 left uncontained.
-  const admin = readFileSync('pages/admin.js', 'utf8');
-  // 'cp-bg' was ClientPanel's backdrop and left with the owner screens.
-  for (const cls of ['picker-bg', 'cm-bg']) {
-    assert.match(admin, new RegExp(`className="${cls}" onClick=`),
-      `${cls} no longer dismisses on backdrop click`);
-  }
-});
 
 
-test('CropperModal focuses Cancel on open — not Confirm, not the close button', () => {
-  const src = componentSource(readFileSync('pages/admin.js', 'utf8'), 'CropperModal');
-  // The ref must be on the cancel control itself, and the focus call must name that
-  // ref. Asserting "a focus() appears somewhere" would survive a retarget.
-  assert.match(src, /className="cm-cancel"[^>]*ref=\{cancelRef\}|ref=\{cancelRef\}[^>]*className="cm-cancel"/,
-    'cancelRef is not attached to the .cm-cancel button');
-  assert.match(src, /cancelRef\.current\?\.focus\(\)/, 'initial focus does not target cancelRef');
-  assert.doesNotMatch(src, /confirmRef|cm-confirm[^>]*ref=/, 'focus was retargeted to the committing control');
-  // and the focus call must actually be reachable inside a mount-scoped effect
-  const eff = src.slice(src.indexOf('cancelRef.current?.focus()'));
-  assert.match(eff.slice(0, 400), /\}, \[\]\);/, 'initial focus is not in a mount-scoped effect');
-});
 
-test('CropperModal captures its opener during render, not in an effect', () => {
-  const src = componentSource(readFileSync('pages/admin.js', 'utf8'), 'CropperModal');
-  const capture = src.indexOf('openerRef.current = document.activeElement');
-  assert.notEqual(capture, -1, 'CropperModal no longer captures its opener');
-  assert.ok(capture < src.indexOf('useEffect'),
-    'opener capture moved into/after an effect — the dialog will have taken focus by then');
-  assert.match(src, /opener\.isConnected/, 'restoration no longer guards against a detached opener');
-  assert.match(src, /opener\.focus\(\)/, 'opener is captured but never restored');
-});
 
-test("CropperModal keeps react-image-crop's keyboard controls in the cycle", () => {
-  // The library gives its crop area and eight drag handles tabIndex=0. They stay in
-  // the cycle only while the canonical selector keeps its [tabindex] clause, so a
-  // narrowing of the selector for this surface must fail here.
-  const src = componentSource(readFileSync('pages/admin.js', 'utf8'), 'CropperModal');
-  const h = tabHandler({ file: 'pages/admin.js', component: 'CropperModal' });
-  assert.match(h, /querySelectorAll\(FOCUSABLE\)/, 'CropperModal stopped using the canonical selector');
-  assert.doesNotMatch(h, /:not\(\[tabindex\]\)|querySelectorAll\('button/,
-    'the selector was narrowed for this surface, excluding the crop controls');
-  const canonical = (readFileSync('pages/admin.js', 'utf8').match(/^const FOCUSABLE = (.*);$/m) || [])[1];
-  assert.match(canonical, /\[tabindex\]:not\(\[tabindex="-1"\]\)/,
-    'the canonical selector lost its [tabindex] clause — the 9 crop controls drop out of the cycle');
-  assert.doesNotMatch(src, /ReactCrop[^>]*tabIndex/, 'tabIndex was forced onto ReactCrop');
-});
 
-test('CropperModal Escape and backdrop behaviour are unchanged', () => {
-  const src = componentSource(readFileSync('pages/admin.js', 'utf8'), 'CropperModal');
-  assert.match(src, /e\.key === 'Escape'\) \{ e\.stopPropagation\(\); onCancel\(\); return; \}/,
-    'Escape no longer cancels the crop');
-  assert.match(src, /className="cm-bg" onClick=\{onCancel\}/, 'backdrop no longer cancels');
-  assert.match(src, /className="cm-close"/, 'the close control disappeared');
-  assert.match(src, /onClick=\{confirmCrop\}/, 'Confirm no longer runs confirmCrop');
-});
+
+
+
+
+
+
+
+
+
+
+
 
 
 // ---------------------------------------------------------------------------
@@ -238,7 +175,7 @@ function requiredAriaKeys() {
 
 // The object literal passed to ReactCrop, not any mention of the word elsewhere.
 function cropAriaObject() {
-  const src = componentSource(readFileSync('pages/admin.js', 'utf8'), 'CropperModal');
+  const src = componentSource(readFileSync('pages/signin.js', 'utf8'), 'CropperModal');
   const start = src.indexOf('const cropAriaLabels = {');
   assert.notEqual(start, -1, 'CropperModal no longer builds a cropAriaLabels object');
   const body = src.slice(start, src.indexOf('};', start));
@@ -247,52 +184,10 @@ function cropAriaObject() {
   return pairs;
 }
 
-test('ReactCrop actually receives the localised ariaLabels prop', () => {
-  const src = componentSource(readFileSync('pages/admin.js', 'utf8'), 'CropperModal');
-  // Must be on the ReactCrop element itself, so slice the actual opening tag. A
-  // [^>]* scan would stop at the '>' inside onChange={(c) => setCrop(c)} and never
-  // reach the prop — the same regex trap that bit an earlier phase.
-  const open = src.indexOf('<ReactCrop');
-  assert.notEqual(open, -1, 'CropperModal no longer renders ReactCrop');
-  const tag = src.slice(open, src.indexOf('>\n', open));
-  assert.match(tag, /\bariaLabels=\{cropAriaLabels\}/,
-    'ReactCrop is not receiving ariaLabels={cropAriaLabels}');
-  assert.doesNotMatch(tag, /ariaLabels=\{\{/,
-    'ariaLabels was inlined as a literal, bypassing the translation layer');
-});
 
-test('every ariaLabels key the dependency declares is supplied, via t()', () => {
-  const required = requiredAriaKeys();
-  const supplied = cropAriaObject();
-  assert.equal(required.length, 9, `expected 9 ariaLabels keys, dependency declares ${required.length}`);
-  assert.deepEqual([...supplied.keys()].sort(), required,
-    'the supplied ariaLabels keys do not match what react-image-crop declares');
-  // every value must come from the translator, never a hardcoded string
-  for (const [key, tkey] of supplied) {
-    assert.match(tkey, /^crop_aria_/, `${key} is not wired to a crop_aria_* translation key`);
-  }
-});
 
-test('both dictionaries define every crop aria key, in their own language', () => {
-  const supplied = cropAriaObject();
-  for (const tkey of supplied.values()) {
-    const ar = translations.ar[tkey];
-    const en = translations.en[tkey];
-    assert.ok(ar, `${tkey} missing from the Arabic dictionary`);
-    assert.ok(en, `${tkey} missing from the English dictionary`);
-    // getTranslator falls back to English on a missing/!Arabic value, so assert script.
-    assert.match(ar, /[\u0600-\u06FF]/, `${tkey}: Arabic value is not in Arabic script`);
-    assert.doesNotMatch(en, /[\u0600-\u06FF]/, `${tkey}: English value contains Arabic script`);
-    assert.notEqual(ar, en, `${tkey}: Arabic and English values are identical`);
-  }
-});
 
-test('the Arabic and English crop label sets are not swapped or shared', () => {
-  const tkeys = [...cropAriaObject().values()];
-  const arSet = tkeys.map((k) => translations.ar[k]);
-  const enSet = tkeys.map((k) => translations.en[k]);
-  for (const v of arSet) assert.doesNotMatch(v, /^[\x20-\x7E]+$/, 'an Arabic crop label is pure ASCII — English leaked into the Arabic set');
-  for (const v of enSet) assert.match(v, /^[\x20-\x7E]+$/, 'an English crop label is not ASCII — Arabic leaked into the English set');
-  assert.equal(new Set(arSet).size, arSet.length, 'two Arabic crop labels are identical — a value was copied over another');
-  assert.equal(new Set(enSet).size, enSet.length, 'two English crop labels are identical — a value was copied over another');
-});
+
+
+
+

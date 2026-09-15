@@ -271,7 +271,7 @@ export default function StudioPage() {
 
   const signOut = useCallback(async () => {
     try { await supabase.auth.signOut(); } catch (e) { /* ignore */ }
-    window.location.replace('/admin');
+    window.location.replace('/signin');
   }, []);
 
   /* EDITING NO LONGER REQUIRES PAYING. section-z split the predicate:

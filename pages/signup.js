@@ -267,7 +267,7 @@ export default function Signup() {
               </form>
 
               <p className="su-muted su-small su-foot-note">
-                {t('signup_have_account')} <a href="/admin">{t('sign_in')}</a>
+                {t('signup_have_account')} <a href="/signin">{t('sign_in')}</a>
               </p>
             </Card>
           )}

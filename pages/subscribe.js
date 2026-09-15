@@ -214,7 +214,7 @@ export default function Subscribe() {
                     "pending", and the customer is told to refresh.
                     Deliberately NOT on the cancelled screen: someone who backed
                     out must not poll for an activation that is not coming. */}
-                <a href="/admin?checkout=success" className="co-btn-link">{t('checkout_go_dashboard')}</a>
+                <a href="/studio?checkout=success" className="co-btn-link">{t('checkout_go_dashboard')}</a>
               </div>
             </Card>
           )}
@@ -225,7 +225,7 @@ export default function Subscribe() {
                 <div className="co-mark warn" aria-hidden="true">!</div>
                 <h1>{t('checkout_cancelled_title')}</h1>
                 <p className="co-muted">{t('checkout_cancelled_desc')}</p>
-                <a href="/admin" className="co-btn-link">{t('checkout_go_dashboard')}</a>
+                <a href="/studio" className="co-btn-link">{t('checkout_go_dashboard')}</a>
               </div>
             </Card>
           )}

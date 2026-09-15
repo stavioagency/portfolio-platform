@@ -593,7 +593,7 @@ test('/reset-password spends nothing on load', () => {
 });
 
 test('the old Supabase mailer is gone from the sign-in screen', () => {
-  const admin = readFileSync(new URL('../pages/admin.js', import.meta.url), 'utf8');
+  const admin = readFileSync(new URL('../pages/signin.js', import.meta.url), 'utf8');
   // Comments stripped first: the name survives in the note that explains why
   // the CALL does not, and this test is about the call.
   const code = admin.replace(/^\s*\/\/.*$/gm, '');

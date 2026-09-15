@@ -93,7 +93,7 @@ export default function Document() {
                   // editor's setting, so a customer choosing light would have
                   // repainted the operator's console.
                   'document.documentElement.setAttribute("data-admin-theme","dark");' +
-                '}else if(p==="/admin"||p==="/signup"||p==="/signup/verify"||p==="/subscribe"||p==="/reset-password"){' +
+                '}else if(p==="/signin"||p==="/signup"||p==="/signup/verify"||p==="/subscribe"||p==="/reset-password"){' +
                   'document.documentElement.setAttribute("data-admin-theme",localStorage.getItem("admin_theme")||"dark");' +
                 '}' +
               '}catch(e){}})();',

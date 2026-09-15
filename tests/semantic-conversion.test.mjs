@@ -572,7 +572,7 @@ test('SAFE-1: --tap-min is consumed only where a tap target was approved', () =>
 // onboarding state onto the branch FIX-1 repairs. Landing FIX-2 alone would
 // have made a live AA failure MORE visible, not less.
 //
-// pages/admin.js is a 6,500-line React page with no test harness in this
+// pages/signin.js is a 6,500-line React page with no test harness in this
 // project — the suite covers pure lib modules — so its assertion is a source
 // assertion, following tests/admin-comp-kind-wiring.test.mjs. It cannot prove
 // the screen renders; it can prove the wiring, which is where the risk is.
@@ -645,7 +645,7 @@ test("FIX-2: 'default' is not emitted as a tone anywhere in the product", () => 
   // The whole-tree check. Badge implements five tones; a sixth name reaching it
   // renders an unstyled span rather than failing, which is why nothing caught
   // this for as long as it existed.
-  for (const file of ['pages/admin.js']) {
+  for (const file of ['pages/signin.js']) {
     const src = readFileSync(join(HERE, '..', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
     assert.equal(
       /tone: 'default'/.test(src),

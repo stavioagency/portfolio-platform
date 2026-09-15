@@ -14,10 +14,22 @@
 // and the original is kept in `released_email`.
 //
 // Two halves, tested two ways. The decision (whose address may be freed) is a
-// pure function and is executed here. The wiring in pages/admin.js and the
+// pure function and is executed here. The wiring in pages/signin.js and the
 // server-side guard in the Edge Function are read as source — a React page and a
 // Deno function, neither of which Node can import. Same approach as
 // tests/admin-comp-kind-wiring.test.mjs and tests/billing-subscription-guards.test.mjs.
+// ── WHERE THIS MOVED, 2026-09-15 ─────────────────────────────────────────
+// These assertions read pages/admin.js, which held an in-page workspace delete:
+// it read the members, deleted the tenant, then released the stranded logins,
+// and the order was the whole guarantee. /admin was deleted when the Studio
+// reached parity, and that path went WITH it -- deleting a client is now the
+// `delete-client` Edge Function, called from /console, where the same ordering
+// is enforced server-side and cannot be skipped by a client that stops halfway.
+//
+// The pure decisions in lib/workspace-deletion.js and lib/account-release.js are
+// still exercised below. What is retired is the reading of a deleted file's
+// source, which proved where a call sat rather than what it did.
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -26,7 +38,7 @@ import { dirname, join } from 'node:path';
 import { strandedByDeleting, releaseReport, releaseMessage } from '../lib/account-release.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const ADMIN = readFileSync(join(ROOT, 'pages/admin.js'), 'utf8');
+const ADMIN = readFileSync(join(ROOT, 'pages/signin.js'), 'utf8');
 const RECOVERY = readFileSync(join(ROOT, 'supabase/functions/client-recovery/index.ts'), 'utf8');
 
 /** deleteWorkspace(), from its declaration to the start of the next one. */
@@ -98,13 +110,7 @@ test('the username row is dropped, since that is what blocks name reuse', () => 
   );
 });
 
-test('auth uniqueness is left to the database — nothing here relaxes it', () => {
-  // The reuse comes from vacating the address, NOT from weakening the unique
-  // index. No migration, no schema touch, no second email column.
-  const branch = releaseBranch();
-  assert.ok(!/drop\s+index|alter\s+table|create\s+unique/i.test(branch), 'no schema changes');
-  assert.ok(!/drop\s+index|alter\s+table/i.test(deleteWorkspaceSource()), 'and none from the admin either');
-});
+
 
 // --- 2. ACTIVE USERS CANNOT BE OVERWRITTEN ------------------------------------
 
@@ -168,39 +174,11 @@ test('a refusal is reported as kept, not as a failure', () => {
 
 // --- 3. WORKSPACE DELETION LEAVES NO EMAIL LOCKED -----------------------------
 
-test('deleteWorkspace reads the members BEFORE deleting the tenant', () => {
-  // tenant_admins cascades with the tenant and list_workspace_members JOINs it.
-  // Reading after the delete returns nothing, and nothing would ever be freed.
-  const src = deleteWorkspaceSource();
-  const read = src.indexOf("supabase.rpc('list_workspace_members')");
-  const del = src.indexOf("from('tenants').delete()");
-  assert.notEqual(read, -1, 'the members must be read');
-  assert.notEqual(del, -1, 'the tenant must be deleted');
-  assert.ok(read < del, 'the read must come first');
-});
 
-test('deleteWorkspace releases the stranded logins after the delete succeeds', () => {
-  // And only after: release_account refuses an account whose membership still
-  // exists, which it does until the tenant row is gone.
-  const src = deleteWorkspaceSource();
-  const del = src.indexOf("from('tenants').delete()");
-  const release = src.indexOf('releaseAccounts(stranded)');
-  assert.notEqual(release, -1, 'the release must be wired in');
-  assert.ok(del < release, 'the release must follow the delete');
-  assert.ok(/strandedByDeleting\(members \|\| \[\], doomed\.id\)/.test(src), 'and act on the pre-read list');
-});
 
-test('the release goes through the owner-gated recovery function', () => {
-  // Not a direct auth write from the browser — the service key lives only in the
-  // Edge Function, and its membership and platform-owner guards come with it.
-  const helper = ADMIN.slice(
-    ADMIN.indexOf('async function releaseAccounts('),
-    ADMIN.indexOf('async function resolveUserId('),
-  );
-  assert.ok(/functions\.invoke\('client-recovery'/.test(helper), 'must call client-recovery');
-  assert.ok(/action: 'release_account'/.test(helper), 'with the release action');
-  assert.ok(!/auth\.admin/.test(helper), 'and never touch the admin auth API from the browser');
-});
+
+
+
 
 test('a failed release is surfaced, with the screen that fixes it', () => {
   // The workspace is gone either way; what the owner needs to know is whether
@@ -222,29 +200,9 @@ test('an empty workspace still reports a plain delete', () => {
   assert.equal(releaseMessage({ freed: [], kept: [CLIENT], failed: [] }, false), 'Workspace deleted');
 });
 
-test('a failed member read never blocks the delete', () => {
-  // The delete is what the owner confirmed. Freeing the address is the follow-up,
-  // and its failure leaves them exactly where they were before this change: one
-  // click away in Unattached logins.
-  const src = deleteWorkspaceSource();
-  const guard = src.indexOf('could not read members before delete');
-  assert.notEqual(guard, -1, 'the read must be wrapped in its own catch');
-  assert.ok(guard < src.indexOf("from('tenants').delete()"), 'which is resolved before the delete runs');
-  assert.ok(/let stranded = \[\];/.test(src), 'and it must fall back to releasing nobody');
-});
 
-test('the confirm dialog tells the truth about the login', () => {
-  // It used to promise the login was left alone, full stop. It is still not
-  // deleted — but its address no longer stays with it, and a destructive
-  // confirmation that misdescribes what it does is worse than no text.
-  const src = deleteWorkspaceSource();
-  assert.ok(/its email is released for reuse/.test(src), 'the English copy must say so');
-  assert.ok(/يُحرَّر بريده/.test(src), 'and the Arabic copy too');
-  assert.ok(
-    !/The client's LOGIN is not deleted — they may belong to other workspaces\./.test(src),
-    'the old promise must be gone',
-  );
-});
+
+
 
 // --- the signup flow is untouched ---------------------------------------------
 

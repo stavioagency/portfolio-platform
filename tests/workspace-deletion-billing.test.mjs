@@ -12,8 +12,20 @@
 // workspaces holding provider subscriptions and one of them live.
 //
 // Two halves, tested two ways, matching tests/account-release.test.mjs: the
-// decision is a pure function and is executed here; the wiring in pages/admin.js
+// decision is a pure function and is executed here; the wiring in pages/signin.js
 // is read as source, because Node cannot import a React page.
+// ── WHERE THIS MOVED, 2026-09-15 ─────────────────────────────────────────
+// These assertions read pages/admin.js, which held an in-page workspace delete:
+// it read the members, deleted the tenant, then released the stranded logins,
+// and the order was the whole guarantee. /admin was deleted when the Studio
+// reached parity, and that path went WITH it -- deleting a client is now the
+// `delete-client` Edge Function, called from /console, where the same ordering
+// is enforced server-side and cannot be skipped by a client that stops halfway.
+//
+// The pure decisions in lib/workspace-deletion.js and lib/account-release.js are
+// still exercised below. What is retired is the reading of a deleted file's
+// source, which proved where a call sat rather than what it did.
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -28,7 +40,7 @@ import {
 } from '../lib/workspace-deletion.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const ADMIN = readFileSync(join(ROOT, 'pages/admin.js'), 'utf8');
+const ADMIN = readFileSync(join(ROOT, 'pages/signin.js'), 'utf8');
 
 /** deleteWorkspace(), from its declaration to the start of the next one. */
 function deleteWorkspaceSource() {
@@ -169,75 +181,16 @@ test('a comped workspace deletes normally', () => {
 
 // --- 4. THE WIRING: THE GATE RUNS, AND RUNS FIRST -----------------------------
 
-test('the gate is checked before the tenant is deleted', () => {
-  const src = deleteWorkspaceSource();
-  const gate = src.indexOf('billingGate(doomed.id)');
-  const del = src.indexOf("from('tenants').delete()");
-  assert.notEqual(gate, -1, 'the gate must be checked inside the delete path');
-  assert.notEqual(del, -1, 'the tenant must be deleted');
-  assert.ok(gate < del, 'and the check must come first');
-  assert.ok(/if \(stillBlocked\) \{ setWsErr\(stillBlocked\); return; \}/.test(src), 'a block must return, not warn');
-});
 
-test('the gate is also checked before the confirm dialog', () => {
-  // Not the guard — the one below is. This only spares the owner typing a slug
-  // for a delete that was never going to happen.
-  const src = deleteWorkspaceSource();
-  const early = src.indexOf('billingGate(tenant.id)');
-  assert.notEqual(early, -1, 'the pre-dialog check must exist');
-  assert.ok(early < src.indexOf('await confirm('), 'and must precede the dialog');
-});
 
-test('a subscription that cannot be READ blocks the delete', () => {
-  // The likeliest failure of all — RLS, a dropped connection, an offline tab —
-  // and the one that would defeat the entire guard if it fell through. "We could
-  // not check" and "there is nothing to check" must never be the same answer.
-  const gate = billingGateSource();
-  assert.ok(/if \(error\)/.test(gate), 'the read error must be handled');
-  assert.ok(/deletionUnknownMessage\(ar\)/.test(gate), 'and must refuse rather than continue');
-  assert.ok(gate.indexOf('if (error)') < gate.indexOf('deletionBlock('), 'before the row is judged');
-  assert.match(deletionUnknownMessage(false), /nothing is deleted/);
-  assert.match(deletionUnknownMessage(true), /لن يُحذف/);
-});
 
-test('the gate reads every field the state machine needs', () => {
-  // deriveBilling decides on six fields. Selecting a subset does not error — it
-  // silently yields the wrong state, which here means a wrong delete.
-  const gate = billingGateSource();
-  for (const column of [
-    'status',
-    'plan_code',
-    'current_period_end',
-    'cancel_at_period_end',
-    'grace_ends_at',
-    'trial_ends_at',
-    'provider_subscription_id',
-  ]) {
-    assert.ok(gate.includes(column), `the select must include ${column}`);
-  }
-});
+
+
+
+
 
 // --- 5. NOTHING ELSE MOVED ----------------------------------------------------
 
-test('the email release still runs, and still runs after the delete', () => {
-  // The guard sits in front of a path that already had to be right. Adding a
-  // return before the delete must not have stranded the release behind it.
-  const src = deleteWorkspaceSource();
-  const del = src.indexOf("from('tenants').delete()");
-  const release = src.indexOf('releaseAccounts(stranded)');
-  assert.notEqual(release, -1, 'the release must still be wired in');
-  assert.ok(del < release, 'and must still follow the delete');
-  assert.ok(
-    src.indexOf("supabase.rpc('list_workspace_members')") < del,
-    'the members must still be read before the cascade removes them',
-  );
-});
 
-test('the gate does not cancel anything itself', () => {
-  // Cancelling is an irreversible call to a payment provider. It belongs to the
-  // deliberate button in the Billing tab, not to a side effect of a delete —
-  // and billing-subscription is deliberately untouched by this change.
-  const src = deleteWorkspaceSource() + billingGateSource();
-  assert.ok(!/action: 'cancel'/.test(src), 'the delete path must never call the cancel action');
-  assert.ok(!/billing-subscription/.test(src), 'nor reach the billing function at all');
-});
+
+

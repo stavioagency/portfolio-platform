@@ -23,7 +23,7 @@ import { Button, Card } from '../components/ui';
 
 // Where they go once it has worked. Same destination the old Supabase recovery
 // link used, so nothing downstream of sign-in changes.
-const SIGN_IN_PATH = '/admin';
+const SIGN_IN_PATH = '/signin';
 const REDIRECT_MS = 1600;
 
 export default function ResetPassword() {

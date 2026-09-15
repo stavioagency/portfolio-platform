@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GUIDE_STEPS, nextStep } from '../lib/onboarding-guide.js';
 
-// The ids MUST match the keys computeSetup() produces in pages/admin.js, because the
+// The ids MUST match the keys computeSetup() produces in pages/signin.js, because the
 // guide is driven by that done-map. A rename on either side silently shows every step
 // as unfinished forever, which looks like broken progress rather than a typo.
 const SETUP_KEYS = ['photo', 'bio', 'project', 'links', 'theme', 'domain', 'publish'];

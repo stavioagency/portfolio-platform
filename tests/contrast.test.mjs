@@ -216,7 +216,7 @@ for (const [theme, tokens] of [['dark', DARK], ['light', LIGHT]]) {
   });
 
   test(`${theme}: the accent aliases still resolve to the brand`, () => {
-    // --accent is what pages/admin.js paints with. If the alias breaks, the
+    // --accent is what pages/signin.js paints with. If the alias breaks, the
     // product silently stops being brand-coloured while every test still
     // passes — which is exactly what a local --accent override once did.
     assert.equal(value(tokens, '--accent'), value(tokens, '--brand'));

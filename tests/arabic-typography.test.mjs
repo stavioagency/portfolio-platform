@@ -35,7 +35,7 @@ import { dirname, join, relative } from 'node:path';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
 
-// pages/admin.js is protected scope for the design-system phases and already
+// pages/signin.js is protected scope for the design-system phases and already
 // carries an RTL reset beside every one of its uppercase labels; pages/index.js
 // and the portfolio renderer are protected public-rendering surfaces.
 const OUT_OF_SCOPE = /^(pages\/index\.js|pages\/\[slug\]\.js|pages\/_document\.js|pages\/admin\.js|components\/ui\/BrandGlyph\.js|components\/portfolio\/)/;
@@ -88,7 +88,17 @@ function violations() {
       // trailing simple selector after the :global(...) prefix.
       const bare = r.sel.split(/\s+/).pop();
       const covered = resets.some((x) => {
-        const t = x.sel.replace(/^.*\)\s*/, '').trim();
+        // Strip whichever prefix carries the direction. Two forms are in use
+        // and both are correct: `:global(html[dir='rtl']) .thing` inside a
+        // scoped styled-jsx block, and plain `html[dir="rtl"] .thing` inside a
+        // `<style jsx global>` one -- where :global() is not merely redundant,
+        // it fails to compile. This used to recognise only the first, so a
+        // valid reset in a global block read as no reset at all, and the only
+        // way to satisfy the guard was to write CSS that breaks the build.
+        const t = x.sel
+          .replace(/^.*\)\s*/, '')
+          .replace(/^\s*(?:html|body)?\s*\[dir=.rtl.\]\s*/, '')
+          .trim();
         return t === r.sel || t === bare;
       });
       if (!covered) found.push(key);

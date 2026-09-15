@@ -636,7 +636,7 @@ function Console() {
               </span>
               <span role="cell" className="c-act">
                 <Button size="sm" variant="ghost" onClick={() => window.open(`/${r.slug}`, '_blank', 'noopener')}>{t('portfolio')}</Button>
-                <Button size="sm" variant="ghost" onClick={() => window.open('/admin', '_blank', 'noopener')}>{t('editor')}</Button>
+                <Button size="sm" variant="ghost" onClick={() => window.open('/studio', '_blank', 'noopener')}>{t('editor')}</Button>
                 <Button size="sm" variant="secondary" onClick={() => setOpenId(r.id)}>{t('manage')}</Button>
               </span>
             </div>
@@ -886,7 +886,7 @@ function ManagePanel({ row, busy, t, ar, lang, onClose, onResetPassword, onChang
 
         <section className="links">
           <Button size="sm" variant="ghost" onClick={() => window.open(`/${row.slug}`, '_blank', 'noopener')}>{t('openPortfolio')}</Button>
-          <Button size="sm" variant="ghost" onClick={() => window.open('/admin', '_blank', 'noopener')}>{t('openEditor')}</Button>
+          <Button size="sm" variant="ghost" onClick={() => window.open('/studio', '_blank', 'noopener')}>{t('openEditor')}</Button>
         </section>
       </div>
 

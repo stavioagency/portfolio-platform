@@ -87,7 +87,7 @@ function jsxOnly(src) {
   return src.replace(/(?<=[\s{])\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
-const ADMIN = jsxOnly(readFileSync(join(HERE, '..', 'pages', 'admin.js'), 'utf8'));
+const ADMIN = jsxOnly(readFileSync(join(HERE, '..', 'pages', 'signin.js'), 'utf8'));
 
 test('no component takes an emoji as its icon', () => {
   // `icon="🔍"` and `icon="⚠️"` were EmptyState props sitting beside sibling

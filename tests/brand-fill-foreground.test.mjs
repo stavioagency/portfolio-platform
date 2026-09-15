@@ -34,7 +34,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
 const CSS = readFileSync(join(ROOT, 'styles', 'globals.css'), 'utf8');
 
-// Protected public-rendering surfaces and pages/admin.js are out of scope for
+// Protected public-rendering surfaces and pages/signin.js are out of scope for
 // the design-system phases; admin.js additionally paints client-chosen colours.
 const OUT_OF_SCOPE = /^(pages\/index\.js|pages\/\[slug\]\.js|pages\/_document\.js|pages\/admin\.js|components\/ui\/BrandGlyph\.js|components\/portfolio\/)/;
 

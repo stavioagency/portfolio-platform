@@ -102,7 +102,7 @@ test('the matcher catches a command and spares its verbal noun', () => {
 // never passes through lib/translations.js. Guarding only the table guarded
 // only half the product: a live check found commands still painting on screen
 // after the table had been cleaned, and a sweep then found 34 more outside
-// pages/admin.js — 22 of them in lib/onboarding-guide.js, which is the
+// pages/signin.js — 22 of them in lib/onboarding-guide.js, which is the
 // step-by-step guide a brand new client reads first.
 //
 // SCOPE, deliberately: principle 11 protects THE CLIENT. The Console is the
@@ -111,7 +111,7 @@ test('the matcher catches a command and spares its verbal noun', () => {
 // than rewritten — ONE BY ONE, so a new one is a conscious act instead of a
 // whole file being waved through.
 const OPERATOR_PINNED = new Set([
-  // pages/admin.js — the owner's client-management surfaces
+  // pages/signin.js — the owner's client-management surfaces
   'أدخل معرّفًا صالحًا',
   'أدخل معرّفًا صالحًا للمساحة',
   'هذا المعرّف محجوز، اختر غيره',

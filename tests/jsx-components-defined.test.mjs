@@ -2,7 +2,7 @@
 //
 // WHY THIS EXISTS: on 2026-08-28 a commit reverted a feature by deleting the
 // component and leaving the call site. `<AvailabilityRow value={…} />` sat in
-// pages/admin.js with no declaration and no import anywhere in the repo.
+// pages/signin.js with no declaration and no import anywhere in the repo.
 //
 // Nothing caught it. It is not a syntax error, so the build compiled all 14
 // routes and exited 0. It is not a token or a style, so no guard test looked at
@@ -98,8 +98,12 @@ test('every JSX component used is declared or imported by its own file', () => {
 test('the guard actually sees the tree, and would catch a real one', () => {
   // A scanner that matches nothing passes the assertion above forever.
   assert.ok(sources().length >= 10, 'the walk is broken');
-  const sample = readFileSync(join(ROOT, 'pages', 'admin.js'), 'utf8');
-  assert.ok([...sample.matchAll(/<([A-Z][\w$]*)(?=[\s/>])/g)].length > 50, 'no JSX seen');
+  // The sample used to be pages/admin.js, which was 5,172 lines and full of
+  // components. It is gone; the console is now the densest screen, and the
+  // point of this assertion is only that the scanner SEES JSX -- a scanner
+  // matching nothing would pass the real assertion above forever.
+  const sample = readFileSync(join(ROOT, 'pages', 'console', 'index.js'), 'utf8');
+  assert.ok([...sample.matchAll(/<([A-Z][\w$]*)(?=[\s/>])/g)].length > 20, 'no JSX seen');
   // And the detector must actually fire on the shape it was written for.
   const declared = bindings('function Page(){ return <Missing a={1} /> }');
   assert.ok(!declared.has('Missing'), 'a bare JSX reference is being treated as declared');

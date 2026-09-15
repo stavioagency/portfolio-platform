@@ -1,6 +1,6 @@
 // Custom domains, now that the rules are shared.
 //
-// These moved out of pages/admin.js so the Studio could offer custom domains
+// These moved out of pages/signin.js so the Studio could offer custom domains
 // without a second implementation of DNS verification. They had no tests while
 // they lived there, which is most of why moving them was worth doing: the one
 // property that matters here — that an unreachable DNS service never writes a

@@ -541,7 +541,7 @@ test('the legacy transition tokens still resolve', () => {
 });
 
 test('no surface re-declares the accent and shadows the brand', () => {
-  // pages/admin.js used to set `--accent: #4f6ef2` on both .dashboard and
+  // pages/signin.js used to set `--accent: #4f6ef2` on both .dashboard and
   // .signin-wrap. That shadowed the token layer, so setting the brand in
   // globals.css had no effect on the two largest surfaces in the product.
   const roots = ['pages', 'components'];
