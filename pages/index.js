@@ -1411,6 +1411,53 @@ export default function Home({ slug = null } = {}) {
            fits a 375px viewport with margin, so the old shrink-the-padding rule
            was correcting for a width this design no longer has. Only the page's
            own breathing room comes in. */
+        /* ── DESKTOP ──────────────────────────────────────────────────────
+           Unfrozen 2026-09-15 at the owner's direction. Until now the page was
+           one 330px column at every width, so a 27-inch screen showed a phone
+           ribbon floating in the dark -- the single most common thing anyone
+           said about it.
+
+           A GRID, not a rewrite. The card keeps its markup exactly: every child
+           flows down column one as it always did, and .work-frame is lifted into
+           column two. Nothing is reordered, nothing is duplicated, and the
+           mobile layout is untouched because this only exists above 1024px --
+           which matters on a page seven people are already paid up on.
+
+           The identity column is fixed at 360px and the work takes the rest:
+           the left side is text, which stops being readable past about 70
+           characters, while the work is images and gets better with room. */
+        @media (min-width: 1024px) {
+          .page { padding-block: 56px; }
+
+          .card {
+            max-width: 1000px;
+            display: grid;
+            grid-template-columns: 360px minmax(0, 1fr);
+            column-gap: 44px;
+            row-gap: var(--card-stack);
+            align-items: start;
+            /* min-content rows, or the identity column stretches to match the
+               work beside it and its items drift apart into a sparse ladder --
+               the grid would otherwise share the work's height out among every
+               row it spans. */
+            grid-auto-rows: min-content;
+          }
+
+          /* Everything stays in the identity column by default, in source order. */
+          .card > * { grid-column: 1; }
+
+          /* The work moves beside it and runs the full height of the card. */
+          .card > .work-frame {
+            grid-column: 2;
+            grid-row: 1 / -1;
+            align-self: stretch;
+          }
+
+          /* Freed of a 330px measure, the work can show more than one piece at
+             a time -- which is the entire reason a portfolio wants a desktop. */
+          .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+        }
+
         @media (max-width: 480px) {
           .page { padding: 30px 12px 32px; }
         }
