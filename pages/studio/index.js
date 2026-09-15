@@ -34,6 +34,7 @@ import { Button, Icon } from '../../components/ui';
 import StudioShell from '../../components/studio/StudioShell';
 import { Appearance, Links, Profile } from '../../components/studio/sections';
 import { Facts } from '../../components/studio/facts';
+import { PageParts, SiteIdentity } from '../../components/studio/pagebits';
 import { Work } from '../../components/studio/work';
 import { DEFAULT_SECTION, isStudioSection, studioSectionLabel } from '../../lib/studio-nav';
 import { hasPublicContent } from '../../lib/profile-content';
@@ -348,8 +349,14 @@ export default function StudioPage() {
                 projects={projects} onProjects={onProjectsChanged} canEdit={canEdit} />
         )}
         {section === 'appearance' && (
-          <Appearance ar={ar} tenant={tenant} profile={profile} onSaved={onProfile}
-                      canEdit={canEdit} />
+          <>
+            <Appearance ar={ar} tenant={tenant} profile={profile} onSaved={onProfile}
+                        canEdit={canEdit} />
+            {/* What is ON the page, as opposed to what colour it is. Ported
+                from /admin, where these five columns lived alone. */}
+            <PageParts ar={ar} uiLang={lang} tenant={tenant} profile={profile}
+                       onSaved={onProfile} canEdit={canEdit} />
+          </>
         )}
         {section === 'links' && (
           <Links ar={ar} tenant={tenant} profile={profile} onSaved={onProfile}
@@ -367,7 +374,13 @@ export default function StudioPage() {
           <Domain ar={ar} tenant={tenant} entitled={entitled} />
         )}
         {section === 'settings' && (
-          <Settings ar={ar} email={session?.user?.email || ''} />
+          <>
+            <Settings ar={ar} email={session?.user?.email || ''} />
+            {/* How the page looks somewhere ELSE -- a browser tab, a search
+                result, a pasted link. A different question from what is on it. */}
+            <SiteIdentity ar={ar} uiLang={lang} tenant={tenant} profile={profile}
+                          onSaved={onProfile} canEdit={canEdit} />
+          </>
         )}
       </StudioShell>
     </>

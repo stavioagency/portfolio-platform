@@ -491,6 +491,14 @@ test('SAFE-1: --tap-min is consumed only where a tap target was approved', () =>
     // field is worse than one that misses a button, because it is silent.
     'components/studio/facts.js': 2,       // the inputs and .day
 
+    // Added 2026-09-15 with the last five /admin-only columns. Five sites:
+    // the section checkboxes, the ticker's text and colour fields, the footer
+    // line, the identity text fields, and the file-picker label. Checkboxes
+    // and colour swatches are the smallest controls in the Studio and the
+    // easiest to miss; the file label IS the button, since the input itself is
+    // clipped out of sight.
+    'components/studio/pagebits.js': 5,
+
     // Added 2026-09-11, when the Studio and /client were first looked at on a
     // 375px viewport. Every one of these is a control a customer or an operator
     // presses with a thumb, and every one measured 32-38px -- under the floor
