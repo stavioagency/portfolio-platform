@@ -23,6 +23,21 @@ const nextConfig = {
       { protocol: 'https', hostname: '**.supabase.in' },
     ],
   },
+  // Seven clients used /admin every day for a year, and a good number of them
+  // have it bookmarked. The page is gone, but the habit is not -- and without
+  // this the dynamic [slug] route catches the request and answers "portfolio
+  // not found", which is a dead end wearing the wrong error.
+  //
+  // 307 rather than 308: the destination is where the editor lives TODAY, and
+  // a permanent redirect is cached by the browser forever, which would be
+  // awkward the day /signin is not the answer.
+  async redirects() {
+    return [
+      { source: '/admin', destination: '/signin', permanent: false },
+      { source: '/admin/:path*', destination: '/signin', permanent: false },
+    ];
+  },
+
   async headers() {
     return [{ source: '/(.*)', headers: securityHeaders }];
   },
