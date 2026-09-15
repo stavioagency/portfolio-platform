@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { supabase } from '../../lib/supabase';
+import ConsoleDesk from '../../components/console/desk';
 import { deriveBilling, statusLabel, formatBillingDate } from '../../lib/billing-status';
 import { formatAmount, DISPLAY_CURRENCY } from '../../lib/billing-plans';
 // The operation bodies moved to lib/client-operations.js so /client can offer
@@ -166,6 +167,14 @@ const S = {
   },
 };
 
+const DESK_TABS = [
+  ['support', 'الدعم', 'Support'],
+  ['reports', 'البلاغات', 'Reports'],
+  ['health', 'الحالة', 'Health'],
+  ['audit', 'السجل', 'Audit'],
+];
+const DESK_VIEWS = new Set(DESK_TABS.map(([k]) => k));
+
 export default function ConsolePage() {
   return (
     <ToastProvider>
@@ -185,7 +194,12 @@ function Console() {
   const [openId, setOpenId] = useState(null);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState('');
-  const [view, setView] = useState('clients');   // clients | archived
+  // clients | archived | support | reports | health | audit. The last four are
+  // the operator desk added with Section AA; they live here rather than on a
+  // second page because there is meant to be ONE owner surface, and support
+  // arriving somewhere the payments are not is how a client gets chased for
+  // money they already paid.
+  const [view, setView] = useState('clients');
   const [archived, setArchived] = useState([]);
   const [payments, setPayments] = useState([]);
   const [invites, setInvites] = useState([]);
@@ -532,6 +546,12 @@ function Console() {
                   className={view === 'clients' ? 'on' : ''} onClick={() => setView('clients')}>{t('clients')}</button>
           <button type="button" role="tab" aria-selected={view === 'archived'}
                   className={view === 'archived' ? 'on' : ''} onClick={() => setView('archived')}>{t('removed')}</button>
+          {DESK_TABS.map(([key, ar, en]) => (
+            <button key={key} type="button" role="tab" aria-selected={view === key}
+                    className={view === key ? 'on' : ''} onClick={() => setView(key)}>
+              {lang === 'ar' ? ar : en}
+            </button>
+          ))}
         </div>
         {view === 'clients' && (
           <>
@@ -566,7 +586,9 @@ function Console() {
         </div>
       )}
 
-      {view === 'archived' ? (
+      {DESK_VIEWS.has(view) ? (
+        <ConsoleDesk ar={lang === 'ar'} view={view} tenants={rows} />
+      ) : view === 'archived' ? (
         archived.length === 0 ? (
           <EmptyState icon={<Icon name="users" size={24} />} title={t('noneRemoved')} compact />
         ) : (

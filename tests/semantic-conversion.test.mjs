@@ -477,6 +477,12 @@ test('SAFE-1: --tap-min is consumed only where a tap target was approved', () =>
     'components/ui/ConfirmDialog.js': 2, // .req-input and .btn
     'components/studio/StudioShell.js': 2, // .tab and .row
 
+    // Added 2026-09-15 with the operator desk. `.row-btn` is a whole support
+    // thread rendered as one button -- it is the only way into a conversation,
+    // it is pressed with a thumb, and a row that misses opens the wrong
+    // client's appeal. One declaration, deliberate.
+    'components/console/desk.js': 1,       // .row-btn
+
     // Added 2026-09-11, when the Studio and /client were first looked at on a
     // 375px viewport. Every one of these is a control a customer or an operator
     // presses with a thumb, and every one measured 32-38px -- under the floor
