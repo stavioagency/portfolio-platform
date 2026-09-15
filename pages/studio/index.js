@@ -35,6 +35,7 @@ import StudioShell from '../../components/studio/StudioShell';
 import { Appearance, Links, Profile } from '../../components/studio/sections';
 import { Facts } from '../../components/studio/facts';
 import { PageParts, SiteIdentity } from '../../components/studio/pagebits';
+import { Workspace, Guide } from '../../components/studio/workspace';
 import { Work } from '../../components/studio/work';
 import { DEFAULT_SECTION, isStudioSection, studioSectionLabel } from '../../lib/studio-nav';
 import { hasPublicContent } from '../../lib/profile-content';
@@ -333,6 +334,23 @@ export default function StudioPage() {
                 onSection={goSection}
                 onPublished={() => { setSnapshot({ published: true }); setChanges(false); }} />
         )}
+        {/* The getting-started guide, ported from /admin. It lives on Home
+            because that is the screen a client lands on, and a checklist you
+            have to go looking for is a checklist nobody finishes. */}
+        {section === 'home' && profile && (
+          <Guide
+            ar={ar}
+            doneMap={{
+              publish: Boolean(profile?.name?.ar || profile?.name?.en),
+              picture: Boolean(profile?.profile_image),
+              links: Array.isArray(profile?.links) ? profile.links.length > 0
+                : Object.keys(profile?.links || {}).length > 0,
+              work: projects.length > 0,
+              bio: Boolean(profile?.bio?.ar || profile?.bio?.en),
+            }}
+            onNavigate={goSection}
+          />
+        )}
         {section === 'profile' && (
           <>
             <Profile ar={ar} uiLang={lang} tenant={tenant} profile={profile} onSaved={onProfile}
@@ -380,6 +398,8 @@ export default function StudioPage() {
                 result, a pasted link. A different question from what is on it. */}
             <SiteIdentity ar={ar} uiLang={lang} tenant={tenant} profile={profile}
                           onSaved={onProfile} canEdit={canEdit} />
+            <Workspace ar={ar} tenant={tenant} canEdit={canEdit}
+                       onRenamed={(n) => setTenant((prev) => (prev ? { ...prev, name: n } : prev))} />
           </>
         )}
       </StudioShell>

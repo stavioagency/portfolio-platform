@@ -499,6 +499,13 @@ test('SAFE-1: --tap-min is consumed only where a tap target was approved', () =>
     // clipped out of sight.
     'components/studio/pagebits.js': 5,
 
+    // Added 2026-09-15 with the workspace name and the getting-started guide,
+    // the last two things /admin could do that the Studio could not. The name
+    // field and each guide step's header are both pressed with a thumb on the
+    // screen a client lands on, and the step header is the only way to open
+    // the instructions underneath it.
+    'components/studio/workspace.js': 3,
+
     // Added 2026-09-11, when the Studio and /client were first looked at on a
     // 375px viewport. Every one of these is a control a customer or an operator
     // presses with a thumb, and every one measured 32-38px -- under the floor
